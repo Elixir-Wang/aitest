@@ -116,3 +116,40 @@ def test_agent_manifest_describes_enabled_roots_without_listing_files() -> None:
     assert "`/api-information/`：1 个文件" in manifest
     assert "`/company-knowledge/`：1 个文件" in manifest
     assert "先使用 glob 或 grep" in manifest
+
+
+def test_exploration_sources_include_only_page_yaml(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    page_yaml = tmp_path / "page.yaml"
+    report_markdown = tmp_path / "report.md"
+    legacy_json = tmp_path / "legacy.json"
+    text_artifact = tmp_path / "notes.txt"
+    alternate_yaml = tmp_path / "alternate.yml"
+    page_yaml.write_text("page: 登录页\n", encoding="utf-8")
+    report_markdown.write_text("# 探索报告\n", encoding="utf-8")
+    legacy_json.write_text('{"page": "登录页"}\n', encoding="utf-8")
+    text_artifact.write_text("探索日志\n", encoding="utf-8")
+    alternate_yaml.write_text("page: 非标准扩展名\n", encoding="utf-8")
+
+    monkeypatch.setattr(
+        knowledge_service.exploration_run_repo,
+        "list_by_project",
+        lambda _db, _project_id: [{"id": "run-1"}],
+    )
+    monkeypatch.setattr(
+        knowledge_service.exploration_artifact_repo,
+        "list_by_run",
+        lambda _db, _run_id: [
+            {"id": "page-1", "artifact_type": "page_yaml", "file_path": str(page_yaml), "title": "登录页"},
+            {"id": "page-json-1", "artifact_type": "page_yaml", "file_path": str(legacy_json), "title": "错误页面格式"},
+            {"id": "page-yml-1", "artifact_type": "page_yaml", "file_path": str(alternate_yaml), "title": "非标准页面格式"},
+            {"id": "report-1", "artifact_type": "report", "file_path": str(report_markdown), "title": "探索报告"},
+            {"id": "legacy-1", "artifact_type": "legacy", "file_path": str(legacy_json), "title": "旧产物"},
+            {"id": "text-1", "artifact_type": "log", "file_path": str(text_artifact), "title": "日志"},
+        ],
+    )
+
+    documents = knowledge_service._collect_exploration_sources(None, {"id": "project-1", "name": "示例项目"})
+
+    assert [(document.source_id, document.file_extension, document.markdown_content) for document in documents] == [
+        ("page-1", "yaml", "page: 登录页\n")
+    ]

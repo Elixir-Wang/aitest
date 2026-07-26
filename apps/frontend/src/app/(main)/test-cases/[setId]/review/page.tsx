@@ -4,7 +4,24 @@ import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react
 
 import { useParams, useSearchParams } from "next/navigation";
 
-import { Check, ChevronRight, CircleX, Download, List, Loader2, Network, Pencil, Search, X } from "lucide-react";
+import {
+  AlertCircle,
+  Check,
+  CheckCircle2,
+  ChevronRight,
+  CircleX,
+  Clock,
+  Download,
+  FileText,
+  List,
+  ListChecks,
+  Loader2,
+  Network,
+  Pencil,
+  Search,
+  Sparkles,
+  X,
+} from "lucide-react";
 import { toast } from "@/lib/toast";
 
 import { PageShell, ShellSection } from "@/components/ai-testing/page-shell";
@@ -78,18 +95,64 @@ function moduleSegments(moduleName: string) {
     .filter(Boolean);
 }
 
-function filterCountTone(item: ReviewFilter, current: ReviewFilter) {
-  if (item === current) return "bg-[#101828] text-white dark:bg-slate-100 dark:text-slate-900";
-  if (item === "rejected") return "bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-red-300";
-  if (item === "approved") return "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300";
-  if (item === "ready_for_review") return "bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-300";
-  return "bg-slate-100 text-slate-600 dark:bg-slate-500/20 dark:text-slate-300";
-}
-
 function getNextPendingCase(cases: ApiTestCase[], currentCaseId: string) {
   const currentIndex = cases.findIndex((item) => item.id === currentCaseId);
   const ordered = [...cases.slice(currentIndex + 1), ...cases.slice(0, Math.max(currentIndex, 0))];
   return ordered.find((item) => item.status === "ready_for_review") ?? null;
+}
+
+type ReviewStatusTone = {
+  bar: string;
+  text: string;
+  ring: string;
+  bg: string;
+  iconBg: string;
+};
+
+const REVIEW_TONE: Record<string, ReviewStatusTone> = {
+  ready_for_review: {
+    bar: "bg-amber-500",
+    text: "text-amber-700 dark:text-amber-300",
+    ring: "ring-1 ring-amber-200/60 dark:ring-amber-500/30",
+    bg: "bg-amber-50 dark:bg-amber-500/15",
+    iconBg: "bg-amber-500/20 text-amber-700 dark:text-amber-300",
+  },
+  approved: {
+    bar: "bg-emerald-500",
+    text: "text-emerald-700 dark:text-emerald-300",
+    ring: "ring-1 ring-emerald-200/60 dark:ring-emerald-500/30",
+    bg: "bg-emerald-50 dark:bg-emerald-500/15",
+    iconBg: "bg-emerald-500/20 text-emerald-700 dark:text-emerald-300",
+  },
+  rejected: {
+    bar: "bg-rose-500",
+    text: "text-rose-700 dark:text-rose-300",
+    ring: "ring-1 ring-rose-200/60 dark:ring-rose-500/30",
+    bg: "bg-rose-50 dark:bg-rose-500/15",
+    iconBg: "bg-rose-500/20 text-rose-700 dark:text-rose-300",
+  },
+  draft: {
+    bar: "bg-slate-400",
+    text: "text-slate-700 dark:text-slate-300",
+    ring: "ring-1 ring-slate-200 dark:ring-slate-500/30",
+    bg: "bg-slate-100 dark:bg-slate-500/20",
+    iconBg: "bg-slate-500/20 text-slate-700 dark:text-slate-300",
+  },
+};
+
+const REVIEW_STATUS_LABEL: Record<string, string> = {
+  ready_for_review: "待评审",
+  approved: "已采纳",
+  rejected: "未采纳",
+  draft: "草稿",
+};
+
+function reviewTone(status: string): ReviewStatusTone {
+  return REVIEW_TONE[status] ?? REVIEW_TONE.draft;
+}
+
+function reviewStatusLabel(status: string): string {
+  return REVIEW_STATUS_LABEL[status] ?? status;
 }
 
 export default function TestCaseReviewPage() {
@@ -362,47 +425,33 @@ export default function TestCaseReviewPage() {
                 </div>
                 <Tabs onValueChange={(value) => setFilter(value as ReviewFilter)} value={filter}>
                   <TabsList className="grid h-auto w-full grid-cols-3">
-                    {visibleReviewFilters.map((item) => (
-                      <TabsTrigger className="min-w-0 gap-1 px-2 text-xs" key={item} value={item}>
-                        <span className="truncate">{filterLabels[item]}</span>
-                        <span
-                          className={cn(
-                            "shrink-0 rounded-full px-1.5 font-mono text-[10px]",
-                            filterCountTone(item, filter),
-                          )}
-                        >
-                          {filterCounts[item]}
-                        </span>
-                      </TabsTrigger>
-                    ))}
+                    {visibleReviewFilters.map((item) => {
+                      const isActive = item === filter;
+                      return (
+                        <TabsTrigger className="min-w-0 gap-1 px-2 text-xs" key={item} value={item}>
+                          <span className="truncate">{filterLabels[item]}</span>
+                          <span
+                            className={cn(
+                              "shrink-0 rounded-full px-1.5 font-mono text-[10px] tabular-nums ring-1 ring-inset",
+                              filterChipTone(item, isActive),
+                            )}
+                          >
+                            {filterCounts[item]}
+                          </span>
+                        </TabsTrigger>
+                      );
+                    })}
                   </TabsList>
                 </Tabs>
               </div>
               <div className="min-h-0 flex-1 overflow-auto p-3">
                 {filteredCases.map((item) => (
-                  <button
-                    className={cn(
-                      "mb-2 w-full rounded-lg border border-slate-200/70 bg-white p-3 text-left transition hover:border-blue-200 hover:bg-blue-50/30 hover:shadow-sm dark:border-border dark:bg-card dark:hover:border-blue-500/50 dark:hover:bg-blue-500/10 dark:hover:shadow-none",
-                      selectedCase?.id === item.id &&
-                        "border-blue-300 bg-blue-50/70 shadow-sm ring-1 ring-blue-100 dark:border-blue-500/60 dark:bg-blue-500/15 dark:ring-blue-500/25",
-                    )}
+                  <CaseListCard
+                    active={selectedCase?.id === item.id}
                     key={item.id}
+                    testCase={item}
                     onClick={() => setSelectedCaseId(item.id)}
-                    type="button"
-                  >
-                    <div className="flex items-start gap-2">
-                      {item.priority ? (
-                        <Badge className={cn("shrink-0 border", priorityTone(item.priority))} variant="outline">
-                          {item.priority}
-                        </Badge>
-                      ) : null}
-                      <div className="min-w-0 flex-1">
-                        <div className="line-clamp-2 font-medium text-[#101828] text-sm dark:text-foreground">
-                          {item.title}
-                        </div>
-                      </div>
-                    </div>
-                  </button>
+                  />
                 ))}
                 {filteredCases.length === 0 ? (
                   <div className="rounded-lg border border-dashed bg-white p-6 text-center text-muted-foreground text-sm dark:bg-card">
@@ -438,52 +487,41 @@ export default function TestCaseReviewPage() {
               <div className={cn("flex min-h-0 flex-1 flex-col", viewMode !== "list" && "hidden")}>
                 {selectedCase ? (
                   <>
-                    <div className="border-b p-4">
-                      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                        <div className="min-w-0 space-y-1.5">
-                          <ModulePath moduleName={selectedCase.module} />
-                          <div className="flex min-w-0 flex-wrap items-center gap-2">
-                            <h2 className="min-w-0 max-w-full font-semibold text-[#101828] text-lg dark:text-foreground">
-                              {selectedCase.title}
-                            </h2>
-                            {selectedCase.status === "rejected" ? (
-                              <RejectedReasonButton
-                                feedback={selectedCase.review_feedback}
-                                onClick={() => openRejectDialog(selectedCase)}
-                              />
-                            ) : null}
-                          </div>
-                        </div>
-                        <ReviewActions
-                          disabled={savingCaseId === selectedCase.id}
-                          onApprove={() =>
-                            updateReview(
-                              selectedCase.id,
-                              { status: "approved", review_feedback: "" },
-                              { moveNext: true },
-                            )
-                          }
-                          onReject={() => openRejectDialog(selectedCase)}
-                          onEdit={() => startInlineEdit(selectedCase)}
-                          onSaveEdit={saveCaseContent}
-                          onCancelEdit={() =>
-                            setInlineEdit({ caseId: "", preconditions: "", steps: [], expectedResult: "" })
-                          }
-                          saving={savingCaseId === selectedCase.id}
-                          status={selectedCase.status}
-                          editing={selectedCaseIsEditing}
-                        />
-                      </div>
-                    </div>
+                    <CaseDetailHeader
+                      onApprove={() =>
+                        updateReview(
+                          selectedCase.id,
+                          { status: "approved", review_feedback: "" },
+                          { moveNext: true },
+                        )
+                      }
+                      onCancelEdit={() =>
+                        setInlineEdit({ caseId: "", preconditions: "", steps: [], expectedResult: "" })
+                      }
+                      onEdit={() => startInlineEdit(selectedCase)}
+                      onReject={() => openRejectDialog(selectedCase)}
+                      onSaveEdit={saveCaseContent}
+                      saving={savingCaseId === selectedCase.id}
+                      selectedCase={selectedCase}
+                      selectedCaseIsEditing={selectedCaseIsEditing}
+                    />
 
                     <div className="flex-1 overflow-auto p-5">
                       {selectedCaseIsEditing ? (
                         <InlineCaseEditor editState={inlineEdit} onChange={setInlineEdit} />
                       ) : (
                         <div className="space-y-4">
-                          <ReviewBlock title="前置条件">{selectedCase.preconditions || "-"}</ReviewBlock>
-                          <ReviewBlock title="测试步骤与预期结果">
-                            <StepExpectationTable testCase={selectedCase} />
+                          <ReviewBlock icon={FileText} title="前置条件">
+                            {selectedCase.preconditions || (
+                              <span className="text-muted-foreground/70 italic">未填写前置条件</span>
+                            )}
+                          </ReviewBlock>
+                          <ReviewBlock
+                            icon={ListChecks}
+                            subtitle={`共 ${selectedCase.steps.length} 步`}
+                            title="测试步骤与预期结果"
+                          >
+                            <StepList testCase={selectedCase} />
                           </ReviewBlock>
                         </div>
                       )}
@@ -555,12 +593,20 @@ export default function TestCaseReviewPage() {
   );
 }
 
+function filterChipTone(item: ReviewFilter, isActive: boolean) {
+  const activeRing = "ring-black/10 dark:ring-white/30";
+  if (item === "rejected") return "bg-rose-500 text-white ring-rose-600/50";
+  if (item === "approved") return "bg-emerald-500 text-white ring-emerald-600/50";
+  if (item === "ready_for_review") return "bg-amber-500 text-white ring-amber-600/50";
+  return "bg-slate-500 text-white ring-slate-600/50";
+}
+
 function downloadBlob(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
   anchor.href = url;
   anchor.download = filename;
-  document.body.append(anchor);
+  document.body.appendChild(anchor);
   anchor.click();
   anchor.remove();
   URL.revokeObjectURL(url);
@@ -575,51 +621,235 @@ function ReviewSummaryStrip({ actions, stats }: { actions: ReactNode; stats: Api
   const reviewProgress = Number((stats.review_progress * 100).toFixed(1));
 
   return (
-    <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-      <div className="grid min-w-0 flex-1 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm sm:h-8 sm:grid-cols-3 lg:max-w-2xl dark:border-border dark:bg-card dark:shadow-none">
-        <ReviewSummaryModule accent="blue" label="采纳率" suffix="%" value={adoptionRate} />
-        <ReviewSummaryModule accent="slate" label="评审进度" suffix="%" value={reviewProgress} />
-        <ReviewSummaryModule accent="green" label="用例数量" value={stats.case_count} />
+    <div className="flex flex-col gap-3 lg:flex-row lg:items-stretch lg:justify-between">
+      <div className="grid min-w-0 flex-1 gap-2 sm:grid-cols-3">
+        <SummaryStatCard accent="emerald" icon={CheckCircle2} label="采纳率" suffix="%" value={adoptionRate} />
+        <SummaryStatCard accent="amber" icon={Clock} label="评审进度" suffix="%" value={reviewProgress} />
+        <SummaryStatCard accent="blue" icon={Sparkles} label="用例数量" value={stats.case_count} />
       </div>
-      {actions}
+      <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 lg:self-center">
+        {actions}
+      </div>
     </div>
   );
 }
 
-function ReviewSummaryModule({
+type SummaryAccent = "emerald" | "amber" | "blue";
+
+function SummaryStatCard({
   label,
   value,
-  accent,
+  icon: Icon,
   suffix = "",
+  accent,
 }: {
   label: string;
   value: number;
-  accent: "blue" | "slate" | "green";
+  icon: typeof Sparkles;
   suffix?: string;
+  accent: SummaryAccent;
 }) {
-  const accentClasses = {
-    blue: { dot: "bg-blue-500", label: "bg-blue-50 text-blue-700 dark:bg-blue-500/15 dark:text-blue-300" },
-    slate: { dot: "bg-slate-500", label: "bg-slate-100 text-slate-700 dark:bg-slate-500/20 dark:text-slate-300" },
-    green: {
-      dot: "bg-emerald-500",
-      label: "bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300",
+  const tone: Record<SummaryAccent, { ring: string; iconBg: string; iconFg: string; numFg: string }> = {
+    emerald: {
+      ring: "ring-emerald-200/60 dark:ring-emerald-500/30",
+      iconBg: "bg-emerald-500/15",
+      iconFg: "text-emerald-600 dark:text-emerald-300",
+      numFg: "text-emerald-700 dark:text-emerald-300",
+    },
+    amber: {
+      ring: "ring-amber-200/60 dark:ring-amber-500/30",
+      iconBg: "bg-amber-500/15",
+      iconFg: "text-amber-600 dark:text-amber-300",
+      numFg: "text-amber-700 dark:text-amber-300",
+    },
+    blue: {
+      ring: "ring-blue-200/60 dark:ring-blue-500/30",
+      iconBg: "bg-blue-500/15",
+      iconFg: "text-blue-600 dark:text-blue-300",
+      numFg: "text-blue-700 dark:text-blue-300",
     },
   };
-  const tone = accentClasses[accent];
+  const t = tone[accent];
+  return (
+    <div
+      className={cn(
+        "relative flex items-center gap-3 overflow-hidden rounded-lg border bg-card px-3 py-2.5 shadow-[0_1px_2px_rgba(15,23,42,0.03)] ring-1 ring-inset",
+        t.ring,
+      )}
+    >
+      <span
+        aria-hidden="true"
+        className={cn(
+          "flex size-7 shrink-0 items-center justify-center rounded-md",
+          t.iconBg,
+          t.iconFg,
+        )}
+      >
+        <Icon className="size-3.5" />
+      </span>
+      <span className="truncate font-medium text-muted-foreground text-xs">{label}</span>
+      <span
+        className={cn(
+          "ml-auto flex items-baseline font-mono font-semibold text-lg leading-none tabular-nums",
+          t.numFg,
+        )}
+      >
+        <SlidingNumber value={value} />
+        {suffix ? <span className="ml-0.5 text-xs">{suffix}</span> : null}
+      </span>
+    </div>
+  );
+}
+
+function CaseListCard({
+  testCase,
+  active,
+  onClick,
+}: {
+  testCase: ApiTestCase;
+  active: boolean;
+  onClick: () => void;
+}) {
+  const tone = reviewTone(testCase.status);
+  return (
+    <button
+      className={cn(
+        "group relative mb-2 w-full overflow-hidden rounded-lg border bg-white p-3 text-left transition dark:bg-card",
+        "hover:border-foreground/15 hover:shadow-[0_2px_10px_rgba(15,23,42,0.04)]",
+        active
+          ? "border-primary/40 bg-primary/[0.03] shadow-[0_2px_10px_rgba(15,23,42,0.04)] ring-1 ring-primary/15 dark:bg-primary/10"
+          : "border-slate-200/70 dark:border-border",
+      )}
+      key={testCase.id}
+      onClick={onClick}
+      type="button"
+    >
+      <span aria-hidden="true" className={cn("absolute inset-y-0 left-0 w-[3px]", tone.bar)} />
+      <div className="flex min-w-0 flex-col gap-1 pl-1.5">
+        <div className="flex min-w-0 items-start gap-1.5">
+          {testCase.priority ? (
+            <Badge
+              className={cn("shrink-0 border px-1.5 py-0 font-mono text-[10px]", priorityTone(testCase.priority))}
+              variant="outline"
+            >
+              {testCase.priority}
+            </Badge>
+          ) : null}
+          <div className="line-clamp-2 min-w-0 font-medium text-[#101828] text-sm leading-snug dark:text-foreground">
+            {testCase.title}
+          </div>
+        </div>
+      </div>
+    </button>
+  );
+}
+
+function CaseDetailHeader({
+  selectedCase,
+  selectedCaseIsEditing,
+  saving,
+  onApprove,
+  onReject,
+  onEdit,
+  onSaveEdit,
+  onCancelEdit,
+}: {
+  selectedCase: ApiTestCase;
+  selectedCaseIsEditing: boolean;
+  saving: boolean;
+  onApprove: () => void;
+  onReject: () => void;
+  onEdit: () => void;
+  onSaveEdit: () => void;
+  onCancelEdit: () => void;
+}) {
+  const tone = reviewTone(selectedCase.status);
+  const StatusIcon =
+    selectedCase.status === "approved"
+      ? CheckCircle2
+      : selectedCase.status === "rejected"
+        ? AlertCircle
+        : Clock;
 
   return (
-    <div className="flex h-8 min-w-0 items-center justify-center gap-3 border-slate-100 border-t px-3 first:border-t-0 sm:h-full sm:border-t-0 sm:border-l sm:first:border-l-0 dark:border-border">
-      <div className={cn("flex shrink-0 items-center gap-1.5 rounded-md px-2 py-0.5", tone.label)}>
-        <span className={cn("h-1.5 w-1.5 rounded-full", tone.dot)} />
-        <span className="font-medium text-xs">{label}</span>
-      </div>
-      <div className="flex min-w-0 items-baseline">
-        <span className="inline-flex items-baseline font-mono font-semibold text-[#101828] text-xs leading-none dark:text-foreground">
-          <SlidingNumber value={value} />
-          {suffix ? <span>{suffix}</span> : null}
-        </span>
+    <div className="border-b bg-white px-6 py-5 dark:bg-card">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <div className="flex min-w-0 items-start gap-3">
+          <span
+            aria-hidden="true"
+            className={cn(
+              "mt-1 flex size-9 shrink-0 items-center justify-center rounded-md",
+              tone.iconBg,
+            )}
+          >
+            <StatusIcon className="size-4" />
+          </span>
+          <div className="min-w-0 flex-1 space-y-1.5">
+            <div className="flex flex-wrap items-center gap-2">
+              <span
+                className={cn(
+                  "inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 font-medium text-xs",
+                  tone.bg,
+                  tone.text,
+                  tone.ring,
+                )}
+              >
+                <span className={cn("size-1.5 rounded-full", tone.bar)} />
+                {reviewStatusLabel(selectedCase.status)}
+              </span>
+              {selectedCase.priority ? (
+                <Badge
+                  className={cn("border px-1.5 py-0 font-mono text-[10px]", priorityTone(selectedCase.priority))}
+                  variant="outline"
+                >
+                  {selectedCase.priority}
+                </Badge>
+              ) : null}
+              <span className="text-muted-foreground text-xs">
+                <ModulePathInline moduleName={selectedCase.module} />
+              </span>
+            </div>
+            <h2 className="min-w-0 max-w-full font-semibold text-[#101828] text-xl leading-snug dark:text-foreground">
+              {selectedCase.title}
+            </h2>
+            {selectedCase.status === "rejected" && selectedCase.review_feedback ? (
+              <p className="flex items-start gap-1.5 rounded-md bg-rose-50 px-2 py-1 text-rose-700 text-xs ring-1 ring-rose-200/60 dark:bg-rose-500/10 dark:text-rose-300 dark:ring-rose-500/30">
+                <CircleX className="mt-0.5 size-3 shrink-0" />
+                <span className="line-clamp-2">{selectedCase.review_feedback}</span>
+              </p>
+            ) : null}
+          </div>
+        </div>
+        <ReviewActions
+          disabled={saving}
+          editing={selectedCaseIsEditing}
+          onApprove={onApprove}
+          onCancelEdit={onCancelEdit}
+          onEdit={onEdit}
+          onReject={onReject}
+          onSaveEdit={onSaveEdit}
+          saving={saving}
+          status={selectedCase.status}
+        />
       </div>
     </div>
+  );
+}
+
+function ModulePathInline({ moduleName }: { moduleName: string }) {
+  const segments = moduleSegments(moduleName || "未分模块");
+  if (segments.length === 0) return null;
+  return (
+    <span className="inline-flex items-center gap-1">
+      {segments.map((segment, index) => (
+        <span className="inline-flex items-center gap-1" key={`${segment}-${index}`}>
+          {index > 0 ? <ChevronRight className="size-3 text-muted-foreground/60" /> : null}
+          <span className={index === segments.length - 1 ? "text-foreground" : "text-muted-foreground"}>
+            {segment}
+          </span>
+        </span>
+      ))}
+    </span>
   );
 }
 
@@ -646,7 +876,7 @@ function ReviewActions({
 }) {
   if (editing) {
     return (
-      <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 lg:pt-7">
+      <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
         <Button disabled={disabled} onClick={onSaveEdit}>
           {saving ? <Loader2 className="size-4 animate-spin" /> : <Check className="size-4" />}
           保存修改
@@ -660,7 +890,7 @@ function ReviewActions({
   }
 
   return (
-    <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 lg:pt-7">
+    <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
       {status !== "approved" ? (
         <Button disabled={disabled} onClick={onApprove}>
           {saving ? <Loader2 className="size-4 animate-spin" /> : <Check className="size-4" />}
@@ -669,7 +899,7 @@ function ReviewActions({
       ) : null}
       {status !== "rejected" ? (
         <Button
-          className="border-red-200 text-red-700 hover:bg-red-50 dark:border-red-500/40 dark:text-red-300 dark:hover:bg-red-500/15"
+          className="border-rose-200 text-rose-700 hover:bg-rose-50 dark:border-rose-500/40 dark:text-rose-300 dark:hover:bg-rose-500/15"
           disabled={disabled}
           onClick={onReject}
           variant="outline"
@@ -686,6 +916,96 @@ function ReviewActions({
   );
 }
 
+function ReviewBlock({
+  title,
+  subtitle,
+  icon: Icon,
+  children,
+}: {
+  title: string;
+  subtitle?: string;
+  icon?: typeof FileText;
+  children: ReactNode;
+}) {
+  return (
+    <section className="overflow-hidden rounded-lg border bg-white shadow-[0_1px_2px_rgba(15,23,42,0.03)] dark:bg-card">
+      <header className="flex items-center justify-between gap-3 border-b bg-muted/30 px-4 py-2.5 dark:bg-muted/20">
+        <div className="flex items-center gap-2">
+          {Icon ? (
+            <span className="flex size-6 items-center justify-center rounded-md bg-primary/10 text-primary">
+              <Icon className="size-3.5" />
+            </span>
+          ) : null}
+          <h3 className="font-medium text-[#101828] text-sm dark:text-foreground">{title}</h3>
+        </div>
+        {subtitle ? (
+          <span className="rounded-full bg-muted px-2 py-0.5 font-mono text-[11px] text-muted-foreground tabular-nums">
+            {subtitle}
+          </span>
+        ) : null}
+      </header>
+      <div className="whitespace-pre-wrap px-4 py-3 text-[#101828] text-sm leading-6 dark:text-foreground">
+        {children}
+      </div>
+    </section>
+  );
+}
+
+function StepList({ testCase }: { testCase: ApiTestCase }) {
+  if (testCase.steps.length === 0) {
+    return <span className="text-muted-foreground/70 italic">未填写测试步骤</span>;
+  }
+
+  const stepKeyCounts = new Map<string, number>();
+  const keyedSteps = testCase.steps.map((step) => {
+    const keyBase = `${testCase.id}-${stepActionText(step)}-${step.expected_result ?? ""}`;
+    const keyCount = (stepKeyCounts.get(keyBase) ?? 0) + 1;
+    stepKeyCounts.set(keyBase, keyCount);
+    return { rowKey: `${keyBase}-${keyCount}`, step };
+  });
+
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="hidden items-center gap-4 px-3.5 text-muted-foreground text-xs md:grid md:grid-cols-[2.25rem_minmax(0,1fr)_minmax(0,1fr)]">
+        <span aria-hidden="true" />
+        <span>步骤</span>
+        <span>预期结果</span>
+      </div>
+      <ol className="flex flex-col gap-2">
+        {keyedSteps.map(({ rowKey, step }, index) => (
+          <li
+            className="overflow-hidden rounded-md border bg-white dark:bg-card"
+            key={rowKey}
+          >
+            <div className="flex flex-col gap-3 p-3 md:grid md:grid-cols-[2.25rem_minmax(0,1fr)_minmax(0,1fr)] md:items-start md:gap-4 md:p-3.5">
+              <span
+                aria-hidden="true"
+                className="flex size-7 shrink-0 items-center justify-center rounded-full bg-primary/10 font-mono font-semibold text-primary text-xs tabular-nums"
+              >
+                {index + 1}
+              </span>
+              <div className="flex min-w-0 items-start gap-2 md:border-r md:border-slate-200/70 md:pr-4 md:dark:border-border">
+                <p className="min-w-0 flex-1 text-[#101828] text-sm leading-relaxed dark:text-foreground">
+                  {stepActionText(step) || (
+                    <span className="text-muted-foreground/70 italic">未填写操作步骤</span>
+                  )}
+                </p>
+              </div>
+              <div className="flex min-w-0 items-start gap-2 rounded-md bg-emerald-50/70 px-2.5 py-1.5 text-emerald-800 text-xs ring-1 ring-emerald-200/50 md:leading-relaxed md:dark:bg-emerald-500/10 md:dark:ring-emerald-500/20">
+                <span className="min-w-0 flex-1">
+                  {step.expected_result || testCase.expected_result || (
+                    <span className="italic text-muted-foreground/80">未填写预期结果</span>
+                  )}
+                </span>
+              </div>
+            </div>
+          </li>
+        ))}
+      </ol>
+    </div>
+  );
+}
+
 function InlineCaseEditor({
   editState,
   onChange,
@@ -695,21 +1015,25 @@ function InlineCaseEditor({
 }) {
   return (
     <div className="space-y-4">
-      <ReviewBlock title="前置条件">
+      <ReviewBlock icon={FileText} title="前置条件">
         <Textarea
           className="min-h-[72px] resize-y bg-white py-2 leading-5 dark:bg-input/30"
           onChange={(event) => onChange({ ...editState, preconditions: event.target.value })}
           value={editState.preconditions}
         />
       </ReviewBlock>
-      <ReviewBlock title="测试步骤">
-        <EditableStepTable editState={editState} onChange={onChange} />
+      <ReviewBlock
+        icon={ListChecks}
+        subtitle={`${editState.steps.length} 步`}
+        title="测试步骤"
+      >
+        <EditableStepList editState={editState} onChange={onChange} />
       </ReviewBlock>
     </div>
   );
 }
 
-function EditableStepTable({
+function EditableStepList({
   editState,
   onChange,
 }: {
@@ -742,45 +1066,47 @@ function EditableStepTable({
   }
 
   return (
-    <div className="overflow-hidden rounded-md border bg-white dark:bg-card">
-      <table className="w-full border-collapse text-left text-sm">
-        <thead className="bg-[#F7F8FA] text-[#475467] dark:bg-muted/40 dark:text-muted-foreground">
-          <tr>
-            <th className="w-16 border-b px-3 py-2 font-medium">序号</th>
-            <th className="border-b px-3 py-2 font-medium">测试步骤</th>
-            <th className="w-[36%] border-b px-3 py-2 font-medium">预期结果</th>
-            <th className="w-20 border-b px-3 py-2 font-medium">操作</th>
-          </tr>
-        </thead>
-        <tbody>
-          {editState.steps.map((step, index) => (
-            <tr className="border-b last:border-b-0" key={step.editKey}>
-              <td className="px-3 py-3 align-top font-mono text-[#667085] dark:text-muted-foreground">{index + 1}</td>
-              <td className="px-3 py-3 align-top">
-                <Textarea
-                  className="min-h-[52px] resize-y bg-white py-2 leading-5 dark:bg-input/30"
-                  onChange={(event) => updateStep(index, { action: event.target.value })}
-                  value={step.action}
-                />
-              </td>
-              <td className="px-3 py-3 align-top">
-                <Textarea
-                  className="min-h-[52px] resize-y bg-white py-2 leading-5 dark:bg-input/30"
-                  onChange={(event) => updateStep(index, { expected_result: event.target.value })}
-                  value={step.expected_result}
-                />
-              </td>
-              <td className="px-3 py-3 align-top">
-                <Button onClick={() => removeStep(index)} size="sm" variant="outline">
-                  删除
-                </Button>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      <div className="border-t bg-[#F7F8FA] p-3 dark:bg-muted/40">
+    <div className="flex flex-col gap-2">
+      <ol className="flex flex-col gap-2">
+        {editState.steps.map((step, index) => (
+          <li
+            className="flex items-stretch gap-3 overflow-hidden rounded-md border bg-white p-3 dark:bg-card"
+            key={step.editKey}
+          >
+            <span
+              aria-hidden="true"
+              className="flex size-7 shrink-0 items-center justify-center rounded-full bg-primary/10 font-mono font-semibold text-primary text-xs tabular-nums"
+            >
+              {index + 1}
+            </span>
+            <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+              <Textarea
+                className="min-h-[44px] resize-y bg-white py-1.5 text-sm leading-5 dark:bg-input/30"
+                onChange={(event) => updateStep(index, { action: event.target.value })}
+                placeholder="操作步骤"
+                value={step.action}
+              />
+              <Textarea
+                className="min-h-[44px] resize-y bg-white py-1.5 text-sm leading-5 dark:bg-input/30"
+                onChange={(event) => updateStep(index, { expected_result: event.target.value })}
+                placeholder="预期结果"
+                value={step.expected_result}
+              />
+            </div>
+            <button
+              aria-label={`删除第 ${index + 1} 步`}
+              className="flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-500/10"
+              onClick={() => removeStep(index)}
+              type="button"
+            >
+              <X className="size-4" />
+            </button>
+          </li>
+        ))}
+      </ol>
+      <div>
         <Button onClick={addStep} size="sm" variant="outline">
+          <Sparkles className="size-3.5" />
           新增步骤
         </Button>
       </div>
@@ -788,112 +1114,7 @@ function EditableStepTable({
   );
 }
 
-function StepExpectationTable({ testCase }: { testCase: ApiTestCase }) {
-  if (testCase.steps.length === 0) {
-    return <span>-</span>;
-  }
-
-  const stepKeyCounts = new Map<string, number>();
-  const keyedSteps = testCase.steps.map((step) => {
-    const keyBase = `${testCase.id}-${stepActionText(step)}-${step.expected_result ?? ""}`;
-    const keyCount = (stepKeyCounts.get(keyBase) ?? 0) + 1;
-    stepKeyCounts.set(keyBase, keyCount);
-    return { rowKey: `${keyBase}-${keyCount}`, step };
-  });
-
-  return (
-    <div className="overflow-hidden rounded-md border">
-      <table className="w-full border-collapse text-left text-sm">
-        <thead className="bg-[#F7F8FA] text-[#475467] dark:bg-muted/40 dark:text-muted-foreground">
-          <tr>
-            <th className="w-16 border-b px-3 py-2 font-medium">序号</th>
-            <th className="border-b px-3 py-2 font-medium">测试步骤</th>
-            <th className="w-[36%] border-b px-3 py-2 font-medium">预期结果</th>
-          </tr>
-        </thead>
-        <tbody>
-          {keyedSteps.map(({ rowKey, step }, index) => (
-            <tr className="border-b last:border-b-0" key={rowKey}>
-              <td className="px-3 py-3 align-top font-mono text-[#667085] dark:text-muted-foreground">{index + 1}</td>
-              <td className="px-3 py-3 align-top text-[#101828] dark:text-foreground">{stepActionText(step) || "-"}</td>
-              <td className="px-3 py-3 align-top text-[#101828] dark:text-foreground">
-                {step.expected_result || testCase.expected_result || "-"}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
 function stepActionText(step: ApiTestCaseStep | string) {
   if (typeof step === "string") return step;
   return step.action || step.step || step.description || "";
-}
-
-function ModulePath({
-  moduleName,
-  variant = "default",
-  className,
-}: {
-  moduleName: string;
-  variant?: "default" | "compact";
-  className?: string;
-}) {
-  const segments = moduleSegments(moduleName || "未分模块");
-  const keyedSegments = segments.map((segment, index) => ({
-    segment,
-    path: segments.slice(0, index + 1).join("/"),
-  }));
-  const compact = variant === "compact";
-
-  return (
-    <div
-      className={cn(
-        "flex min-w-0 items-center gap-1 text-[#667085] dark:text-muted-foreground",
-        compact ? "overflow-hidden text-[11px]" : "flex-wrap text-xs",
-        className,
-      )}
-    >
-      {compact ? null : <span className="font-medium text-[#98A2B3] dark:text-muted-foreground">模块</span>}
-      {keyedSegments.map(({ segment, path }, index) => (
-        <span className="flex min-w-0 items-center gap-1" key={path}>
-          {index > 0 ? <ChevronRight className="size-3 shrink-0 text-slate-300 dark:text-slate-600" /> : null}
-          <span
-            className={cn(
-              "min-w-0 truncate",
-              index === segments.length - 1 &&
-                (compact ? "text-[#475467] dark:text-slate-300" : "font-medium text-[#344054] dark:text-foreground"),
-            )}
-          >
-            {segment}
-          </span>
-        </span>
-      ))}
-    </div>
-  );
-}
-
-function RejectedReasonButton({ feedback, onClick }: { feedback: string; onClick: () => void }) {
-  return (
-    <Button
-      className="h-7 max-w-[260px] justify-start gap-1.5 border-red-200 bg-red-50 px-2 text-red-700 text-xs hover:bg-red-100 dark:border-red-500/40 dark:bg-red-500/15 dark:text-red-300 dark:hover:bg-red-500/25"
-      onClick={onClick}
-      type="button"
-      variant="outline"
-    >
-      <CircleX className="size-3.5 shrink-0" />
-      <span className="truncate">{feedback || "未填写原因"}</span>
-    </Button>
-  );
-}
-
-function ReviewBlock({ title, children }: { title: string; children: ReactNode }) {
-  return (
-    <section className="rounded-lg border bg-white p-4 dark:bg-card">
-      <h3 className="mb-3 font-medium text-[#101828] text-sm dark:text-foreground">{title}</h3>
-      <div className="whitespace-pre-wrap text-[#101828] text-sm leading-6 dark:text-foreground">{children}</div>
-    </section>
-  );
 }

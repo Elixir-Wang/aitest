@@ -1253,7 +1253,7 @@ export type PerformanceTestCreatePayload = {
   data_config: PerformanceDataConfig;
   circuit_breaker: PerformanceCircuitBreaker;
   performance_goal: PerformanceGoal;
-  success_rules: PerformanceSuccessRule[];
+  success_rules?: PerformanceSuccessRule[];
 };
 
 export type PerformanceScript = {
@@ -1338,6 +1338,26 @@ export type PerformanceRunReport = { name: string; size: number };
 
 export type PerformanceRunReports = { run_id: string; reports: PerformanceRunReport[] };
 
+export type ReportCenterItem = {
+  id: string;
+  report_type: "performance";
+  project_id: string;
+  project_name: string;
+  test_id: string;
+  test_name: string;
+  run_id: string;
+  analysis_id: string;
+  analysis_version: number;
+  name: string;
+  status: "collecting" | "analyzing" | "completed" | "failed";
+  verdict: "pass" | "conditional_pass" | "fail" | "indeterminate";
+  quality_status: "complete" | "partial" | "invalid";
+  error_message: string;
+  created_at: string;
+  updated_at: string;
+  href: string;
+};
+
 export type PerformanceRunFailure = {
   request_name: string;
   method: string;
@@ -1385,11 +1405,90 @@ export type PerformanceAnalysisChange = {
   risk_level: "low" | "medium" | "high";
 };
 
+export type PerformanceMetricObjective = {
+  evidence_id: string;
+  metric: string;
+  operator: "lte" | "gte";
+  target: number;
+  actual: number | null;
+  status: "passed" | "failed" | "not_evaluated";
+};
+
+export type PerformanceMetricSnapshot = {
+  schema_version?: number;
+  calculator_version?: string;
+  run_id?: string;
+  source_fingerprint?: string;
+  verdict?: "pass" | "conditional_pass" | "fail" | "indeterminate";
+  quality?: {
+    status?: "complete" | "partial" | "invalid";
+    coverage?: number;
+    issues?: string[];
+    diagnostic_missing_evidence?: string[];
+    sample_count?: number;
+  };
+  aggregate?: {
+    request_count?: number;
+    failure_count?: number;
+    failure_rate?: number;
+    requests_per_second?: number;
+    average_response_time_ms?: number;
+    p50_response_time_ms?: number | null;
+    p95_response_time_ms?: number | null;
+    p99_response_time_ms?: number | null;
+  };
+  capacity?: {
+    observed_peak_throughput?: number;
+    stable_throughput?: number | null;
+    knee_point?: number | null;
+    knee_point_reason?: string;
+  };
+  objectives?: PerformanceMetricObjective[];
+  series?: Array<Record<string, unknown>>;
+  evidence_index?: Array<Record<string, unknown>>;
+};
+
+export type PerformanceReportFinding = {
+  id: string;
+  severity: "critical" | "high" | "medium" | "low";
+  level?: "observed" | "derived" | "inferred";
+  title: string;
+  statement: string;
+  confidence: number;
+  evidence_refs: string[];
+  alternative_hypotheses?: string[];
+  missing_evidence?: string[];
+};
+
+export type PerformanceReportSnapshot = {
+  schema_version?: number;
+  verdict?: "pass" | "conditional_pass" | "fail" | "indeterminate";
+  verdict_reasons?: string[];
+  executive_summary?: string;
+  capacity_summary?: string;
+  findings?: PerformanceReportFinding[];
+  recommendations?: Array<{
+    id: string;
+    priority: string;
+    action: string;
+    expected_effect?: string;
+    cost?: string;
+    verification?: string;
+    finding_refs?: string[];
+    proposed_change_id?: string;
+  }>;
+  diagnosis_evidence?: Array<PerformanceAnalysisEvidence & { evidence_id: string }>;
+};
+
 export type PerformanceAnalysis = {
   id: string;
   project_id: string;
   run_id: string;
   status: "collecting" | "analyzing" | "waiting_approval" | "failed" | "rejected";
+  legacy_status: string;
+  analysis_status: "collecting" | "analyzing" | "completed" | "failed";
+  analysis_stage: string;
+  repair_status: "not_applicable" | "available" | "rejected" | "preflighting" | "rerunning" | "completed";
   analysis_version: number;
   category: string;
   summary: string;
@@ -1404,6 +1503,12 @@ export type PerformanceAnalysis = {
     can_auto_rerun?: boolean;
     readonly?: boolean;
   };
+  metric_snapshot: PerformanceMetricSnapshot;
+  report_snapshot: PerformanceReportSnapshot;
+  calculator_version: string;
+  prompt_version: string;
+  source_fingerprint: string;
+  audience: "engineer" | "technical_manager" | "business_owner";
   model_name: string;
   error_message: string;
   created_by: string;
@@ -1635,6 +1740,11 @@ export function startPerformanceRun(
 
 export function listPerformanceRunReports(projectId: string, runId: string) {
   return apiRequest<PerformanceRunReports>(`/projects/${projectId}/performance-test-runs/${runId}/reports`);
+}
+
+export function listReportCenterItems(projectId = "all", reportType = "performance") {
+  const params = new URLSearchParams({ project_id: projectId, report_type: reportType });
+  return apiRequest<ReportCenterItem[]>(`/reports?${params.toString()}`);
 }
 
 export function downloadPerformanceRunReport(projectId: string, runId: string, filename: string) {

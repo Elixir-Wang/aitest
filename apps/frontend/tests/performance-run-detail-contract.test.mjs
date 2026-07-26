@@ -30,6 +30,14 @@ const aiAnalysisProgressUrl = new URL(
   "../src/components/ai-testing/performance-testing/performance-ai-analysis-progress.tsx",
   import.meta.url,
 );
+const aiReportPageUrl = new URL(
+  "../src/app/(main)/projects/[projectId]/performance-tests/[testId]/runs/[runId]/analysis/[analysisId]/page.tsx",
+  import.meta.url,
+);
+const aiReportUrl = new URL(
+  "../src/components/ai-testing/performance-testing/performance-analysis-report.tsx",
+  import.meta.url,
+);
 const testDetailUrl = new URL(
   "../src/components/ai-testing/performance-testing/performance-test-detail.tsx",
   import.meta.url,
@@ -150,6 +158,22 @@ test("stopped performance runs expose an AI repair and rerun drawer", () => {
   assert.match(drawerSource, /预检失败，原配置未修改/);
   assert.doesNotMatch(drawerSource, /驳回/);
   assert.doesNotMatch(drawerSource, /应用并重新压测|确认修改源码/);
+});
+
+test("completed AI analysis opens a deterministic full report", () => {
+  const drawerSource = readFileSync(aiAnalysisDrawerUrl, "utf8");
+  assert.equal(existsSync(aiReportPageUrl), true);
+  assert.equal(existsSync(aiReportUrl), true);
+  const reportSource = readFileSync(aiReportUrl, "utf8");
+  assert.match(drawerSource, /查看完整报告/);
+  assert.match(drawerSource, /analysis\?\.analysis_status === "completed"/);
+  assert.match(reportSource, /metric_snapshot/);
+  assert.match(reportSource, /report_snapshot/);
+  assert.match(reportSource, /性能目标/);
+  assert.match(reportSource, /诊断发现/);
+  assert.match(reportSource, /优化与复测建议/);
+  assert.match(reportSource, /LineChart/);
+  assert.doesNotMatch(reportSource, /createPerformanceAnalysis/);
 });
 
 test("Locust console exposes the latest ten run history records", () => {

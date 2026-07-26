@@ -1,286 +1,350 @@
 # 00-12 AI测试系统 - 任务中心 PRD
 
-## 1. 这份文档解决什么问题
-
-任务中心用于统一展示和处理系统中的异步任务，包括需求分析、站点探索、候选需求生成、知识库生成/更新、测试用例生成、UI 自动化代码生成、本地执行、失败诊断和自愈验证。
-
-核心规则：
-
-- 任务中心是任务状态入口，不替代各业务模块详情页。
-- 所有长耗时操作必须进入任务中心可追踪。
-- 等待人工输入、失败、可重试、已取消等状态必须明确展示。
-- 任务必须可跳转回来源模块和结果页面。
-- 批量任务允许部分成功、部分等待人工；例如 UI 自动化批量生成时，单条用例 locator 补齐失败不阻塞整批，任务中心必须展示已完成数量、等待人工数量、失败原因汇总和处理入口。
+> **基线日期**：2026-07-26
+> **事实源**：
+> - 后端：`apps/backend/app/api/v1/tasks.py`、`apps/backend/app/services/task_service.py`
+> - 启动恢复：`apps/backend/app/main.py`（`@app.on_event("startup")`）
+> - 前端：`apps/frontend/src/app/(main)/tasks/page.tsx`
+> - 类型契约：`apps/frontend/src/lib/api-client.ts`（`ApiTaskItem`、`ApiTaskList`）
+> - 数据表：`apps/backend/app/seed/schema.py`
+> **状态标签**：`已实现`
 
 ---
 
-## 2. 业务边界
+## 1. 范围与目标
 
-### 2.1 本模块负责
+任务中心是 AI 测试系统的「异步任务聚合视图」，统一展示由后台 Worker、Agent / Long-running 调用触发的运行型任务，使用户能在一个页面里观察到这些工作的实时状态、历史记录与产物入口。
 
-- 汇总任务列表。
-- 展示任务状态、进度、来源、执行人和耗时。
-- 支持失败重试、取消、查看日志、查看结果。
-- 标记等待人工处理的任务。
-- 支持按项目、任务类型、状态、创建人筛选。
+**核心目标**
 
-### 2.2 本模块不负责
+- 提供统一的「任务中心」聚合列表，使用户不需进入各业务模块即可看到所有进行中、需要人工或失败的任务。
+- 把每一类任务的源记录（运行表）按统一的字段形态汇总，避免前端为每类任务单独建模。
+- 支持按项目 / 状态组 / 模块 / 关键字筛选，以及分页读取，适合长时间累计的任务量。
+- 支持启动时与服务调用时的任务恢复，保证服务重启或心跳超时不会让任务永远停留在「运行中」假态。
+- 暴露一个稳定的最简任务视图契约 `ApiTaskItem`，让任务详情可与业务模块详情互为补充而非互为替代。
 
-- 不直接编辑需求文档。
-- 不直接修改知识库。
-- 不直接编辑测试用例。
-- 不直接修改自动化代码。
-- 不替代 Allure 报告详情。
+**职责边界**
+
+| 在范围内 | 不在范围内 |
+| --- | --- |
+| 跨模块聚合任务列表 | 任务本身的业务执行（由 `*_service` / `*_repo` 负责） |
+| 任务筛选 / 检索 / 分页 | 任务重试、取消的写入接口（任务中心仅查询，不提供 retry/cancel 入口） |
+| 启动恢复与心跳超时的状态校正 | 任务事件流日志的写读（事件由 `operation_log_service` 记录） |
+| 任务详情弹窗（只读快照） | 业务详情页（按 `detail_url` 跳转） |
 
 ---
 
-## 3. 任务类型
+## 2. 聚合源
 
-| 类型 | 来源模块 | 说明 |
+任务中心不维护独立的 `task_runs` 表，而是由 `task_service._collect_visible_tasks` 在请求时把以下 9 类运行记录聚合为统一形态的 `ApiTaskItem`：
+
+| # | source_type | 运行表 | 模块（`module`）| 模块展示（`module_label`）| 默认跳转（`detail_url`）|
+| --- | --- | --- | --- | --- | --- |
+| 1 | `requirement_analysis_run` | `requirement_analysis_runs` | `requirement` | 需求分析 | `/projects/{project_id}/requirements/{document_id}` |
+| 2 | `exploration_run` | `exploration_runs` | `exploration` | 站点探索 | `/projects/{project_id}/exploration/{run_id}` |
+| 3 | `test_case_generation_run` | `test_case_generation_runs` | `test_case` | 测试用例 | `/test-cases?set={test_case_set_id}` |
+| 4 | `test_point_generation_run` | `test_point_generation_runs` | `requirement` | 测试点 | `/projects/{project_id}/requirements/{document_id}?tab=test-points` |
+| 5 | `ui_automation_generation_run` | `ui_automation_generation_runs` | `ui_automation` | UI 自动化生成 | `/projects/{project_id}/automation/ui?generationRun={run_id}` |
+| 6 | `ui_automation_execution_run` | `ui_automation_execution_runs` | `ui_automation` | UI 自动化执行 | `/projects/{project_id}/automation/ui?executionRun={run_id}` |
+| 7 | `api_automation_generation_run` | `api_generation_runs` | `api_automation` | 接口自动化生成 | `/projects/{project_id}/automation/api?generationRun={run_id}` |
+| 8 | `api_automation_run` | `api_automation_runs` | `api_automation` | 接口自动化执行 | `/projects/{project_id}/automation/api?run={run_id}` |
+| 9 | `performance_test_run` | `performance_test_runs` | `performance_testing` | 性能测试运行 | `/projects/{project_id}/performance-tests/{test_id}/runs/{run_id}` |
+
+> **实现注意（2026-07-26 当前事实）**
+> - 当前 `task_service._collect_visible_tasks` 直接读取 `exploration_runs`、`source_document_file_mappings`（作为 `requirement_file`）、`requirement_analysis_runs`、`requirement_finalization_runs`、`test_case_generation_runs`、`test_point_generation_runs`、`api_generation_runs`、`api_script_generation_runs`、`api_automation_runs`，共 9 个数据源，其中 7 类进入 `STATUS_META_BY_SOURCE_TYPE`（作为 "正在运行" 指示视图）：
+>   - `exploration_run`、`requirement_file`、`requirement_analysis_run`、`requirement_finalization_run`、`test_case_generation_run`、`test_point_generation_run`、`api_automation_generation_run`、`api_script_generation_run`、`api_automation_run`
+> - `performance_test_runs` 与 `ui_automation_*_runs` 当前 **尚未汇入** 任务中心聚合源，由各自业务页直接管理；但它们的 stale / interrupted 恢复已纳入服务启动流程（见第 6 节）。
+> - 任务 ID 在聚合视图里使用形如 `<source_type>:<source_id>` 的合成键，便于在同一列表中区分不同 source_type 的同名记录。
+
+每类任务从原始表投影出以下核心字段：
+
+| 聚合字段 | 来源 |
+| --- | --- |
+| `id` | 合成 `<source_type>:<source_id>` |
+| `source_type` / `source_id` | 原始运行表主键 |
+| `project_id` / `project_name` | 来自 `projects` 表，受当前 actor 可见项目过滤 |
+| `module` / `module_label` | 静态枚举 |
+| `title` | 文档名 / 用例集名 / 探索标题 / 性能测试标题等业务字段 |
+| `status` | 原始运行表的 `status` 字段（枚举见 §3）|
+| `status_label` | 经 `STATUS_META_BY_SOURCE_TYPE[source_type].get(status)` 映射的中文标签 |
+| `status_group` | 由原始 status 经映射表映射到 4 个状态组（见 §3）|
+| `summary` | 失败原因或业务摘要（探索：result_summary；接口：error_message / command_summary）|
+| `created_at` / `updated_at` | 原始表时间戳，用于排序与保留窗口判断 |
+| `detail_url` | 静态拼接的回跳地址 |
+
+---
+
+## 3. 状态映射
+
+任务中心对外暴露统一的 4 状态组（`status_group`），状态组之间不重叠：
+
+| 状态组 | 含义 | 包含的原始 status（按 source_type）|
 | --- | --- | --- |
-| 需求分析 | 需求 | 分析需求文档、生成模块、流程、澄清问题 |
-| 候选需求生成 | 需求/探索 | 没有需求文档时，从探索文档反推候选需求文档 |
-| 站点探索 | 探索 | Playwright CLI 探索页面、表单、按钮、状态流转 |
-| 知识库生成 | 知识库 | 首次生成 llm-wiki 知识库 |
-| 知识库更新 | 知识库 | 根据来源变化生成新版本知识库 |
-| 测试用例生成 | 测试用例 | 根据知识库生成待评审用例 |
-| UI 自动化代码生成 | UI 自动化 | 根据已采纳用例生成 pytest + Playwright 代码 |
-| UI 自动化本地执行 | UI 自动化 | 本地执行 pytest 并生成 Allure 结果 |
-| 失败诊断 | 失败诊断 | 判断失败属于产品 Bug、代码问题、数据问题、环境问题或需求不清 |
-| 自愈验证 | 失败诊断 | 人工启用自愈后验证修复建议 |
+| `running` | 运行态，正在执行 | 各模块的 `queued` / `running` / `pending`（仅 `requirement_file`）/ `processing`（仅 `requirement_file`）/ `stopping` |
+| `waiting` | 等待人工 | `requirement_analysis_run` 的 `needs_clarification` |
+| `failed` | 失败态 | 各模块的 `failed` / `blocked`（仅 exploration_run）|
+| `completed` | 完成态 | `completed` / `passed` / `cancelled` / `interrupted` / `success` / `warning`（仅 `requirement_file`）|
+
+> `pending` 仅 `exploration_run` 与 `requirement_file` 出现：探索的 `pending` 表示「尚未提交到 worker」，与「已入队」区别对待（在 `/tasks/running` 中 **不计入 active**，避免把草稿任务误当作运行中任务）。
+
+### 3.1 原始 status → 状态组 → 中文标签 映射表
+
+| source_type | running | waiting | failed | completed |
+| --- | --- | --- | --- | --- |
+| `exploration_run` | `pending` (待启动 — 注：active 视图排除)、`queued` (排队中)、`running` (探索中)、`stopping` (停止中) | — | `blocked` (探索阻塞)、`failed` (探索失败) | `cancelled` (已取消)、`interrupted` (已中断)、`completed` (已完成) |
+| `requirement_file` | `pending` (等待转换)、`processing` (转换中) | — | `failed` (转换失败) | `success` (转换成功)、`warning` (转换完成) |
+| `requirement_analysis_run` | `queued` (排队中)、`running` (分析中)、`stopping` (停止中) | `needs_clarification` (等待澄清) | `failed` (分析失败) | `cancelled` (已取消)、`completed` (已完成) |
+| `requirement_finalization_run` | `running` (转换中) | — | `failed` (转换失败) | `completed` (转换完成) |
+| `test_case_generation_run` | `queued` (排队中)、`running` (生成中) | — | `failed` (生成失败) | `completed` (生成完成) |
+| `test_point_generation_run` | `queued` (排队中)、`running` (生成中) | — | `failed` (生成失败) | `completed` (生成完成) |
+| `api_automation_generation_run` | `queued` (排队中)、`running` (生成中) | — | `failed` (生成失败) | `completed` (生成完成)、`cancelled` (已取消)、`interrupted` (已中断) |
+| `api_script_generation_run` | `queued` (排队中)、`running` (生成中) | — | `failed` (生成失败) | `completed` (生成完成)、`cancelled` (已取消)、`interrupted` (已中断) |
+| `api_automation_run` | `queued` (排队中)、`running` (执行中) | — | `failed` (执行失败) | `passed` (执行通过)、`cancelled` (已取消)、`interrupted` (已中断) |
+
+> `performance_test_run` 当前 enum（`created` / `starting` / `running` / `stopping` / `completed` / `stopped` / `failed` / `cancelled`）尚未注入 `STATUS_META_BY_SOURCE_TYPE`，详情见 §2 的「实现注意」。
 
 ---
 
-## 4. 任务输入输出契约
+## 4. 筛选与分页
 
-### 4.1 契约总原则
+`GET /api/v1/tasks` 支持以下 query 参数：
 
-- 所有长耗时任务创建后必须立即返回 `task_id`，前端通过任务中心或来源模块轮询/订阅状态。
-- 任务输入摘要必须可回看，但不能记录明文密码、token、验证码和完整模型上下文。
-- 任务输出必须同时包含业务对象 ID 和文件系统产物路径，方便从任务中心跳回结果页。
-- 任务失败必须保存失败摘要、错误码、日志路径和可恢复建议。
-- 重试必须创建新的 TaskRun，原任务保留为历史，并记录 `retry_from_task_id`。
-- 取消任务只表示系统停止继续处理；已生成的业务产物需要标记为草稿、失败或已取消，不能静默删除。
-- 等待人工状态必须给出阻塞原因、处理入口和超时策略；第一版可不自动超时，但必须展示等待时长。
-- 不同类型任务可以并行执行，但同一项目下同一类型、同一来源对象、同一关键资源的任务必须避免冲突。
-- 例如同一项目可同时进行知识库更新和 UI 自动化执行，但不应同时对同一文档版本发起两次需求分析，或同时对同一套件发起两次执行。
+| 参数 | 类型 | 必填 | 默认 | 说明 |
+| --- | --- | --- | --- | --- |
+| `project_id` | string | 否 | — | 精确匹配，限定任务来源项目 |
+| `status_group` | string | 否 | — | 取值：`running` / `waiting` / `failed` / `completed` |
+| `module` | string | 否 | — | 取值见 §2，例如 `requirement` / `exploration` / `test_case` / `ui_automation` / `api_automation` |
+| `keyword` | string | 否 | — | 大小写不敏感，命中 `project_name` / `module_label` / `title` / `status_label` / `summary` 任一字段 |
+| `page` | int | 否 | 1 | ≥ 1 |
+| `page_size` | int | 否 | 50 | 范围 1 – 100 |
 
-### 4.2 各类任务契约
+**返回结构**
 
-| 任务类型 | 触发入口 | 输入参数 | 成功输出产物 | 失败产物 | 可重试条件 | 是否可取消 |
-| --- | --- | --- | --- | --- | --- | --- |
-| 需求分析 | 需求文档详情页点击“发起分析” | project_id、document_id、document_version_id、分析范围、模型配置 ID | RequirementAnalysis、SourceCoverageItem、RequirementReviewModule、ClarificationQuestion、分析摘要 | 失败日志、模型错误摘要、无法解析章节清单 | 文档版本未废弃，且没有同一版本运行中的需求分析任务 | 排队中可取消；运行中允许请求取消，已产生的分析结果标记为已取消或草稿 |
-| 候选需求生成 | 探索文档详情页或需求模块空状态点击“生成候选需求” | project_id、exploration_run_id、探索文档版本、模块范围、模型配置 ID | 候选 SourceDocumentVersion、候选需求模块、待确认问题、来源引用 | 失败日志、探索来源不足说明、无法推断模块清单 | 探索结果未废弃，且项目仍缺少正式需求文档或用户明确选择重新生成 | 排队中可取消；运行中可请求取消 |
-| 站点探索 | 站点探索页点击“开始探索” | project_id、site_url、登录方式、账号引用、探索范围、浏览器参数、是否有头、模型配置 ID | ExplorationRun、探索 Markdown、ExplorationPage、ExplorationElement、ExplorationModuleCoverage、截图/trace/video 路径 | 失败日志、截图/trace、ExplorationBlocker、登录失败或验证码等待记录 | Runner 可用，站点配置未删除，且没有同一项目同范围运行中的探索任务 | 排队中可取消；运行中可请求取消；等待人工时可取消 |
-| 知识库生成 | 知识库首页首次点击“生成知识库” | project_id、需求文档版本、探索版本、来源范围、构建策略、模型配置 ID | KnowledgeBuild、WikiPage、KnowledgeItem、SourceReference、知识库模块图谱节点和边、lint 报告 | 构建失败日志、阻塞报告、冲突项、未满足门禁清单、半成品路径 | 来源版本仍有效，阻塞项已处理或用户选择重新生成检查结果 | 排队中可取消；运行中可请求取消，半成品标记为构建失败或草稿 |
-| 知识库更新 | 知识库页点击“更新知识库”或来源变化提示中点击更新 | project_id、base_knowledge_build_id、变更来源版本、影响范围、更新策略、模型配置 ID | 新 KnowledgeBuild、更新后的 WikiPage、变更日志、影响用例/脚本清单 | 更新失败日志、阻塞报告、冲突项、未应用变更清单、半成品路径 | 基线版本未废弃，来源变更仍存在，且没有同项目运行中的知识库构建任务 | 排队中可取消；运行中可请求取消 |
-| 测试用例生成 | 测试用例页点击“生成用例” | project_id、knowledge_build_id、模块范围、场景类型、生成数量策略、模型配置 ID | TestCase、TestCaseVersion、覆盖矩阵、待评审用例清单 | 失败日志、知识库门禁失败说明、未覆盖模块清单 | 知识库版本已发布，且阻塞项已清理 | 排队中可取消；运行中可请求取消，已生成用例标记为草稿或待评审 |
-| UI 自动化代码生成 | 用例详情页点击“UI 自动化”或用例列表批量生成 | project_id、test_case_ids、knowledge_build_id、exploration_run_id、代码生成策略、模型配置 ID | AutomationSuite、AutomationCase、自动化代码文件、生成记录、缺失 locator 补充记录 | 失败日志、代码生成错误、缺失 locator 清单、不可自动化用例清单 | 用例仍为已采纳，自动化准入检查通过，相关套件没有运行中的代码生成任务 | 排队中可取消；运行中可请求取消，已生成文件标记为草稿或生成失败 |
-| UI 自动化本地执行 | UI 自动化套件页点击“执行” | project_id、automation_suite_id、automation_case_ids、环境、浏览器、headed、重试次数、pytest 参数 | AutomationRun、AutomationRunReport、Allure results、Allure report、用例执行结果、失败记录 | pytest 日志、Runner 错误、截图/trace/video、Allure 半成品路径、环境检查失败说明 | Runner 可用，代码版本存在，且套件没有运行中的执行任务；环境类失败可直接重试 | 排队中可取消；运行中可请求取消，但已启动的 pytest 需要安全终止并保存日志 |
-| 失败诊断 | 失败详情页点击“启用诊断”或“启用自愈”前置诊断 | project_id、automation_run_id、failed_case_id、failure_id、证据路径、关联知识库和用例 | FailureDiagnosis、失败分类、证据摘要、内部 Bug 建议/澄清问题/修复建议入口 | 诊断失败日志、证据缺失清单、模型错误摘要 | 失败记录仍存在，证据文件可读取，且没有同一失败运行中的诊断任务 | 排队中可取消；运行中可请求取消 |
-| 自愈验证 | 自愈补丁详情页点击“应用并验证”或“重新验证” | project_id、failure_diagnosis_id、self_healing_record_id、补丁版本、验证命令、运行环境 | SelfHealingRecord 更新、补丁应用记录、验证 AutomationRun、验证日志、Allure 报告 | 补丁应用失败日志、验证失败证据、回滚建议、pytest 日志 | 补丁处于待审核或验证失败状态，且诊断分类仍为测试代码问题 | 排队中可取消；补丁未应用前可取消；补丁应用后取消必须进入回滚或验证失败处理 |
+```json
+{
+  "items":  [/* ApiTaskItem[]，按 updated_at DESC, created_at DESC, id DESC */],
+  "total":   <int>,        // 命中总数，含当前页之外
+  "page":    <int>,
+  "page_size": <int>
+}
+```
 
-### 4.3 重试规则
+**保留窗口**
 
-| 场景 | 是否允许重试 | 规则 |
+- `TASK_RETENTION_DAYS = 10`：原始 `updated_at` 早于「当前时间 − 10 天」的任务被自动从列表过滤掉。
+- 该过滤在 `_is_retained_task` 内执行，仅对 `/tasks` 生效；`/tasks/running` 仅返回 active 任务，不进行保留窗口判断（运行中任务不应被过期清理）。
+
+**项目可见性**
+
+- 调用方 actor 的 `role` 为 `admin` 或 `guest`，或 `project_scope == "全部项目"`：可看到所有 `status != 'archived'` 的项目。
+- 否则：仅看到 `project_scope` 字段命名的项目。
+- 该过滤在 `_visible_project_names` 中执行。
+
+---
+
+## 5. 任务详情弹窗
+
+任务中心首页以表格展示，点击「查看」按钮打开只读任务详情弹窗，字段全部由 `ApiTaskItem` 提供。
+
+| 字段 | 来自 | 示例 |
 | --- | --- | --- |
-| 模型调用超时、限流、临时失败 | 是 | 使用相同输入创建新任务，可选择更换模型配置 |
-| Runner、Playwright、pytest、Allure 环境异常 | 是 | 需先通过系统设置连通性检查，或由用户确认继续重试 |
-| 用户取消 | 是 | 由用户重新发起或在任务详情点击重试 |
-| 权限不足 | 否 | 必须调整权限或项目分配后重新发起 |
-| 来源版本已废弃 | 否 | 必须选择新的来源版本 |
-| 知识库门禁阻塞 | 有条件 | 允许重新生成检查结果，但不允许发布正式知识库 |
-| 业务规则待确认 | 有条件 | 可生成草稿或检查结果，但不能进入正式知识库、正式用例基线、正式自动化基线或已发布资产 |
+| 任务名称 | `title` | 登录需求 |
+| 所属项目 | `project_name` | 电商系统 |
+| 任务种类 | `module_label` | 需求分析 |
+| 状态 | `status_label` (渲染为 `StatusBadge`：`taskStatusTone(status_group, status)`) | 分析中 |
+| 更新时间 | `updated_at` | 2026-07-26 09:00 |
+| 任务 ID | `source_id` | req-run-001 |
+| 任务来源 | `source_type` → 中文映射 | AI 需求分析任务 |
+| 摘要 | `summary` | 需求分析智能体正在分析。|
+| 详情地址 | `detail_url` | `/projects/{pid}/requirements/{did}` |
 
-### 4.4 取消规则
+> 弹窗右上角内置「一键复制」按钮（`OneClipboard`），用于把上述字段以 `key：value` 行文本复制到剪贴板，便于在测试工程师与开发间流转。
 
-| 任务阶段 | 取消行为 |
-| --- | --- |
-| 排队中 | 直接标记为已取消，不执行任务逻辑 |
-| 运行中，尚未产生业务产物 | 请求执行器停止，记录取消事件和日志 |
-| 运行中，已产生部分产物 | 停止后将产物标记为草稿、失败或已取消，保留路径和摘要 |
-| 等待人工 | 可取消，并记录未处理的阻塞原因 |
-| 成功、失败、已过期 | 不允许取消，只能查看、重试或归档 |
+**局限**
 
-### 4.5 任务事件流
+- 详情弹窗是「任务快照」，不展示输入参数 JSON、执行时间线、Worker 日志或重试入口。这些信息需要跳转到 `detail_url` 对应的业务模块详情页查看。
+- `requirement_finalization_run`、`test_point_generation_run`、`api_script_generation_run`、`ui_automation_*`、`performance_test_run` 等 source_type 当前未进入任务中心聚合时，其详情仍可由业务详情页直接打开，弹窗字段会回退为基本信息。
 
-每个 TaskRun 必须通过 TaskEvent 记录关键过程。事件用于任务详情时间线、失败排查、审计和重试判断。
+---
 
-通用事件类型：
+## 6. 启动恢复（`recover_interrupted_*` 系列）
 
-| 事件类型 | 触发时机 | 事件内容 |
+`apps/backend/app/main.py` 的 `@app.on_event("startup")` 启动钩子按以下顺序执行恢复：
+
+```python
+with connect() as db:
+    run_repo.recover_stale_runs(db)              # 性能测试运行（心跳超时 → failed）
+recover_interrupted_exploration_runs()           # 探索
+task_service.recover_interrupted_requirement_analysis_runs()   # 需求分析
+test_case_service.recover_interrupted_test_case_generation_runs()  # 测试用例生成
+test_point_service.recover_interrupted_generation_runs()        # 测试点生成
+api_automation_service.recover_interrupted_api_automation_tasks() # 接口自动化（生成/脚本/执行）
+ui_automation_service.recover_interrupted_ui_automation_tasks()  # UI 自动化（生成/执行）
+ui_automation_service.prepare_background_tasks()
+retention_cleanup_service.schedule_cleanup()
+```
+
+### 6.1 启动时立即触发的恢复
+
+| 模块 | 入口 | 行为 |
 | --- | --- | --- |
-| task_created | 创建任务 | 输入摘要、来源模块、来源对象 |
-| task_queued | 任务进入队列 | 队列时间、执行器信息 |
-| task_started | Worker 开始执行 | 开始时间、worker_id |
-| task_progress | 阶段性进度 | 当前阶段、进度百分比、摘要日志 |
-| task_waiting_human | 等待人工 | 阻塞原因、处理入口、证据路径 |
-| task_resumed | 人工处理后继续 | 处理人、处理结果 |
-| task_output_created | 生成中间或最终产物 | 产物类型、对象 ID、文件路径 |
-| task_status_changed | 业务对象状态变化 | 对象类型、对象 ID、旧状态、新状态 |
-| task_failed | 任务失败 | 错误码、错误摘要、日志路径、可恢复建议 |
-| task_cancel_requested | 用户请求取消 | 操作人、取消原因 |
-| task_cancelled | 取消完成 | 已处理阶段、保留产物 |
-| task_retry_created | 创建重试任务 | 原 task_id、新 task_id、重试原因 |
-| task_succeeded | 任务成功 | 输出摘要、结果跳转 |
+| 性能测试运行 | `run_repo.recover_stale_runs(db, timeout_minutes=5)` | 把 `performance_test_runs.status IN ('starting', 'running')` 且 `updated_at` 早于「now − 5 分钟」的记录批量标记为 `failed`，错误码 `PERFORMANCE_RUN_TIMEOUT`，并写一条 `worker_timeout` 事件。 |
+| 站点探索 | `page_exploration_service.recover_interrupted_exploration_runs` | 把 `exploration_runs.status IN ('queued', 'running', 'stopping')` 的记录置为 `interrupted`，写入 `result_summary = "服务已重启..."` 并记录 operation log。 |
+| 需求分析 | `task_service.recover_interrupted_requirement_analysis_runs` | 同上，把 `requirement_analysis_runs` 中的 active 记录置 `failed`，`failure_reason="服务已重启..."`。 |
+| 测试用例生成 | `test_case_service.recover_interrupted_test_case_generation_runs` | 标记 active `test_case_generation_runs` 为失败。 |
+| 测试点生成 | `test_point_service.recover_interrupted_generation_runs` | 标记 active `test_point_generation_runs` 为失败。 |
+| 接口自动化（生成/脚本/执行） | `api_automation_service.recover_interrupted_api_automation_tasks` | 一次性恢复 `api_generation_runs`、`api_script_generation_runs`、`api_automation_runs`。 |
+| UI 自动化（生成/执行） | `ui_automation_service.recover_interrupted_ui_automation_tasks` | 一次性恢复 `ui_automation_generation_runs`、`ui_automation_execution_runs`。 |
 
-各类任务必须至少写入以下事件：
+### 6.2 运行时的 stale 恢复
 
-| 任务类型 | 必须事件 |
-| --- | --- |
-| 需求分析 | task_created、task_started、task_progress、task_output_created、task_status_changed、task_succeeded 或 task_failed |
-| 站点探索 | task_created、task_started、task_progress、task_waiting_human、task_resumed、task_output_created、task_succeeded 或 task_failed |
-| 知识库生成/更新 | task_created、task_started、task_progress、task_output_created、task_status_changed、task_succeeded 或 task_failed |
-| 测试用例生成 | task_created、task_started、task_output_created、task_status_changed、task_succeeded 或 task_failed |
-| UI 自动化代码生成 | task_created、task_started、task_progress、task_output_created、task_status_changed、task_succeeded 或 task_failed |
-| UI 自动化本地执行 | task_created、task_started、task_progress、task_output_created、task_status_changed、task_succeeded 或 task_failed |
-| 失败诊断 | task_created、task_started、task_output_created、task_status_changed、task_succeeded 或 task_failed |
-| 自愈验证 | task_created、task_started、task_output_created、task_status_changed、task_succeeded、task_failed；涉及取消时还必须写取消事件 |
+- `task_service.recover_stale_requirement_analysis_runs` 在 `list_tasks` / `list_running_tasks` / `get_task_by_source` / `get_task_by_source_for_event` 入口被调用，以「运行超过 `REQUIREMENT_ANALYSIS_RUN_TIMEOUT_MINUTES=120` 分钟」为阈值，将对应记录批量置 `failed`，`failure_reason="需求分析运行超过 120 分钟..."`。
 
-事件记录规则：
+### 6.3 失败记录的事件化
 
-- 高频日志不能逐行写入 TaskEvent，应写入日志文件，TaskEvent 只保存阶段摘要。
-- task_progress 写入频率需要节流，避免 SQLite 被频繁写入拖慢。
-- task_status_changed 必须和业务对象状态更新在同一事务或可补偿流程中完成。
-- task_output_created 必须包含可跳转结果，不能只写文件路径。
+所有 `recover_interrupted_*` / `recover_stale_*` 写操作均通过 `operation_log_service.record_task_event` 写一条 operation log（`task_id`、`action` 如 `fail_requirement_analysis` / `interrupt_exploration`、`result=failed`、`failure_reason`），便于审计与事件流回放。
 
 ---
 
-## 5. 任务状态
+## 7. 任务表结构
 
-| 状态 | 说明 | 可执行操作 |
+> **结论**：任务中心 **没有独立 `task_runs` 表**，所有任务聚合都是对各业务运行表的按需 JOIN 与映射。
+
+| source_type | 物理表 | 关键列（来自 schema.py）|
 | --- | --- | --- |
-| 排队中 | 等待后台任务执行 | 取消 |
-| 运行中 | 正在执行 | 查看日志、取消 |
-| 等待人工 | 需要人工输入验证码、回答澄清、确认冲突或确认补丁 | 去处理 |
-| 成功 | 任务已完成并产生结果 | 查看结果 |
-| 失败 | 任务异常终止 | 查看日志、重试 |
-| 已取消 | 用户取消或系统中止 | 查看详情 |
-| 已过期 | 任务结果已被新版本替代 | 查看历史 |
+| `requirement_file` | `source_document_file_mappings` | `id`、`document_id`、`original_filename`、`conversion_status`、`conversion_summary`、`created_at` |
+| `requirement_analysis_run` | `requirement_analysis_runs` | `id`、`project_id`、`document_id`、`status`、`summary`、`failure_reason`、`created_at`、`updated_at` |
+| `requirement_finalization_run` | `requirement_finalization_runs` | `id`、`project_id`、`document_id`、`status`、`summary`、`failure_reason`、`created_at`、`updated_at` |
+| `exploration_run` | `exploration_runs` | `id`、`project_id`、`environment_id`、`title`、`status`、`result_summary`、`created_at`、`updated_at` |
+| `test_case_generation_run` | `test_case_generation_runs` | `id`、`test_case_set_id`、`task_id`、`status`、`error_message`、`created_at`、`updated_at` |
+| `test_point_generation_run` | `test_point_generation_runs` | `id`、`task_id`、`status`、`error_message`、`created_at`、`updated_at` |
+| `api_automation_generation_run` | `api_generation_runs` | `id`、`project_id`、`task_id`、`status`、`generation_goal`、`error_message` |
+| `api_script_generation_run` | `api_script_generation_runs` | `id`、`project_id`、`task_id`、`status`、`error_message` |
+| `api_automation_run` | `api_automation_runs` | `id`、`project_id`、`task_id`、`status`、`command_summary`、`error_message` |
+| `ui_automation_generation_run` | `ui_automation_generation_runs` | `id`、`project_id`、`task_id`、`status`、`created_at`、`updated_at` |
+| `ui_automation_execution_run` | `ui_automation_execution_runs` | `id`、`project_id`、`asset_id`、`environment_id`、`task_id`、`status`、`started_at`、`finished_at` |
+| `performance_test_run` | `performance_test_runs` | `id`、`project_id`、`performance_test_id`、`script_id`、`status`、`worker_id`、`error_code`、`error_message`、`report_directory`、`started_at`、`finished_at`、`created_by`、`created_at`、`updated_at` |
+
+每张物理表自带的 `task_id` 文本列承载「任务调度/外部异步调用」所产生的业务 task identifier（如 `ui_generation:<run_id>`）；任务中心聚合视图里的 `id` 是一个 **合成键**（`source_type:source_id`），**不会** 与物理表里的 `task_id` 一致。
 
 ---
 
-## 6. 页面设计
+## 8. API 路由清单
 
-### 6.1 任务中心首页
+模块前缀：`/api/v1/tasks`，鉴权：`Depends(current_user)`。
 
-字段：
-
-- 任务名称
-- 项目
-- 任务类型
-- 状态
-- 来源模块
-- 发起人
-- 创建时间
-- 开始时间
-- 结束时间
-- 耗时
-- 最近日志摘要
-- 操作：查看、重试、取消、去处理、查看结果
-
-筛选：
-
-- 项目
-- 任务类型
-- 状态
-- 发起人
-- 时间范围
-- 是否等待人工
-
-### 6.2 任务详情
-
-必须展示：
-
-- 基本信息
-- 输入参数摘要
-- 执行步骤和时间线
-- 日志
-- 错误信息
-- 输出产物
-- 来源跳转
-- 结果跳转
-- 关联任务
-
-### 6.3 等待人工任务
-
-等待人工任务必须明确展示阻塞原因：
-
-| 阻塞原因 | 跳转 |
-| --- | --- |
-| 等待验证码输入 | 探索任务详情 |
-| 等待澄清回答 | 需求澄清问题 |
-| 等待候选需求评审 | 需求评审页 |
-| 等待冲突项确认 | 探索冲突项或知识库更新预览 |
-| 等待 locator 人工处理 | UI 自动化套件页或定向探索定位详情 |
-| 等待自愈补丁确认 | 失败诊断详情 |
-
-批量 UI 自动化生成任务的等待人工展示：
-
-- 显示批次总用例数、已生成数、等待人工数、生成失败数。
-- 每条等待人工用例展示用例编号、缺失步骤、目标页面、目标元素、失败原因、候选元素、来源证据和建议动作。
-- 用户可以从任务详情跳转到 UI 自动化套件页、定向探索定位详情或探索文档补充入口。
-- 人工处理完成后，用户可对等待人工用例单独继续生成，也可重新触发整个批次的 locator 准入检查。
-
----
-
-## 7. 数据对象
-
-### 7.1 TaskRun
-
-| 字段 | 说明 |
-| --- | --- |
-| 任务 ID | 系统唯一 |
-| 项目 ID | 可为空，系统级任务为空 |
-| 任务类型 | 枚举 |
-| 任务名称 | 展示名称 |
-| 状态 | 任务状态 |
-| 来源模块 | requirements、exploration、knowledge、test_cases、automation、diagnosis |
-| 来源对象 ID | 文档、探索任务、知识库构建、用例批次等 |
-| 输入摘要 | JSON |
-| 输出摘要 | JSON |
-| 日志路径 | 文件系统路径 |
-| 产物路径 | 文件系统路径 |
-| 错误信息 | 失败时记录 |
-| 发起人 | 用户 ID |
-| 创建时间 | 系统生成 |
-| 开始时间 | 系统生成 |
-| 结束时间 | 系统生成 |
-
-### 7.2 TaskEvent
-
-| 字段 | 说明 |
-| --- | --- |
-| 事件 ID | 系统唯一 |
-| 任务 ID | 所属任务 |
-| 事件类型 | 状态变化、日志、人工等待、重试、取消 |
-| 事件内容 | 文本或 JSON |
-| 创建时间 | 系统生成 |
-
----
-
-## 8. 权限规则
-
-| 操作 | 管理员 | 测试工程师 | 访客 |
+| 方法 | 路径 | 说明 | 关键 query |
 | --- | --- | --- | --- |
-| 查看全部任务 | 是 | 否 | 是 |
-| 查看分配项目任务 | 是 | 是 | 是 |
-| 发起重试 | 是 | 分配项目 | 否 |
-| 取消任务 | 是 | 自己发起且分配项目 | 否 |
-| 查看日志 | 是 | 分配项目 | 是 |
-| 处理等待人工 | 是 | 分配项目 | 否 |
+| GET | `/tasks/running` | 仅返回 active 任务（`status_group == "running"` 且在 `RUNNING_INDICATOR_SOURCE_TYPES` 集合内），按 `created_at` 倒序；用于全局顶部「正在运行」指示器 | `project_id?` |
+| GET | `/tasks` | 任务中心列表，支持筛选 + 分页；先做 stale 恢复再聚合 | `project_id?`、`status_group?`、`module?`、`keyword?`、`page=1`、`page_size=50` |
+
+返回元素统一的 `ApiTaskItem`：
+
+```ts
+type ApiTaskItem = {
+  id: string;
+  source_type: string;
+  source_id: string;
+  project_id: string;
+  project_name: string;
+  module: string;
+  module_label: string;
+  title: string;
+  status: string;
+  status_label: string;
+  status_group: "running" | "waiting" | "failed" | "completed";
+  summary: string;
+  created_at: string;
+  updated_at: string;
+  detail_url: string;
+};
+
+type ApiTaskList = { items: ApiTaskItem[]; total: number; page: number; page_size: number };
+```
+
+> 当前 `task_service.py` 同时暴露 `get_task_by_source(actor, source_type, source_id)` 与 `get_task_by_source_for_event(...)` 作为模块内部工具方法，**未挂到 `/tasks/*` 路由**。模块详情页或 operation log 模块如需直接定位任务，调用前者。
 
 ---
 
-## 9. 验收标准
+## 9. 前端页面清单
 
-- 长耗时任务必须在任务中心可见。
-- 任务状态变化必须记录事件。
-- 失败任务必须能查看失败原因和日志。
-- 等待人工任务必须能跳转到处理页面。
-- 成功任务必须能跳转到结果页面。
-- 测试工程师只能看到分配项目范围内任务。
-- 访客能查看任务和日志，但不能重试、取消或处理。
-- 每类任务必须保存输入摘要、输出摘要、日志路径和结果跳转。
-- 任务重试必须创建新任务，并保留原任务历史。
-- 任务取消后不得静默删除已产生的业务产物。
+| 路径 | 文件 | 模块 |
+| --- | --- | --- |
+| `/tasks` | `apps/frontend/src/app/(main)/tasks/page.tsx` | 任务中心首页 |
+
+**页面结构**
+
+- `PageShell`：标题「任务中心」、`projectScope="all"`、面包屑 `moduleBreadcrumbs("tasks")`。
+- 描述：「汇总需求分析、探索、知识库、用例、UI 自动化和失败诊断任务。」（注：实际聚合源见 §2 的「实现注意」）
+- 顶部 4 个 `MetricCard`：全部任务 / 运行中 / 等待人工 / 失败任务 — 数据来自当前页 `tasks` 的 `status_group` 计数。
+- `ListToolbar`：搜索框（`keyword`），提交时回 `page = 1`。
+- 表格列：任务名称（溢出 Tooltip）、任务种类、项目、状态（`StatusBadge`）、更新时间、操作（查看 → 打开详情弹窗）。
+- 列宽采用 `table-fixed`，保证信息密集型展示稳定。
+- 分页：每页 10 / 15 / 20 / 50 / 100 可选，`page_size` 仅控制前端不写入 query 时也走 `page_size` 上限 100。
+- 「全部任务 / 等待人工 / 失败任务」tab 仅用于视图过滤，**实际筛选由 query 在后端执行**。
+- 任务详情弹窗（`Dialog`）：展示 §5 的 9 个字段 + 一键复制。
+
+**前端与权限配合**
+
+- `useProjectContextStore.scope === "project"` 且有 `currentProjectId` 时，列表请求自动附 `project_id`。
+- 仅 `auth-store.token` 已 hydrate 时才发起请求，避免裸调用 401。
+
+---
+
+## 10. 验收规则
+
+### 10.1 功能验收
+
+- **聚合覆盖**：`/tasks` 返回的任务集合覆盖 §2 中已入库的 9 个 `source_type`；缺失的源须在文档「实现注意」处给出原因（性能测试 / UI 自动化运行）或列入排期。
+- **状态组互斥**：每个 `ApiTaskItem.status_group` ∈ {`running`, `waiting`, `failed`, `completed`}，且 `status_label` 与 `STATUS_META_BY_SOURCE_TYPE[source_type].get(status)` 一致；未命中映射时回退为 `status_group = status`，`status_label = status`。
+- **筛选生效**：分别用 `project_id=…`、`status_group=…`、`module=…`、`keyword=…` 任一组合请求 `/tasks`，命中行集合 = 客户端直连 SQLite 同等查询结果。
+- **分页正确**：`page`、`page_size` 越界时被夹紧到合法区间（`page=1`，`page_size ≤ 100`）；`total` 等于过滤后的命中总数，`items.length == page_size`（除最后一页）。
+- **保留窗口**：构造 `updated_at = now - 11 days` 的 active / completed 任务，`/tasks` 不返回该任务，但 `/tasks/running` 仍能反映其当前状态（如为 active）。
+- **pending 排除**：`exploration_runs.status='pending'` 时 `/tasks/running` **不**返回该任务，但 `/tasks?status_group=running` 会以 `status_label="待启动"` 列在分组中（便于审计）。
+- **运行指示器**：`/tasks/running` 只包含 `source_type ∈ RUNNING_INDICATOR_SOURCE_TYPES` 且 `is_active_task_status(source_type, status) == True` 的任务；`requirement_analysis_run.status='needs_clarification'` 不会被当作 running（应在 `waiting` 组）。
+- **项目可见性**：`actor.role=guest` 或 `actor.project_scope="全部项目"` 时，列表覆盖所有非归档项目；其他 actor 仅看到 `actor.project_scope` 命名的项目。
+- **详情弹窗字段**：弹窗字段集合 == §5 表，且「状态」字段渲染为 `StatusBadge`，状态文案来自 `status_label`。
+- **聚合来源不存在**：下游表缺失（如早期部署未升级到 `requirement_finalization_runs`）时通过 `_table_exists` 安全跳过，仅打印/空集合，不抛错。
+
+### 10.2 恢复验收
+
+- **启动恢复**：手动在 `requirement_analysis_runs` / `exploration_runs` / `test_case_generation_runs` / `test_point_generation_runs` / `api_generation_runs` / `api_script_generation_runs` / `api_automation_runs` / `ui_automation_generation_runs` / `ui_automation_execution_runs` 中插入 `status='running'` 的脏数据，重启服务后所有相关行被置为 `failed`（或 `interrupted`），并写一条 `result=failed`、`failure_reason` 含「服务已重启」的 operation log。
+- **超时恢复**：构造 `requirement_analysis_runs.updated_at = now - 121 minutes` 且 `status='running'` 的记录，连续调用 `/tasks` 一次后该记录状态变为 `failed`，`failure_reason` 含「超过 120 分钟」。
+- **性能测试心跳**：`performance_test_runs.status IN ('starting','running')` 且 `updated_at < now - 5 minutes` 时，启动服务即被批量标记 `failed`，错误码 `PERFORMANCE_RUN_TIMEOUT`。
+- **幂等性**：连续两次调用 `recover_interrupted_*` 不会把已被 mark 失败的记录再次改写（覆盖语义应保持稳定）。
+- **operation log 一致**：每次状态写操作均同时产生一条 `operation_logs` 记录，`task_id`、`action`、`result`、`failure_reason` 字段非空。
+
+### 10.3 性能验收
+
+- `project_id + keyword + status_group + module` 命中约 1000 条记录时，`/tasks?page=1&page_size=50` P95 应 ≤ 500 ms（SQLite 本地场景）。
+- `/tasks/running` 必须轻量：仅遍历当前 active 任务，P95 ≤ 200 ms。
+
+### 10.4 兼容性验收
+
+- 旧前端调用 `/tasks?keyword=xxx` 仍能命中（`keyword` 已在 2026-07-26 实现）。
+- 旧前端调用 `/tasks?status_group=…` 命中筛选语义，必须与第 §4 节一致（`running` / `waiting` / `failed` / `completed`，大小写敏感）。
+- 旧前端调用 `/tasks?page=0` 被服务夹紧到 `page=1`，不报错。
+- 新增 `/tasks` 子路由不会改变现有 `/api/v1/tasks/running` 的返回值形态（仍为 `list[ApiTaskItem]`）。
+
+---
+
+## 附录 A · 关键常量
+
+| 常量 | 取值 | 位置 |
+| --- | --- | --- |
+| `RUNNING_GROUP` | `"running"` | `task_service.py` |
+| `WAITING_GROUP` | `"waiting"` | `task_service.py` |
+| `FAILED_GROUP` | `"failed"` | `task_service.py` |
+| `COMPLETED_GROUP` | `"completed"` | `task_service.py` |
+| `TASK_RETENTION_DAYS` | `10` | `task_service.py` |
+| `REQUIREMENT_ANALYSIS_RUN_TIMEOUT_MINUTES` | `120` | `task_service.py` |
+| `performance_test_runs.recover_stale_runs timeout_minutes` | `5` | `performance_testing/run_repo.py` |
+| 性能测试 `status` CHECK 枚举 | `created`, `starting`, `running`, `stopping`, `completed`, `stopped`, `failed`, `cancelled` | `seed/schema.py` |
+| 性能测试 `RUN_STATUS_TRANSITIONS` | 见 `run_repo.py` | — |
+
+## 附录 B · 已知差距
+
+1. **`performance_test_run` 未进入 `STATUS_META_BY_SOURCE_TYPE`**，因此 `/tasks/running` 当前不包含性能测试运行行；性能测试运行列表仍由 `performance_testing/run_repo.list_runs` 暴露给前端。补齐动作：将 `performance_test_runs.status` 枚举加入 `STATUS_META_BY_SOURCE_TYPE`，并在 `_collect_visible_tasks` 内追加 `_performance_run_tasks(db, project_names)`。
+2. **`ui_automation_*_run` 未进入 `STATUS_META_BY_SOURCE_TYPE`**，与上同理，恢复逻辑已纳入启动恢复，但运行态指示器缺失。
+3. **任务详情弹窗**目前仅有快照字段，缺少输入参数、阶段、Worker 日志、重试入口；这些信息需要由 `detail_url` 跳转到业务模块详情页查看。
+4. **`requirement_file`** 作为聚合源之一（`source_type = 'requirement_file'`）映射到 `requirement` 模块，但其 status_group 语义与 `requirement_analysis_run` 同名细分。后续若引入 `requirement` 模块子分类，需要在 `module` 上补充分层（如 `requirement.conversion` / `requirement.analysis`）以保持 `module` 字段的离散性。

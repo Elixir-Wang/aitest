@@ -398,6 +398,7 @@ def _monitor_run(
     run_dir: Path,
 ) -> None:
     last_sampled_at = ""
+    automatic_analysis: tuple[str, str, str] | None = None
     while process.poll() is None:
         with connect() as db:
             last_sampled_at = _persist_realtime_sample(db, run_id, run_dir, last_sampled_at)
@@ -444,7 +445,20 @@ def _monitor_run(
         run_repo.append_event(db, run_id, "run_finished", "info" if return_code == 0 else "error", message, {"return_code": return_code})
         current = run_repo.get_run(db, run_id)
         if current:
+            automatic_analysis = (
+                str(current["project_id"]),
+                str(current["id"]),
+                str(current["created_by"]),
+            )
             _prune_run_history(db, current["project_id"], current["performance_test_id"])
+    if automatic_analysis:
+        _schedule_automatic_analysis(*automatic_analysis)
+
+
+def _schedule_automatic_analysis(project_id: str, run_id: str, created_by: str) -> str:
+    from app.services.performance_testing.analysis_service import schedule_automatic_analysis
+
+    return schedule_automatic_analysis(project_id, run_id, created_by)
 
 
 def stop_headless_run(run_id: str) -> bool:

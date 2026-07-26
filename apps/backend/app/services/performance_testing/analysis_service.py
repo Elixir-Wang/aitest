@@ -1,13 +1,19 @@
 import secrets
+import threading
 from datetime import datetime, timezone
 
-from app.agents.performance_testing.diagnosis.service import diagnose_performance
+from app.agents.performance_testing.diagnosis.service import PROMPT_VERSION, diagnose_performance
 from app.core.db import connect
 from app.core.exceptions import api_error
 from app.core.logging import logger
 from app.repositories import performance_analysis_repo, project_repo
 from app.services.performance_testing import run_repo
 from app.services.performance_testing.analysis_evidence import collect_performance_evidence, has_analyzable_evidence
+from app.services.performance_testing.metric_snapshot_service import (
+    CALCULATOR_VERSION,
+    build_metric_snapshot,
+    build_report_snapshot,
+)
 
 
 TERMINAL_RUN_STATUSES = {"completed", "stopped", "failed", "cancelled"}
@@ -44,6 +50,33 @@ def create_analysis(project_id: str, run_id: str, actor) -> dict:
         return performance_analysis_repo.serialize_analysis_session(row)
 
 
+def schedule_automatic_analysis(project_id: str, run_id: str, created_by: str) -> str:
+    """Create the terminal-run report and execute it outside the Locust monitor thread."""
+    try:
+        created = create_analysis(
+            project_id,
+            run_id,
+            {"id": created_by or "system", "role": "admin", "project_scope": "全部项目"},
+        )
+    except Exception as exc:
+        logger.warning(
+            "performance_analysis_auto_schedule_skipped | project_id={} run_id={} error_type={} error={}",
+            project_id,
+            run_id,
+            type(exc).__name__,
+            str(exc),
+        )
+        return ""
+    thread = threading.Thread(
+        target=execute_analysis,
+        args=(str(created["id"]),),
+        name=f"performance-analysis-{run_id}",
+        daemon=True,
+    )
+    thread.start()
+    return str(created["id"])
+
+
 def execute_analysis(analysis_id: str) -> None:
     try:
         with connect() as db:
@@ -55,18 +88,38 @@ def execute_analysis(analysis_id: str) -> None:
             performance_analysis_repo.update_analysis_session(db, analysis_id, status="analyzing")
 
         evidence = collect_performance_evidence(project_id, run_id)
-        diagnosis, model_name = diagnose_performance(evidence)
+        metric_snapshot = build_metric_snapshot(evidence)
+        with connect() as db:
+            performance_analysis_repo.update_analysis_session(
+                db,
+                analysis_id,
+                analysis_status="analyzing",
+                analysis_stage="ai_diagnosis",
+                metric_snapshot=metric_snapshot,
+                calculator_version=CALCULATOR_VERSION,
+                source_fingerprint=metric_snapshot["source_fingerprint"],
+            )
+        diagnosis, model_name = diagnose_performance({**evidence, "metric_snapshot": metric_snapshot})
+        report_snapshot = build_report_snapshot(metric_snapshot, diagnosis)
         proposal = {
             "changes": [change.model_dump(mode="json") for change in diagnosis.proposed_changes],
             "requires_second_approval": diagnosis.requires_second_approval,
             "can_auto_rerun": diagnosis.can_auto_rerun,
             "readonly": False,
         }
+        applicable_changes = [
+            change
+            for change in proposal["changes"]
+            if performance_analysis_repo.is_applicable_change(change)
+        ]
         with connect() as db:
             performance_analysis_repo.update_analysis_session(
                 db,
                 analysis_id,
                 status="waiting_approval",
+                analysis_status="completed",
+                analysis_stage="report_ready",
+                repair_status="available" if applicable_changes else "not_applicable",
                 category=diagnosis.category,
                 summary=diagnosis.direct_cause,
                 direct_cause=diagnosis.direct_cause,
@@ -75,6 +128,8 @@ def execute_analysis(analysis_id: str) -> None:
                 evidence=[item.model_dump(mode="json") for item in diagnosis.evidence],
                 missing_evidence=diagnosis.missing_evidence,
                 proposal=proposal,
+                report_snapshot=report_snapshot,
+                prompt_version=PROMPT_VERSION,
                 model_name=model_name,
                 finished_at=_now(),
             )
@@ -95,6 +150,8 @@ def execute_analysis(analysis_id: str) -> None:
                     db,
                     analysis_id,
                     status="failed",
+                    analysis_status="failed",
+                    analysis_stage="failed",
                     error_message=_analysis_error_message(exc),
                     finished_at=_now(),
                 )
@@ -127,9 +184,15 @@ def reject_analysis(project_id: str, analysis_id: str, actor) -> dict:
         row = performance_analysis_repo.find_analysis_session(db, analysis_id)
         if not row or row["project_id"] != project_id:
             raise api_error(404, "PERFORMANCE_ANALYSIS_NOT_FOUND", "性能分析不存在。")
-        if row["status"] != "waiting_approval":
+        if row["status"] != "waiting_approval" or row["repair_status"] != "available":
             raise api_error(409, "PERFORMANCE_ANALYSIS_REVIEW_INVALID", "当前分析状态不能驳回。")
-        performance_analysis_repo.update_analysis_session(db, analysis_id, status="rejected")
+        performance_analysis_repo.update_analysis_session(
+            db,
+            analysis_id,
+            status="rejected",
+            analysis_status="completed",
+            repair_status="rejected",
+        )
         updated = performance_analysis_repo.find_analysis_session(db, analysis_id)
         return performance_analysis_repo.serialize_analysis_session(updated)
 
@@ -167,6 +230,7 @@ def _analysis_error_message(exc: Exception) -> str:
 
 __all__ = [
     "create_analysis",
+    "schedule_automatic_analysis",
     "execute_analysis",
     "get_analysis",
     "list_run_analyses",

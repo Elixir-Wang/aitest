@@ -1,401 +1,472 @@
 # 00-23 AI测试系统 - 日志模块 PRD
 
-## 1. 这份文档解决什么问题
-
-日志模块用于记录 AI 测试系统内关键业务对象和系统配置的增删改查、执行、确认、取消、失败等动作，帮助管理员追踪“谁在什么时间对什么对象做了什么、结果如何、变更了哪些关键内容”。
-
-核心目标：
-
-- 支持系统配置、项目、需求、知识库、测试资产、任务、报告等关键操作可追溯。
-- 支持问题排查、权限审计、误操作定位和版本变更回溯。
-- 支持按用户、项目、模块、对象、动作、结果、时间范围筛选。
-- 敏感信息脱敏，避免日志成为密码、token、模型 key、验证码等敏感数据泄露入口。
+> **事实源日期**：2026-07-26
+>
+> **事实源**：
+>
+> - 后端 API：`apps/backend/app/api/v1/operation_logs/{__init__.py, query.py, retention.py, client_errors.py, project_query.py}`
+> - 后端服务：`apps/backend/app/services/operation_log_service.py`（`SENSITIVE_KEYS` / `SENSITIVE_PATTERN` 掩码、`record_*`、`list_logs / list_project_logs / export_logs / get_retention_policy / update_retention_policy / cleanup_logs`）
+> - 后端清理：`apps/backend/app/services/retention_cleanup_service.py`（`schedule_cleanup / shutdown_cleanup / run_cleanup_if_due`，每天本地时间 0 点后第一次到期清理）
+> - 后端日志框架：`apps/backend/app/core/logging.py`（Loguru）
+> - 前端：`apps/frontend/src/app/(main)/settings/logs/{page.tsx, [logId]/page.tsx}`
+> - 数据库：`apps/backend/app/seed/schema.py`（`operation_logs` / `operation_log_retention_policy` / `retention_cleanup_state`）
+>
+> **状态标签**：`已实现`
 
 ---
 
-## 2. 日志边界
+## 1. 范围与目标
 
-### 2.1 本模块负责
+### 1.1 问题
 
-- 记录用户触发的业务操作日志。
-- 记录系统关键配置变更日志。
-- 记录异步任务生命周期日志摘要。
-- 记录 Agent、模型、Runner 等系统能力调用的业务级摘要。
-- 提供日志查询、筛选、详情查看和导出能力。
-- 提供日志保留、清理和脱敏策略配置。
+日志模块用于记录 AI 测试系统内关键业务对象和系统配置的增删改查、执行、确认、取消、失败等动作，帮助管理员追踪"谁在什么时间对什么对象做了什么、结果如何、变更了哪些关键内容"。
 
-### 2.2 本模块不负责
+### 1.2 目标
 
-- 不替代后端框架运行日志，例如 FastAPI access log、异常堆栈文件。
-- 不替代 Playwright trace、video、screenshot、Allure 原始报告。
-- 不替代需求版本日志、知识库更新日志等业务对象自己的版本记录；日志模块只做索引和审计视角。
-- 不提供日志编辑能力。
-- 第一版不接外部 SIEM、ELK、Prometheus、Grafana。
+- 支持系统配置、项目、需求、知识库、测试资产、任务、报告等关键操作可追溯
+- 支持问题排查、权限审计、误操作定位和版本变更回溯
+- 支持按用户、项目、模块、对象、动作、结果、时间范围筛选
+- 敏感信息脱敏，避免日志成为密码、token、模型 key、验证码等敏感数据泄露入口
+- 运营可配置日志保留策略，但受硬上限约束
 
-### 2.3 日志类型
+---
 
-| 类型 | 说明 | 第一版是否需要页面展示 |
+## 2. 日志类型与字段
+
+### 2.1 log_type（4 类）
+
+| 值 | 说明 |
+| --- | --- |
+| `audit` | 审计日志：用户或系统对业务对象的关键动作记录 |
+| `config` | 配置变更日志：系统设置、模型配置、用户权限等变更记录 |
+| `task` | 任务生命周期日志：任务创建、开始、成功、失败、取消、重试等摘要 |
+| `agent` | Agent 调用日志：Agent 执行输入摘要、输出摘要、状态、耗时、产物路径 |
+
+### 2.2 source（5 类）
+
+| 值 | 说明 |
+| --- | --- |
+| `web` | Web 前端用户操作 |
+| `api` | API 客户端调用 |
+| `agent` | AI Agent 自动执行 |
+| `runner` | 本地 Runner 自动执行 |
+| `system` | 系统定时任务/后端内部触发 |
+
+### 2.3 result（4 类）
+
+| 值 | 说明 |
+| --- | --- |
+| `success` | 操作成功 |
+| `failed` | 操作失败 |
+| `partial_success` | 部分成功 |
+| `cancelled` | 操作取消 |
+
+### 2.4 operation_logs 字段全集
+
+| 字段 | 类型 | 说明 |
 | --- | --- | --- |
-| 操作审计日志 | 用户或系统对业务对象的关键动作记录 | 是 |
-| 配置变更日志 | 系统设置、模型配置、用户权限等配置变更记录 | 是 |
-| 任务生命周期日志 | 任务创建、开始、成功、失败、取消、重试等摘要 | 是 |
-| Agent 调用日志 | Agent 执行输入摘要、输出摘要、状态、耗时、产物路径 | 是 |
-| 技术运行日志 | 后端异常、access log、Runner stdout/stderr | 否，仅保留关联文件路径 |
+| `id` | TEXT | 日志 ID，系统唯一，格式 `oplog-{8字节hex}` |
+| `log_type` | TEXT | 日志类型：`audit / config / task / agent` |
+| `module` | TEXT | 模块：`project / requirement / knowledge / test_case / automation / report / user / permission / system / model / task / exploration / frontend / api / operation_log` 等 |
+| `action` | TEXT | 动作：`create / update / delete / archive / restore / confirm / cancel / run / retry / export / download / login / logout / api_error / client_error / cleanup / update_retention_policy` 等 |
+| `object_type` | TEXT | 对象类型：`project / requirement / document_version / knowledge_base / test_case / automation_suite / run / user / role / setting / model_provider / operation_log / client_error` 等 |
+| `object_id` | TEXT | 被操作对象 ID，可空 |
+| `object_name` | TEXT | 被操作对象名称或标题（已脱敏） |
+| `project_id` | TEXT | 项目内操作必须记录；系统级操作可空 |
+| `actor_id` | TEXT | 操作人 ID；系统自动动作为 `system`；匿名客户端错误为 `anonymous` |
+| `actor_name` | TEXT | 展示名称（已脱敏） |
+| `source` | TEXT | 操作来源：`web / api / agent / runner / system` |
+| `result` | TEXT | 操作结果：`success / failed / partial_success / cancelled` |
+| `failure_reason` | TEXT | 失败原因摘要（已脱敏） |
+| `summary` | TEXT | 人可读摘要（已脱敏） |
+| `before_json` | TEXT | 变更前值，脱敏后 JSON |
+| `after_json` | TEXT | 变更后值，脱敏后 JSON |
+| `task_id` | TEXT | 异步任务 ID，可空 |
+| `artifact_path` | TEXT | 产物路径列表，JSON 数组（已脱敏） |
+| `request_id` | TEXT | 请求追踪 ID（trace_id） |
+| `ip_address` | TEXT | Web/API 操作来源 IP |
+| `user_agent` | TEXT | Web/API 操作来源浏览器信息（已脱敏） |
+| `created_at` | TEXT | 创建时间，ISO 8601 格式 |
 
----
+### 2.5 数据库索引
 
-## 3. 核心原则
-
-- 关键写操作必须有日志：新增、编辑、删除、归档、恢复、确认、取消、执行、重试、导出等。
-- 关键读操作按风险记录：查看普通列表不记录；查看敏感配置、下载文件、导出数据需要记录。
-- 日志记录业务含义，不只记录接口路径。
-- 日志必须包含操作结果：成功、失败、部分成功、已取消。
-- 日志必须包含操作者：登录用户、系统任务、Agent 或本地 Runner。
-- 日志详情只保存必要差异，避免完整保存大文档、大报告、大模型上下文。
-- 密码、token、API Key、cookie、验证码、Authorization header、模型密钥等必须脱敏。
-- 删除类动作必须记录被删除对象的关键快照，例如名称、类型、所属项目、删除前状态。
-
----
-
-## 4. 核心对象
-
-### 4.1 OperationLog
-
-表示一条业务操作审计日志。
-
-| 字段 | 说明 |
+| 索引名 | 字段 |
 | --- | --- |
-| 日志 ID | 系统唯一 |
-| 日志类型 | 操作审计、配置变更、任务生命周期、Agent 调用 |
-| 模块 | 项目、需求、知识库、测试用例、测试计划、测试集、自动化、报告、用户、权限、系统设置、模型配置、任务中心等 |
-| 动作 | create、update、delete、archive、restore、merge、confirm、cancel、run、retry、export、download、login、logout 等 |
-| 对象类型 | project、requirement、source_file、document_version、knowledge_base、test_case、test_plan、test_suite、task、report、user、role、setting、model_provider 等 |
-| 对象 ID | 被操作对象 ID，可空 |
-| 对象名称 | 被操作对象名称或标题 |
-| 项目 ID | 项目内操作必须记录；系统级操作可空 |
-| 操作人 ID | 用户 ID；系统自动动作可为 system |
-| 操作人名称 | 展示名称 |
-| 操作来源 | web、api、agent、runner、system |
-| 操作结果 | success、failed、partial_success、cancelled |
-| 失败原因 | 失败时记录摘要 |
-| 变更摘要 | 人可读摘要，例如“项目状态由 active 改为 archived” |
-| 变更前摘要 | 关键字段变更前值，脱敏后保存 |
-| 变更后摘要 | 关键字段变更后值，脱敏后保存 |
-| 关联任务 ID | 异步任务相关操作记录任务 ID |
-| 关联产物路径 | 报告、trace、Allure、Markdown、diff 等产物路径 |
-| 请求 ID | 用于串联后端请求和任务 |
-| IP 地址 | Web/API 操作来源 IP |
-| User-Agent | Web/API 操作来源浏览器信息 |
-| 创建时间 | 系统生成 |
-
-### 4.2 LogRetentionPolicy
-
-表示日志保留策略。
-
-| 字段 | 说明 |
-| --- | --- |
-| 保留天数 | 默认 180 天 |
-| 最大条数 | SQLite 第一版建议限制上限，避免本地库膨胀 |
-| 清理方式 | 手动清理；后续可支持定期清理 |
-| 清理范围 | 按时间范围、日志类型、项目 |
-| 清理保护 | 配置变更、删除类、高风险操作默认不建议清理 |
+| `idx_operation_logs_created_at` | `created_at` |
+| `idx_operation_logs_project_id_created_at` | `project_id, created_at` |
+| `idx_operation_logs_actor_id_created_at` | `actor_id, created_at` |
+| `idx_operation_logs_module_action` | `module, action` |
+| `idx_operation_logs_object` | `object_type, object_id` |
+| `idx_operation_logs_result` | `result` |
 
 ---
 
-## 5. 页面设计
+## 3. 审计日志 vs 文件日志
 
-### 5.1 系统日志入口
+AI 测试系统存在两套独立的日志体系：
 
-系统设置新增“日志”页签，面向管理员提供全局日志查询。
+### 3.1 审计日志（SQLite：`operation_logs` 表）
 
-页面能力：
+- **用途**：业务操作可追溯，记录"谁对什么对象做了什么"
+- **存储**：SQLite 数据库文件 `data/ai_testing.db`
+- **写入**：通过 `operation_log_service.record_*` 系列函数，业务代码调用
+- **保留**：受 `operation_log_retention_policy` 约束，由 `retention_cleanup_service` 定时清理
+- **访问**：通过 `GET /operation-logs` 和 `GET /projects/{project_id}/operation-logs` API 访问
+- **脱敏**：写入前在服务端对 `SENSITIVE_KEYS` / `SENSITIVE_PATTERN` 匹配字段做掩码
 
-- 查看全部操作日志。
-- 按时间范围、模块、动作、对象类型、操作人、结果、项目筛选。
-- 支持关键词搜索对象名称、变更摘要、失败原因。
-- 查看日志详情。
-- 导出筛选结果。
-- 配置日志保留策略。
+### 3.2 文件日志（Loguru：`logs/` 目录）
 
-### 5.2 项目日志入口
+- **用途**：技术运行日志，记录应用层、错误、HTTP 访问和 AI Agent 执行详情
+- **目录结构**：
 
-项目详情新增“项目日志”入口，仅展示当前项目相关日志。
+```
+logs/
+  app/YYYY-MM-DD.log      — INFO+  通用应用日志
+  error/YYYY-MM-DD.log    — WARNING+ 错误日志，快速定位问题
+  access/YYYY-MM-DD.log   — 每个 HTTP 请求的进出记录
+  agent/YYYY-MM-DD.log   — AI Agent 执行全程记录
+```
 
-页面能力：
+- **轮转策略**：每天 00:00 轮转，保留 10 天，旧文件 zip 压缩，异步写入不阻塞主线程
+- **trace_id 注入**：通过 `contextvars` 在同一请求的所有日志行中自动注入 `trace_id`
+- **清理**：由 `retention_cleanup_service` 在保留期超过时删除 `logs/{app,error,access,agent}/` 下的过期文件
+- **stdin/stdout**：Loguru 也负责将 uvicorn、FastAPI、httpx 等框架日志统一路由到 Loguru sink
 
-- 查看项目内需求、探索、知识库、测试用例、测试计划、测试集、自动化、报告、任务等日志。
-- 默认按时间倒序展示。
-- 支持按模块、动作、操作人、结果筛选。
-- 支持从日志跳转到关联对象详情或关联任务详情。
+### 3.3 两者边界
 
-### 5.3 日志列表字段
-
-| 字段 | 展示规则 |
-| --- | --- |
-| 时间 | 操作发生时间 |
-| 模块 | 项目、需求、知识库、系统设置等 |
-| 动作 | 新增、编辑、删除、归并、确认、执行、导出等中文展示 |
-| 对象 | 对象名称；已删除对象展示删除前名称 |
-| 操作人 | 用户名；系统动作展示“系统” |
-| 结果 | 成功、失败、部分成功、已取消 |
-| 摘要 | 展示变更摘要或执行摘要 |
-| 操作 | 查看详情、跳转对象 |
-
-### 5.4 日志详情
-
-日志详情展示：
-
-- 基本信息：时间、模块、动作、对象、操作人、结果。
-- 变更详情：变更前、变更后、差异摘要。
-- 失败详情：失败原因、错误摘要、关联任务。
-- 关联产物：版本文件、diff、报告、trace、Allure、任务日志路径。
-- 请求信息：请求 ID、IP、User-Agent。
+| 维度 | 审计日志 | 文件日志 |
+| --- | --- | --- |
+| 目标 | 业务可追溯性 | 技术排查 |
+| 存储 | SQLite | 文件 |
+| 格式 | 结构化字段 | 文本行 |
+| 保留 | 可配置（默认 10 天） | 固定 10 天 |
+| 访问 | API 查询 | 文件直接读取 |
+| 脱敏 | 是（服务端） | 否 |
 
 ---
 
-## 6. 权限规则
+## 4. 保留策略硬上限
 
-| 操作 | 管理员 | 测试工程师 | 访客 |
+### 4.1 硬上限常量
+
+| 常量 | 值 | 说明 |
+| --- | --- | --- |
+| `MAX_RETENTION_DAYS` | `10` | 无论运营配置多少，实际保留天数不超过 10 天 |
+| `max_rows` | `100000` | SQLite 保留策略表的默认硬上限，运营可配置但建议不超过此值 |
+
+清理时取 `min(MAX_RETENTION_DAYS, max(1, policy.retention_days))`，即：
+
+- 运营配置 ≤ 0 → 实际按 1 天清理
+- 运营配置 > 10 天 → 实际按 10 天清理
+
+### 4.2 operation_log_retention_policy 表
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `id` | TEXT | 主键 |
+| `retention_days` | INTEGER | 保留天数（运营配置，默认 10，受硬上限约束） |
+| `max_rows` | INTEGER | 最大行数硬上限（默认 100000） |
+| `protect_high_risk` | INTEGER | 是否保护高风险日志（0/1） |
+| `updated_by` | TEXT | 最后修改人 ID |
+| `updated_at` | TEXT | 最后修改时间 |
+
+### 4.3 运营可配置项
+
+管理员可通过 `PUT /operation-logs/retention-policy` 修改：
+
+- `retention_days`：保留天数（受 10 天硬上限约束）
+- `max_rows`：最大行数（建议不超过 100000）
+- `protect_high_risk`：是否启用高风险日志保护
+
+每次策略变更会写入一条 `log_type=audit, action=update_retention_policy` 日志。
+
+---
+
+## 5. 清理调度
+
+### 5.1 调度机制
+
+- **触发时机**：每天本地时间（`Asia/Shanghai`）0 点之后，**第一次有资格清理时**执行
+- **防重复**：通过 `retention_cleanup_state` 表，`job_name="system-log-retention"`，同一天内不会重复清理
+- **实现**：`retention_cleanup_service.schedule_cleanup` 在应用启动时调用，启动延迟 30 秒
+- **重试**：最多 3 次，每次失败后等待 60 秒重试；之后每小时检查一次是否到期
+
+### 5.2 retention_cleanup_state 表
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `job_name` | TEXT | 任务名，当前固定为 `"system-log-retention"` |
+| `last_success_at` | TEXT | 上次成功清理时间（ISO 8601） |
+| `updated_at` | TEXT | 最后更新时间 |
+
+### 5.3 清理流程
+
+1. 查询 `retention_cleanup_state`，若当天已清理则跳过（`skipped`）
+2. 取 `operation_log_retention_policy` 中的 `retention_days`，取 `min(MAX_RETENTION_DAYS, max(1, value))`
+3. 计算 `cutoff = now - retention_days`，删除数据库中早于 cutoff 的记录（分批，每批 1000 条）
+4. 删除 `logs/{app,error,access,agent}/` 下修改时间早于 cutoff 的文件
+5. 更新 `retention_cleanup_state.last_success_at`
+
+### 5.4 手动清理
+
+管理员可通过 `POST /operation-logs/cleanup` 手动触发清理：
+
+- 支持按 `log_type / module / action / result / created_before` 等条件过滤
+- 支持 `dry_run=true` 试算
+- 清理结果写入 `action=cleanup` 日志
+
+---
+
+## 6. 敏感字段掩码
+
+### 6.1 SENSITIVE_KEYS
+
+以下字段名在字典中会被直接替换为 `"******"`：
+
+```
+password, token, api_key, apikey, secret, authorization,
+cookie, captcha, verification_code, access_key
+```
+
+匹配时将 `-` 替换为 `_` 后再做归一化匹配（支持 `api-key` / `api_key` 变体）。
+
+### 6.2 SENSITIVE_PATTERN
+
+正则匹配字符串值中形如 `key=value` 的模式：
+
+```
+(?i)(password|token|api[_-]?key|secret|authorization|cookie|captcha|verification[_-]?code|access[_-]?key)(\s*[:=]\s*)([^\s,;]+)
+```
+
+匹配到的第三个分组（实际值）替换为 `******`。
+
+### 6.3 脱敏应用范围
+
+以下字段写入数据库前均经过 `_mask_sensitive` 脱敏：
+
+- `object_name`
+- `actor_name`
+- `failure_reason`
+- `summary`
+- `before_json`（字典/列表内递归脱敏）
+- `after_json`（字典/列表内递归脱敏）
+- `artifact_path`（JSON 数组内递归脱敏）
+- `user_agent`
+
+### 6.4 客户端错误上报中的脱敏
+
+`record_client_error` 在写入 `before_json` 前对以下字段做 `_safe_text` 截断（不超过指定长度）：
+
+| 字段 | 限制 |
+| --- | --- |
+| `page_url` | 1000 字符 |
+| `action_label` | 120 字符 |
+| `occurred_at` | 80 字符 |
+| `path` | 500 字符 |
+| `method` | 12 字符 |
+
+---
+
+## 7. 客户端上报（前端 JS 错误捕获）
+
+### 7.1 端点
+
+```
+POST /operation-logs/client-errors
+```
+
+### 7.2 上报时机
+
+前端浏览器发生未捕获异常或 API 请求错误时，自动上报。
+
+### 7.3 请求体（ClientErrorReport）
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `title` | str | 错误标题 |
+| `message` | str | 错误消息 |
+| `code` | str | 错误码（可选） |
+| `status` | int | HTTP 状态码（API 错误时有） |
+| `method` | str | HTTP 方法 |
+| `path` | str | 请求路径 |
+| `page_url` | str | 页面 URL |
+| `action_label` | str | 触发错误的操作名称（可选） |
+| `occurred_at` | str | 发生时间（可选） |
+| `trace_id` | str | 后端 trace_id（可选，优先使用） |
+
+### 7.4 自动分类逻辑
+
+| 条件 | action | module |
+| --- | --- | --- |
+| 有 `status` 且有 `path` | `api_error` | 根据路径推断（`/requirements` → `requirement`；`/projects` → `project`；`/knowledge` → `knowledge`；`/models` → `model`；`/users` → `user`；`/auth` → `auth`；`/operation-logs` → `operation_log`；默认 `api`） |
+| 无 status/path | `client_error` | `frontend` |
+
+### 7.5 权限与上下文
+
+- 登录用户上报：记录 `actor_id`、`actor_name`
+- 未登录用户上报：`actor_id=anonymous`、`actor_name=匿名用户`
+- `project_id` 通过 URL 中 `/projects/{project_id}` 提取，并验证当前用户是否有权访问该项目
+- IP 和 User-Agent 从请求头提取
+
+---
+
+## 8. 管理员导出 / 详情 / 过滤项
+
+### 8.1 全局日志列表
+
+```
+GET /operation-logs
+```
+
+- **权限**：`require_admin`（仅管理员）
+- **过滤参数**：`page, page_size, project_id, log_type, module, action, object_type, actor_id, result, keyword, start_time, end_time`
+- **keyword 搜索**：匹配 `object_name`、`summary`、`failure_reason`
+
+### 8.2 全局日志详情
+
+```
+GET /operation-logs/{log_id}
+```
+
+- **权限**：管理员可查看所有日志；非管理员只能查看有项目归属且有权访问的日志
+- **返回**：包含 `before`（字典）、`after`（字典）、`artifact_path`（数组）、`request_id`、`ip_address`、`user_agent`
+
+### 8.3 全局日志 CSV 导出
+
+```
+GET /operation-logs/export
+```
+
+- **权限**：`require_admin`
+- **导出字段**：日志ID、时间、类型、模块、动作、对象类型、对象ID、对象名称、项目ID、操作人ID、操作人、来源、结果、摘要、失败原因、任务ID、请求ID、IP、User-Agent
+- **限制**：最多导出 10000 条（`page_size=10000`）
+
+### 8.4 过滤下拉项
+
+```
+GET /operation-logs/filter-options
+```
+
+- **权限**：管理员
+- **返回**：`modules`、`actions`、`results`、`log_types` 四个下拉列表选项
+
+---
+
+## 9. 项目日志
+
+### 9.1 项目日志列表
+
+```
+GET /projects/{project_id}/operation-logs
+```
+
+- **权限**：`current_user`（所有登录用户），但受项目访问权限约束
+  - `admin` / `guest` / `project_scope=全部项目`：可访问所有项目日志
+  - 其他角色：只能访问 `project_scope` 匹配的项目
+- **过滤参数**：与全局日志相同（`project_id` 由路径自动注入）
+
+### 9.2 项目日志 CSV 导出
+
+```
+GET /projects/{project_id}/operation-logs/export
+```
+
+- 文件名格式：`{project_id}-operation-logs.csv`
+
+### 9.3 项目日志过滤下拉项
+
+```
+GET /projects/{project_id}/operation-logs/filter-options
+```
+
+- 仅返回当前项目内已有的过滤选项
+
+---
+
+## 10. 数据模型
+
+### 10.1 operation_logs
+
+详见第 2.4 节字段全集。
+
+### 10.2 operation_log_retention_policy
+
+详见第 4.2 节。
+
+### 10.3 retention_cleanup_state
+
+详见第 5.2 节。
+
+---
+
+## 11. API 路由清单
+
+| 方法 | 路径 | 权限 | 功能 |
 | --- | --- | --- | --- |
-| 查看系统全局日志 | 是 | 否 | 否 |
-| 查看项目日志 | 是 | 仅分配项目 | 仅可查看项目内只读日志 |
-| 查看日志详情 | 是 | 仅分配项目 | 仅可查看项目内只读日志 |
-| 导出日志 | 是 | 否 | 否 |
-| 配置日志保留策略 | 是 | 否 | 否 |
-| 清理日志 | 是 | 否 | 否 |
-
-说明：
-
-- 访客可查看项目内日志，但不能看到敏感配置变更详情、用户权限变更详情和系统级日志。
-- 测试工程师只能查看自己有权限项目下的日志。
-- 系统级配置、模型密钥、用户权限相关日志仅管理员可见。
-
----
-
-## 7. 哪些内容需要记录日志
-
-### 7.1 登录与用户
-
-| 场景 | 动作 | 记录重点 |
-| --- | --- | --- |
-| 用户登录 | login | 用户、结果、失败原因、IP、User-Agent |
-| 用户登出 | logout | 用户、时间、来源 |
-| 管理员创建用户 | create | 用户名、角色、项目范围 |
-| 管理员编辑用户 | update | 角色、状态、项目范围变更摘要 |
-| 管理员删除用户 | delete | 被删除用户名称、角色、项目范围快照 |
-| 修改密码 | update | 操作人、结果，不记录密码内容 |
-| 启用/禁用用户 | update | 状态变更 |
-
-### 7.2 权限与项目范围
-
-| 场景 | 动作 | 记录重点 |
-| --- | --- | --- |
-| 修改用户角色 | update | 变更前后角色 |
-| 修改项目授权 | update | 增加/移除的项目范围 |
-| 查看敏感权限配置 | view | 操作人、访问对象 |
-
-### 7.3 项目管理
-
-| 场景 | 动作 | 记录重点 |
-| --- | --- | --- |
-| 新建项目 | create | 项目名称、描述、状态 |
-| 编辑项目 | update | 名称、描述、状态变更 |
-| 删除项目 | delete | 项目名称、删除前状态、关联资产数量摘要 |
-| 归档项目 | archive | 项目名称、归档前状态 |
-| 恢复项目 | restore | 项目名称、恢复后状态 |
-| 进入项目详情 | view | 第一版不强制记录，后续按安全要求决定 |
-
-### 7.4 需求文档与需求归并
-
-| 场景 | 动作 | 记录重点 |
-| --- | --- | --- |
-| 新建需求 | create | 需求名称、所属项目、上传文件数量 |
-| 追加需求文件 | create | 目标需求、文件名、文件大小、转换状态 |
-| 删除需求 | delete | 需求名称、当前版本、来源文件数量 |
-| 编辑需求元数据 | update | 名称、类型、状态变更 |
-| 上传原始文件 | upload | 文件名、类型、大小、结果 |
-| 文件转换 Markdown | run | 文件名、转换结果、质量评分、产物路径 |
-| 转换失败 | failed | 文件名、失败原因 |
-| 发起需求归并 | merge | 输入文件清单、基准版本、任务 ID |
-| 归并预览生成 | run | 预览路径、冲突数、待确认数 |
-| 确认归并 | confirm | 生成版本号、差异摘要、来源清单 |
-| 取消归并 | cancel | 取消人、归并任务 ID |
-| 删除待归并文件 | delete | 文件名、所属需求、删除原因 |
-| 在线编辑 Markdown | update | 版本号、差异摘要 |
-| AI 对话生成 diff | run | 指令摘要、基准版本、diff 路径 |
-| 应用 AI 修改 | confirm | 新版本号、变更摘要 |
-| 放弃 AI 修改 | cancel | 会话 ID、原因 |
-| 澄清答案写回 | update | 澄清问题 ID、新版本号、影响模块 |
-| 需求分析执行 | run | 版本号、任务 ID、分析结果路径 |
-
-### 7.5 站点探索
-
-| 场景 | 动作 | 记录重点 |
-| --- | --- | --- |
-| 新建探索任务 | create | 项目、目标 URL、模式 |
-| 启动探索 | run | 任务 ID、Runner、浏览器配置 |
-| 探索成功 | success | 页面数、产物路径、耗时 |
-| 探索失败 | failed | 失败原因、trace/log 路径 |
-| 人工确认验证码/登录 | confirm | 操作人、任务 ID，不记录验证码和密码 |
-| 删除探索记录 | delete | 探索 ID、产物摘要 |
-| 基于探索生成候选需求 | create | 来源探索 ID、候选需求名称 |
-
-### 7.6 知识库
-
-| 场景 | 动作 | 记录重点 |
-| --- | --- | --- |
-| 生成项目知识库 | run | 输入需求版本、探索文档、任务 ID |
-| 更新知识库 | update | 变更来源、差异摘要、产物路径 |
-| 确认知识库更新 | confirm | 版本号、确认人 |
-| 放弃知识库更新 | cancel | 更新计划 ID、原因 |
-| 删除知识库产物 | delete | 产物名称、路径、所属项目 |
-| 上传全局知识 | upload | 文件名、分类、大小、结果 |
-| 编辑全局知识 | update | 标题、分类、内容摘要 |
-| 删除全局知识 | delete | 标题、分类、删除前摘要 |
-
-### 7.7 测试用例
-
-| 场景 | 动作 | 记录重点 |
-| --- | --- | --- |
-| 生成测试用例 | run | 来源需求版本、任务 ID、生成数量 |
-| 新建用例 | create | 用例标题、模块、优先级 |
-| 编辑用例 | update | 字段变更摘要 |
-| 删除用例 | delete | 用例标题、模块、优先级 |
-| 评审通过/驳回用例 | confirm/update | 评审结论、意见摘要 |
-| 批量导出用例 | export | 导出范围、数量、文件路径 |
-
-### 7.8 测试计划与测试集
-
-| 场景 | 动作 | 记录重点 |
-| --- | --- | --- |
-| 新建测试计划 | create | 计划名称、关联需求/版本 |
-| 编辑测试计划 | update | 范围、状态、负责人变更 |
-| 删除测试计划 | delete | 计划名称、关联资产摘要 |
-| 新建测试集 | create | 测试集名称、用例数量 |
-| 编辑测试集 | update | 用例增删、顺序、配置变更 |
-| 删除测试集 | delete | 测试集名称、用例数量 |
-| 执行测试集 | run | 测试集、环境、任务 ID |
-
-### 7.9 UI 自动化与报告
-
-| 场景 | 动作 | 记录重点 |
-| --- | --- | --- |
-| 生成自动化代码 | run | 来源用例、任务 ID、代码路径 |
-| 编辑自动化代码 | update | 文件路径、差异摘要 |
-| 删除自动化代码 | delete | 文件路径、关联用例 |
-| 启动自动化执行 | run | 用例/测试集、环境、Runner 配置 |
-| 执行成功 | success | 通过数、失败数、耗时、报告路径 |
-| 执行失败 | failed | 失败摘要、trace、video、Allure 路径 |
-| 取消执行 | cancel | 任务 ID、取消人 |
-| 重试执行 | retry | 原任务 ID、新任务 ID |
-| 查看报告 | view | 第一版不强制记录 |
-| 导出报告 | export | 报告 ID、导出路径 |
-
-### 7.10 失败诊断与自愈
-
-| 场景 | 动作 | 记录重点 |
-| --- | --- | --- |
-| 启动失败诊断 | run | 来源执行记录、任务 ID |
-| 生成诊断结论 | success | 失败分类、建议摘要 |
-| 启用自愈 | run | 人工触发人、来源失败记录 |
-| 生成自愈补丁 | run | 补丁路径、影响文件 |
-| 确认应用补丁 | confirm | 影响文件、差异摘要 |
-| 放弃补丁 | cancel | 原因 |
-
-### 7.11 模型配置与 Agent Runtime
-
-| 场景 | 动作 | 记录重点 |
-| --- | --- | --- |
-| 新增模型 Provider | create | Provider 名称、类型，不记录密钥 |
-| 编辑模型 Provider | update | 名称、endpoint、模型列表变更，密钥脱敏 |
-| 删除模型 Provider | delete | Provider 名称、类型 |
-| 启用/禁用模型 | update | 模型名称、状态 |
-| 模型连通性检查 | run | Provider、结果、错误摘要 |
-| Agent 执行 | run | Agent 类型、输入摘要、任务 ID、耗时、结果 |
-| Agent 执行失败 | failed | Agent 类型、失败原因、产物路径 |
-
-### 7.12 系统设置
-
-| 场景 | 动作 | 记录重点 |
-| --- | --- | --- |
-| 修改文件存储目录 | update | 变更前后路径 |
-| 修改 SQLite 配置 | update | 数据库路径、WAL、超时配置 |
-| 修改 Runner 配置 | update | 工作目录、Python 路径、pytest 参数、并发、超时 |
-| 修改 Playwright 配置 | update | 浏览器、有头模式、trace、video、screenshot、超时 |
-| 修改 Allure 配置 | update | CLI 路径、results/report 目录、保留数量 |
-| 修改 Agent 安全策略 | update | 允许目录、禁止目录、高风险确认策略 |
-| 执行连通性检查 | run | 检查项、结果、失败原因 |
-| 修改日志保留策略 | update | 保留天数、最大条数、清理规则 |
-| 手动清理日志 | delete | 清理范围、清理数量、保留保护规则 |
-
-### 7.13 任务中心
-
-| 场景 | 动作 | 记录重点 |
-| --- | --- | --- |
-| 创建任务 | create | 任务类型、关联对象、触发人 |
-| 任务开始 | run | 任务 ID、Runner |
-| 任务完成 | success | 结果摘要、耗时、产物路径 |
-| 任务失败 | failed | 失败原因、错误摘要 |
-| 任务取消 | cancel | 取消人、取消原因 |
-| 任务重试 | retry | 原任务 ID、新任务 ID |
+| `GET` | `/operation-logs` | admin | 全局日志列表（分页） |
+| `GET` | `/operation-logs/{log_id}` | admin/项目权限 | 全局日志详情 |
+| `GET` | `/operation-logs/export` | admin | 全局日志 CSV 导出 |
+| `GET` | `/operation-logs/filter-options` | admin | 全局过滤下拉项 |
+| `GET` | `/operation-logs/retention-policy` | admin | 查询保留策略 |
+| `PUT` | `/operation-logs/retention-policy` | admin | 更新保留策略 |
+| `POST` | `/operation-logs/cleanup` | admin | 手动清理日志 |
+| `POST` | `/operation-logs/client-errors` | current_user | 客户端错误上报 |
+| `GET` | `/projects/{project_id}/operation-logs` | current_user+项目权限 | 项目日志列表 |
+| `GET` | `/projects/{project_id}/operation-logs/export` | current_user+项目权限 | 项目日志导出 |
+| `GET` | `/projects/{project_id}/operation-logs/filter-options` | current_user+项目权限 | 项目过滤下拉项 |
 
 ---
 
-## 8. 不需要记录或默认不记录的内容
+## 12. 前端页面清单
 
-第一版默认不记录：
-
-- 普通列表浏览，例如项目列表、需求列表、用例列表。
-- 普通详情查看，例如项目详情、需求预览、用例详情；除非后续有安全审计要求。
-- 前端输入框每次变更、筛选条件变更、分页、排序。
-- 自动保存草稿的每次中间态；只记录最终保存或生成版本。
-- Runner 原始 stdout/stderr 全量内容；只记录摘要和文件路径。
-- 大模型完整 prompt、完整上下文、完整输出；只记录输入摘要、输出摘要、产物路径和 token/耗时等统计。
-
-必须避免记录：
-
-- 明文密码。
-- 明文 token、API Key、cookie、Authorization header。
-- 验证码。
-- 私钥、证书密钥。
-- 未脱敏的用户敏感信息。
+| 路径 | 说明 |
+| --- | --- |
+| `/settings/logs` | 系统日志列表页（管理员专属），展示全局审计日志，支持按时间、模块、动作、对象类型、操作人、结果、项目筛选，支持关键词搜索 |
+| `/settings/logs/{logId}` | 系统日志详情页，展示单条日志的完整上下文（变更前后、失败原因、trace_id、IP、User-Agent） |
+| `/projects/{projectId}/logs` | 项目日志入口（第一版尚未独立实现，前端通过 `OperationLogView` 组件的 `endpoint` prop 指向 `/projects/{project_id}/operation-logs`） |
 
 ---
 
-## 9. 数据与存储策略
+## 13. 验收规则
 
-SQLite 保存：
+### 13.1 功能验收
 
-- 操作日志主表。
-- 日志详情摘要。
-- 日志保留策略。
+- [ ] 管理员能在 `/settings/logs` 查看全局日志列表
+- [ ] 管理员能按 `log_type / module / action / object_type / actor_id / result / keyword / start_time / end_time / project_id` 筛选日志
+- [ ] 管理员能导出日志为 CSV
+- [ ] 非管理员能访问 `/projects/{project_id}/operation-logs`，但只能访问有权访问的项目
+- [ ] 日志详情展示 `before_json`、`after_json`、`artifact_path`、`request_id`、`ip_address`、`user_agent`
+- [ ] 前端 JS 错误能通过 `POST /operation-logs/client-errors` 上报到服务端并持久化
+- [ ] 客户端错误能自动归类（`api_error` vs `client_error`）和推断模块
+- [ ] `PUT /operation-logs/retention-policy` 受硬上限约束：`retention_days` 实际不超过 10 天
+- [ ] `POST /operation-logs/cleanup` 支持 `dry_run` 试算
 
-文件系统保存：
+### 13.2 脱敏验收
 
-- 大体积任务日志文件。
-- Playwright trace、video、screenshot。
-- Allure 报告。
-- Markdown diff、需求归并报告、知识库更新报告。
+- [ ] `before_json` / `after_json` 中 `SENSITIVE_KEYS` 匹配字段值替换为 `******`
+- [ ] `summary`、`failure_reason`、`actor_name`、`object_name` 中 `key=value` 模式被掩码
+- [ ] `user_agent` 中的敏感字段被掩码
+- [ ] 客户端错误 `before_json` 中 `page_url` 截断至 1000 字符以内
 
-存储规则：
+### 13.3 清理验收
 
-- 日志表只存摘要和关联路径，不存大文件内容。
-- 删除业务对象时，日志保留对象名称、类型、所属项目、删除前状态等必要快照。
-- 日志写入失败不能阻断主业务成功，但必须记录后端错误日志，后续可在系统健康检查中提示。
-- 高风险操作日志，例如删除、权限变更、系统设置变更，写入失败时应提示管理员。
+- [ ] `retention_cleanup_service.schedule_cleanup` 在应用启动时调用
+- [ ] 每天本地时间 0 点后第一次到期执行清理，不会同一天重复执行
+- [ ] 数据库清理和文件清理同步进行
+- [ ] 清理后更新 `retention_cleanup_state.last_success_at`
 
----
+### 13.4 记录规则验收
 
-## 10. 验收标准
+- [ ] `record_success`：记录 `result=success` 日志
+- [ ] `record_failure`：记录 `result=failed` 日志
+- [ ] `record_change`：记录变更前后快照（已脱敏）
+- [ ] `record_task_event`：记录 `log_type=task` 日志
+- [ ] `record_agent_run`：记录 `log_type=agent` 日志
+- [ ] 保留策略变更写入 `action=update_retention_policy` 日志
+- [ ] 手动清理写入 `action=cleanup` 日志
 
-- 管理员能在系统设置中查看全局日志。
-- 管理员能按时间、模块、动作、对象类型、操作人、结果、项目筛选日志。
-- 项目详情能查看当前项目日志。
-- 新建、编辑、删除项目均生成日志。
-- 新建需求、追加文件、删除需求、需求归并、确认归并均生成日志。
-- 系统设置修改、模型配置修改、用户权限修改均生成日志。
-- 自动化执行、任务失败、任务重试、报告导出均生成日志。
-- 日志详情能展示变更摘要、结果、失败原因、关联任务和关联产物路径。
-- 敏感字段在日志中脱敏，不出现明文密码、token、API Key、验证码。
-- 访客不能查看系统级日志，测试工程师不能查看未授权项目日志。
-- 管理员能配置日志保留策略并执行手动清理。
+### 13.5 日志写入可靠性
+
+- [ ] 日志写入失败不阻断主业务成功（写入在 `try/except` 中，失败仅记录 warning）
+- [ ] 日志写入后返回 `oplog-{8字节hex}` 格式 ID
+- [ ] `request_id` 贯穿日志和任务链路，通过 `trace_id` 串联

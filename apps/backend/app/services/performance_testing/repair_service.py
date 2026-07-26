@@ -77,7 +77,7 @@ def apply_and_rerun(project_id: str, analysis_id: str, change_ids: list[str], ac
         if not row or row["project_id"] != project_id:
             raise api_error(404, "PERFORMANCE_ANALYSIS_NOT_FOUND", "性能分析不存在。")
         analysis = performance_analysis_repo.serialize_analysis_session(row)
-        if analysis["status"] != "waiting_approval":
+        if row["status"] != "waiting_approval" or analysis["repair_status"] != "available":
             raise api_error(409, "PERFORMANCE_REPAIR_NOT_APPROVABLE", "当前分析状态不能应用修复。")
         if analysis["application_status"] not in {"not_requested", "preflight_failed", "apply_failed"}:
             raise api_error(409, "PERFORMANCE_REPAIR_ALREADY_APPLIED", "当前分析正在修复或已经完成修复。")
@@ -109,6 +109,7 @@ def apply_and_rerun(project_id: str, analysis_id: str, change_ids: list[str], ac
             db,
             analysis_id,
             application_status="preflighting",
+            repair_status="preflighting",
             selected_change_ids=selected_ids,
             error_message="",
         )
@@ -120,6 +121,7 @@ def apply_and_rerun(project_id: str, analysis_id: str, change_ids: list[str], ac
                 db,
                 analysis_id,
                 application_status="preflight_failed",
+                repair_status="available",
                 preflight=preflight,
                 error_message="修复预检失败，未修改配置，也未启动并发压测。",
             )
@@ -161,6 +163,7 @@ def apply_and_rerun(project_id: str, analysis_id: str, change_ids: list[str], ac
             db,
             analysis_id,
             application_status="rerunning",
+            repair_status="rerunning",
             preflight=preflight,
             applied_script_id=script_id,
             applied_by=str(actor["id"]),
@@ -183,6 +186,7 @@ def apply_and_rerun(project_id: str, analysis_id: str, change_ids: list[str], ac
                 db,
                 analysis_id,
                 application_status="apply_failed",
+                repair_status="available",
                 error_message=f"配置和脚本已修复，但自动重跑启动失败：{type(exc).__name__}。",
             )
         raise api_error(500, "PERFORMANCE_REPAIR_RERUN_FAILED", "修复已应用，但自动重新压测启动失败。") from exc
@@ -192,6 +196,7 @@ def apply_and_rerun(project_id: str, analysis_id: str, change_ids: list[str], ac
             db,
             analysis_id,
             application_status="completed",
+            repair_status="completed",
             applied_run_id=new_run_id,
             applied_at=datetime.now(timezone.utc).isoformat(),
             error_message="",

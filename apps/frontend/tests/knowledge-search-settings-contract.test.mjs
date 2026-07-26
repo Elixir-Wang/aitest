@@ -13,7 +13,7 @@ test("knowledge page adds search settings after company knowledge", () => {
   assert.match(pageSource, /value: "settings", label: "检索设置"/);
   assert.match(pageSource, /<KnowledgeSearchSettings/);
   assert.match(pageSource, /projectName=\{effectiveProjectName\}/);
-  assert.match(settingsSource, /项目检索设置 · \$\{projectName/);
+  assert.match(settingsSource, /projectName \?\? "当前项目"/);
 });
 
 test("search settings supports global and project endpoints", () => {
@@ -24,6 +24,7 @@ test("search settings supports global and project endpoints", () => {
 });
 
 test("search settings renders all five source toggles", () => {
+  assert.match(settingsSource, /import \{ Switch \} from "@\/components\/ui\/switch"/);
   for (const label of ["最终需求", "探索产物", "已采纳测试用例", "接口信息", "公司知识库"]) {
     assert.match(settingsSource, new RegExp(label));
   }

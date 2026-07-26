@@ -1,272 +1,322 @@
 # 00-10 AI测试系统 - 失败诊断与自愈 PRD
 
-## 1. 这份文档解决什么问题
+## 0. 基线与事实源
 
-本文细化自动化执行失败后的诊断、自愈触发、修复建议和人工确认流程。
-
-核心规则：
-
-- 自动化失败后不自动自愈。
-- 用户必须对具体失败功能、失败用例或失败运行手动点击“启用自愈”。
-- 自愈首先判断失败是产品 Bug、测试代码问题、测试数据问题、环境问题、需求不清楚还是未知。
-- 只有明确属于测试代码、定位策略、等待策略或测试数据准备逻辑的问题，才允许生成修复建议。
-- 失败诊断结果不写入项目知识库，也不作为知识库更新来源。
-- 如果失败暴露出需求不清、页面事实不一致或 locator 变化，必须回到需求澄清、探索补充或定位来源更新流程。
-- 第一版不自动应用补丁，不连接 Git，不创建外部缺陷。
+- 基线日期：2026-07-26
+- 事实源：当前工作区源码，以以下文件为准：
+  - 后端自愈服务：`apps/backend/app/services/api_automation/self_healing.py`（`ApiSelfHealingService` 类）
+  - 后端 API 路由：`apps/backend/app/api/v1/api_automation.py`（修复会话、审批、应用、放弃、驳回、回滚端点）
+  - 性能修复服务：`apps/backend/app/services/performance_testing/repair_service.py`（`apply_and_rerun`）
+  - 性能分析 API：`apps/backend/app/api/v1/performance_runs.py`（`/ai-analysis` 与 `/apply-and-rerun`）
+  - 前端：`apps/frontend/src/components/ai-testing/api-automation/api-run-detail.tsx`、`apps/frontend/src/components/ai-testing/performance-testing/performance-analysis-report.tsx`
+  - 数据库：`apps/backend/app/seed/schema.py`（`api_repair_sessions / api_repair_attempts / performance_analysis_sessions`）
+- 状态标签：【已实现】
 
 ---
 
-## 2. 业务边界
+## 1. 适用范围与目标
 
-### 2.1 本模块负责
+### 1.1 系统边界
 
-- 展示失败证据。
-- 由人工触发深入诊断。
-- 分类失败原因。
-- 对测试代码问题生成修复建议。
-- 对产品 Bug 记录内部缺陷结论和证据。
-- 对环境、数据、需求不清楚问题给出下一步动作。
+| 自动化类型 | 失败诊断 | 自愈/修复复测 | 说明 |
+|---|---|---|---|
+| 接口自动化 | ✅ | ✅ | 完整修复会话（repair session）+ 多轮 attempt |
+| 性能测试 | ✅（智能分析） | ✅（修复复测） | 独立 AI 分析会话 + apply_and_rerun |
+| UI 自动化 | ✅（仅展示日志） | ❌ | 无自愈模块，仅展示失败日志/截图/Trace |
 
-### 2.2 本模块不负责
+**关键说明：**
+- 自愈能力**仅覆盖接口自动化**，通过修复会话（repair session）机制实现。
+- 性能测试通过独立的智能分析会话提供诊断，通过 `apply_and_rerun` 实现修复复测。
+- UI 自动化**不接入自愈**，失败时仅展示失败日志、截图、Trace；如需调整，走"重新生成 → 重新执行"流程。
+- 所有自愈与修复复测动作均需**人工触发**（点击"AI 分析与修复"或"应用并重跑"），不自动自愈。
 
-- 不负责自动化测试执行。
-- 不负责直接修改生产系统。
-- 不负责自动提交 Git。
-- 不负责对接 Jira、禅道等缺陷系统。
-- 不负责更新项目知识库。
+### 1.2 本 PRD 覆盖
 
----
+- 接口自动化运行（`api_automation_runs`，`target_type='scripts'`）失败的诊断与脚本级修复全流程。
+- 性能测试运行（`performance_test_runs`）的智能分析 + 修复复测。
+- 相关数据库表、API 路由、前端页面与验收规则。
 
-## 3. 失败分类
+### 1.3 本 PRD 不覆盖
 
-| 分类 | 判断依据 | 允许动作 |
-| --- | --- | --- |
-| 产品 Bug | 页面行为与知识库、需求、断言预期不一致 | 记录内部 Bug 结论，不能自愈通过 |
-| 测试代码问题 | locator 失效、等待条件错误、步骤实现偏离用例 | 生成修复建议 |
-| 测试数据问题 | 前置数据缺失、重复、状态不满足 | 给出数据修复建议 |
-| 环境问题 | 服务不可用、网络错误、登录失败、权限异常 | 标记环境失败，建议重试或检查环境 |
-| 需求不清楚 | 知识库无法判断预期和实际谁正确 | 生成澄清问题，回到需求模块处理 |
-| 未知 | 证据不足 | 保留证据，等待人工判断 |
-
-失败诊断回流规则：
-
-- 产品 Bug 只进入内部 Bug 记录，不进入知识库。
-- 测试代码问题只生成修复建议和自愈补丁，不进入知识库。
-- 测试数据问题和环境问题只保存在运行记录、报告中心和诊断详情中，不进入知识库。
-- 需求不清楚时生成澄清问题，用户确认并写回需求文档新版本后，知识库才可通过正常更新流程读取该新版本。
-- 页面事实或 locator 变化时，必须重新探索或补充探索文档，知识库只读取确认后的探索来源，不读取诊断结论。
+- UI 自动化修复（无实现）。
+- 业务系统代码本身的修改（修复智能体硬约束不得修改业务系统）。
+- 报告中心的"失败聚合 / 内部缺陷"视图（00-13 占位）。
+- 性能测试 AI 分析的详细诊断 Agent 逻辑（详见 00-17）。
 
 ---
 
-## 4. 自愈触发流程
+## 2. 入口与路由概览
 
-```mermaid
-flowchart TD
-    Fail["自动化运行失败"] --> Record["保存失败证据"]
-    Record --> Initial["生成初步分类"]
-    Initial --> Wait["等待人工处理"]
-    Wait --> Enable["人工点击启用自愈"]
-    Enable --> Diagnose["深入诊断"]
-    Diagnose --> Bug["产品 Bug：记录内部结论"]
-    Diagnose --> Code["测试代码问题：生成修复建议"]
-    Diagnose --> Data["数据问题：生成数据建议"]
-    Diagnose --> Env["环境问题：建议重试或检查环境"]
-    Diagnose --> Clarify["需求不清楚：生成澄清问题"]
-    Code --> Review["人工审核补丁"]
-    Review --> Apply["人工确认后应用到本地代码"]
-    Apply --> Verify["本地重新运行验证"]
+### 2.1 接口自动化自愈
+
+- 后端 API 前缀：`/api/v1/projects/{project_id}`
+- 前端入口：`apps/frontend/src/components/ai-testing/api-automation/api-run-detail.tsx` 中的 `ApiRepairDrawer`
+- 客户端封装：`lib/api-client.ts` 中 `createApiRepairSession / getApiRepairSession / createApiRepairAttempt / approveApiRepairAttempt / applyApiRepairAttempt / discardApiRepairAttempt / rejectApiRepairAttempt / getApiRepairAttemptDiff`
+
+### 2.2 性能测试智能分析 + 修复复测
+
+- 后端 API：`/api/v1/projects/{project_id}/performance-analysis/{analysis_id}/apply-and-rerun`
+- 前端入口：`apps/frontend/src/app/(main)/projects/[projectId]/performance-tests/[testId]/runs/[runId]/analysis/[analysisId]/page.tsx`（`PerformanceAnalysisReport` 组件）
+
+---
+
+## 3. 接口自动化自愈全流程
+
+### 3.1 状态机
+
+```
+attempt 级别：
+  queued → collecting_context → diagnosing → { waiting_approval | proposal_ready }
+  waiting_approval → candidate_generating → candidate_validating → ready_to_apply
+  ready_to_apply → { superseded | completed } （apply 后自动 rerunning）
+  proposal_ready → { proposal_rejected | superseded | failed }
+  异常路径：failed
+
+终态终态（终态均无可用动作）：
+  completed / proposal_rejected / rejected / failed / superseded
 ```
 
-关键规则：
+session 级别：`active`（通过 rollback 回 active）；`passed` / `closed` / `failed`。
 
-- 失败记录创建后，系统可以生成初步分类，但不能自动修改代码。
-- “启用自愈”必须记录操作人、操作时间、触发范围。
-- 同一次失败只能有一个当前自愈任务，避免并发修改同一代码。
-- 自愈任务必须可取消。
+### 3.2 触发：人工启用修复会话
 
----
+1. 接口自动化运行处于 `failed` 或 `observed` 状态（`target_type='scripts'`）。
+2. 用户在运行详情页点击"AI 分析与修复"按钮（`ApiRepairDrawer` 打开）。
+3. 后端 `create_repair_session`：
+   - 校验 run 存在且属于该项目；校验 run status 为 `failed` 或 `observed`；校验 target_type 为 `scripts`。
+   - 同一 run 已有活跃 session 时直接返回最近 attempt。
+   - 否则创建 `apirepair-<hex>` session 与 attempt 1。
+   - 立即对 pytest 套件根执行 `create_revision_snapshot(project_id, session_id, 0, suite_path)` 建立基线快照。
+4. 返回 `{session_id, attempt_id, status:'queued'}`；后端 `BackgroundTasks` 调度 `execute_repair_attempt(attempt_id)`。
 
-## 5. 诊断证据
+### 3.3 诊断 attempt（`execute_repair_attempt`）
 
-诊断必须读取：
+1. 状态依次：`queued → collecting_context → diagnosing`。
+2. 用 `build_failure_context` 汇总：API run 序列化、stdout/stderr、JSON 报告 + `observations`、套件目录结构、历史 attempt 列表、用户上下文。
+3. 选取 `api_test_generation` 模型（`resolve_model_selection` + `build_agent_model`，关闭 thinking）。
+4. `diagnose_failure`：输出包含 `summary / issues / proposal`。
+5. `enforce_uncertain_oracle_policy`：当 `generated_cases` 中存在 `oracle_status in {"inferred","needs_confirmation"}` 且实际响应与之冲突时，生成 `test_data_issue` 类型的 proposal（`script_repair_allowed=true`），用于校准用例状态码。
+6. 写入 `attempt_dir/diagnosis.json`；如 `proposal.script_repair_allowed=true` → `waiting_approval`；否则 → `proposal_ready`。
+7. 任何异常：attempt 状态置 `failed`，`error_message` 截断 2000 字符。
 
-- pytest 错误堆栈。
-- Playwright trace。
-- 截图。
-- Allure steps。
-- 失败用例。
-- 关联知识库模块。
-- 关联站点探索 locator。
-- 最近一次代码生成记录。
+### 3.4 提案内容
 
-禁止行为：
+诊断结果 `diagnosis`（`FailureDiagnosis`）包含：
+- `summary`：总览摘要。
+- `issues`：失败问题列表（含 severity / level / title / statement / confidence / missing_evidence 等）。
+- `proposal`：修复提案，含 `script_repair_allowed` 标志、`case_updates` 列表、`target`、`reason`。
 
-- 不能只根据错误文本直接改断言。
-- 不能把产品返回错误文案兼容成通过。
-- 不能跳过失败步骤。
-- 不能删除断言让测试通过。
+候选修复结果 `validation.repair_result`（`RepairResult`）包含：
+- `summary` / `case_updates` / `changed_source_files`。
 
----
+差异：`changes.diff`（unified diff 格式），`changed_files` 列表。
 
-## 6. 修复建议
+### 3.5 审批（`approve_repair_attempt`）
 
-修复建议字段：
+- 仅 `waiting_approval` 可用。
+- 校验 `script_repair_allowed=true`；否则 `409 API_REPAIR_SCRIPT_CHANGE_NOT_ALLOWED`。
+- 通过后 attempt → `candidate_generating`，`decision='proposal_approved'`。
+- `BackgroundTasks` 调度 `execute_candidate_repair(attempt_id)`。
 
-| 字段 | 说明 |
-| --- | --- |
-| 建议编号 | 项目内唯一 |
-| 失败 ID | 关联失败记录 |
-| 诊断分类 | 必须是测试代码问题才可生成代码补丁 |
-| 修改文件 | 本地自动化代码路径 |
-| 修改原因 | 为什么判断为代码问题 |
-| diff | 修改前后差异 |
-| 风险说明 | 可能影响哪些用例 |
-| 验证命令 | 本地 pytest 命令 |
-| 验证结果 | 待验证、通过、失败 |
-| 审核状态 | 待审核、已应用、已拒绝、已废弃 |
+### 3.6 候选修复生成（`execute_candidate_repair`）
 
-允许修复范围：
+1. 在沙盒内创建 `workspace`（`api_automation/repairs/repair-<session>/attempts/attempt-<NNNN>/workspace`）。
+2. 若诊断包含 `case_updates`（多见于 `enforce_uncertain_oracle_policy`）：直接按 `expected_status_code -> actual_status_code` 覆写 `cases.yaml` 的 `status_code` 断言，`oracle_status` 标记为 `confirmed`。
+3. 否则调用 `repair_failure`（deepagent），由 deepagent 重写测试代码/工具/配置并在 `.repair-result.json` 落 `RepairResult`。
+4. `collect_script_suite` 校验语法。
+5. 基于原始环境参数 `run_script_suite` 验证一次（`run_id=repair-validation-<attempt_id>`）。
+6. 对比 `rev-<base_revision>` 快照与沙盒 workspace，写入 `changes.diff`（unified diff）。
+7. 状态变为 `ready_to_apply`，`available_actions=["view_diff","apply","discard"]`；异常则 `failed`。
 
-- locator。
-- 等待条件。
-- 页面对象步骤。
-- 测试数据准备。
-- 清理逻辑。
-- Allure 附件补充。
+### 3.7 应用（`apply_repair_attempt`）
 
-不允许修复范围：
+- 仅 `ready_to_apply` 可用。
+- 校验 `session.current_revision == attempt.base_revision` 且套件文件清单一致；否则 attempt → `superseded`，返回 `409 REPAIR_BASE_CHANGED`。
+- 在 `project_workspace_lock` 内原子替换套件目录 → 落 `rev-<next_revision>` 快照 → 创建 `api_automation_runs`（`parent_run_id=base_run_id`、`source_repair_attempt_id=attempt_id`），状态 `rerunning`。
+- 异常时自动回退到 `backup`。
+- 返回 `{session_id, attempt_id, run_id, status:'rerunning'}`；后端触发重跑。
 
-- 业务预期。
-- 需求规则。
-- 产品代码。
-- 跳过失败用例。
-- 放宽断言。
+### 3.8 放弃 / 驳回
 
----
+- **discard（`discard_repair_attempt`）**：仅 `ready_to_apply` 可用；删除 workspace，状态 → `proposal_ready`（重置后可重新分析），`decision='candidate_discarded'`。
+- **reject（`reject_repair_attempt`）**：不受状态限制；直接置 `proposal_rejected`，`decision='rejected'`。
 
-## 7. 补丁应用、快照和回滚
+### 3.9 重新分析（`create_next_repair_attempt`）
 
-自愈补丁即使经过人工确认，也只能修改系统生成或系统管理的自动化测试代码。应用补丁前必须创建快照，保证可以审计和回滚。
+- 仅 session `active` 时可用；上一个 attempt 状态必须为 `proposal_ready`。
+- 创建 `attempt_number+1` 的新 attempt（`base_run_id=session.current_run_id`、`base_revision=session.current_revision`），并 `execute_repair_attempt`。
 
-### 7.1 应用前快照
+### 3.10 回滚（`rollback_repair_session`）
 
-应用补丁前必须保存：
-
-| 字段 | 说明 |
-| --- | --- |
-| 补丁 ID | 对应 SelfHealingRecord |
-| 修改文件路径 | 所有将被修改的本地自动化代码文件 |
-| 原文件 hash | 应用前文件内容 hash |
-| 原文件快照路径 | 应用前完整文件备份路径 |
-| patch 内容 | 结构化 diff 或 unified diff |
-| patch_base_file_hash | 补丁生成时基于的文件 hash |
-| 应用人 | 人工确认应用的用户 |
-| 应用时间 | 系统记录 |
-| 验证命令 | 应用后要执行的 pytest 命令 |
-
-### 7.2 应用前校验
-
-| 校验项 | 失败时处理 |
-| --- | --- |
-| 当前文件 hash 与 patch_base_file_hash 一致 | 阻止应用，提示代码已变化，需要重新生成补丁 |
-| 修改路径位于允许写目录和自动化代码目录内 | 阻止应用，记录越权路径 |
-| patch 不修改业务预期、需求规则、产品代码、跳过用例或放宽断言 | 阻止应用，标记高风险补丁 |
-| 同一失败没有其他运行中的自愈任务 | 阻止应用，提示并发冲突 |
-| 已成功创建原文件快照 | 阻止应用，不能在无快照情况下修改文件 |
-
-### 7.3 回滚规则
-
-- 验证失败不会自动回滚；系统必须提示用户选择保留补丁、回滚或重新生成补丁。
-- 用户点击回滚时，系统使用应用前快照恢复文件，并再次计算 hash。
-- 回滚必须记录回滚人、回滚时间、回滚原因、恢复文件和恢复结果。
-- 如果回滚失败，SelfHealingRecord 状态必须标记为“回滚失败”或“人工介入”，并保留当前文件和快照路径。
-- 已回滚补丁不能再次应用，只能基于当前文件重新生成新补丁版本。
+- 校验 session `active` 与目标 revision 存在。
+- 拷贝 `rev-<revision>` → 原子替换 `suite_path` → 落新快照 → 创建 `api_automation_runs`（`command_summary` 含 `回退到 Revision <rev>: <reason>`），session 保持 `active`。
+- 任意失败自动回退到 `backup`。
 
 ---
 
-## 8. 产品 Bug 内部记录
+## 4. 性能测试修复复测
 
-第一版不对接缺陷管理系统，但系统内部需要记录产品 Bug 诊断结论。
+### 4.1 入口
 
-记录字段：
+性能测试运行详情 → AI 分析 → 智能分析报告页面（`runs/{runId}/analysis/{analysisId}`）→ `PerformanceAnalysisReport` 组件。
 
-- Bug 编号。
-- 项目。
-- 关联运行。
-- 关联用例。
-- 关联知识库来源。
-- 实际结果。
-- 预期结果。
-- 证据附件。
-- 影响范围。
-- 状态：待确认、已确认、非 Bug、已关闭。
+### 4.2 分析会话状态机
 
----
+分析会话状态（`performance_analysis_sessions.status`）：`collecting → analyzing → { waiting_approval | failed | rejected }`
 
-## 9. 页面设计
+`repair_status`（派生字段）：
+- `not_applicable` / `available` / `rejected` / `preflighting` / `rerunning`
 
-### 9.1 失败列表
+`application_status`：
+- `not_requested` → `preflighting` → `preflight_failed` / `rerunning` → `completed` / `apply_failed`
 
-展示：
+### 4.3 修复复测流程（`apply_and_rerun`）
 
-- 运行 ID、用例、失败摘要、初步分类、是否启用自愈、处理状态。
-- 筛选：项目、模块、分类、处理状态、时间。
+1. 分析状态为 `waiting_approval` 且 `repair_status='available'` 时可用。
+2. 用户在分析报告中选择修复建议（change_ids），点击"应用并重跑"。
+3. 后端 `apply_and_rerun`：
+   - 校验 `application_status` 为 `not_requested | preflight_failed | apply_failed`。
+   - 校验选中的 change 均在安全白名单中（`is_supported_change`），排除 `target_type='platform_code'`。
+   - 构建候选配置（`_candidate_configuration`），合并 `before -> after` 变更；校验基线未变化。
+   - 执行预检（`_send_preflight`）：单次 HTTP 请求验证配置有效性（status_code + jsonpath 断言）。
+   - **预检通过**：更新 `performance_tests` 配置 → 创建新 script（`generation_source='ai_plan'`）→ 确认 script → 调度 `headless_worker.create_run_session` + `start_headless_run` → `application_status='rerunning'` → `completed`。
+   - **预检失败**：`application_status='preflight_failed'`，配置未修改，未启动压测。
+   - **重跑启动失败**：`application_status='apply_failed'`，配置已修改但压测未启动。
 
-### 9.2 失败详情
+### 4.4 支持的修复变更目标
 
-展示：
+白名单（`ALLOWED_TARGETS`）：
+- `request_config.path_parameters / query_parameters / headers / body / random_seed`
+- `load_config.request_timeout_seconds / wait_time_min_seconds / wait_time_max_seconds`
+- `data_config / data_config.json_rows`
+- `success_rules`
 
-- 错误堆栈摘要。
-- Allure 跳转。
-- 截图和 trace 路径。
-- 关联用例和知识库。
-- 操作：启用自愈、标记产品 Bug、标记环境问题、生成澄清问题。
-
-### 9.3 自愈任务详情
-
-展示：
-
-- 诊断过程。
-- 分类结论。
-- 修复建议。
-- diff。
-- 应用前快照和文件 hash。
-- 验证命令和结果。
-- 操作：应用补丁、拒绝、重新诊断、回滚补丁。
+不支持：`target_type='platform_code'`（平台源码修改）。
 
 ---
 
-## 10. SQLite 存储策略
+## 5. UI 自动化失败处理
 
-SQLite 保存：
+### 5.1 失败展示
 
-- 失败记录。
-- 诊断任务。
-- 诊断证据索引。
-- 自愈任务。
-- 修复建议和审核状态。
-- 补丁应用记录、文件 hash、快照索引和回滚记录。
-- 内部 Bug 记录。
+- 入口：`ui_automation_run_detail` 页面。
+- 展示内容：失败日志（stdout/stderr）、截图（screenshot_paths）、Trace（trace_path）。
+- **无修复会话按钮、无 patch、无 apply / rollback 机制**。
 
-文件系统保存：
+### 5.2 调整流程
 
-- trace、截图、video。
-- pytest 日志。
-- diff 文件。
-- 应用前文件快照。
-- 验证运行日志。
+如需调整 UI 自动化脚本：重新生成（`ui_automation_generation_runs`）→ 重新执行（`ui_automation_execution_runs`）。
 
 ---
 
-## 11. 验收标准
+## 6. 审计与数据模型
 
-- 自动化失败后不会自动修改代码。
-- 用户能对具体失败手动启用自愈。
-- 自愈前必须给出失败分类和证据。
-- 产品 Bug 不能通过自愈改成通过。
-- 测试代码问题能生成可审核 diff。
-- 应用补丁前必须人工确认。
-- 应用补丁前必须保存原文件 hash 和快照。
-- 当前文件 hash 与补丁基线不一致时必须阻止应用。
-- 用户能对已应用补丁执行回滚，且回滚记录可追溯。
-- 第一版不要求 Git 提交和外部缺陷系统对接。
+### 6.1 接口自动化自愈审计
+
+| 数据库表 | 说明 |
+|---|---|
+| `api_repair_sessions` | 修复会话：id / project_id / source_run_id / current_run_id / current_revision / status / created_by |
+| `api_repair_attempts` | 修复轮次：id / session_id / attempt_number / base_run_id / base_revision / status / diagnosis_json / validation_json / decision / applied_run_id / error_message |
+| `api_test_case_versions` | 用例版本快照：id / case_id / version / snapshot_json / change_source='ai_repair' |
+| `api_endpoint_oracle_facts` | 端点 Oracle 事实（approve 后沉淀） |
+| `api_oracle_proposals` | Oracle 提案（approve / reject） |
+| `api_automation_runs` | 运行记录：parent_run_id / source_repair_attempt_id（溯源） |
+
+产物存储（`storage.PROJECT_FILE_STORAGE_ROOT/<project_id>/api_automation/repairs/repair-<session>/`）：
+- `revisions/rev-<NNNN>/`：套件快照。
+- `attempts/attempt-<NNNN>/workspace/`：沙盒。
+- `attempts/attempt-<NNNN>/diagnosis.json`。
+- `attempts/attempt-<NNNN>/validation/{stdout,stderr,report.json}`。
+- `attempts/attempt-<NNNN>/changes.diff`。
+
+### 6.2 性能测试修复复测审计
+
+| 数据库表 | 说明 |
+|---|---|
+| `performance_analysis_sessions` | 分析会话：id / run_id / status / repair_status / application_status / preflight / applied_script_id / applied_run_id / applied_by / applied_at |
+
+---
+
+## 7. API 路由清单
+
+### 7.1 接口自动化自愈（`/api/v1/projects/{project_id}`）
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| POST | `/api-runs/{run_id}/repair-session` | 创建修复会话（admin） |
+| GET | `/api-repair-sessions/{session_id}` | 会话详情（含 attempts） |
+| POST | `/api-repair-sessions/{session_id}/attempts` | 新增一轮 attempt（admin） |
+| GET | `/api-repair-attempts/{attempt_id}` | attempt 详情 |
+| GET | `/api-repair-attempts/{attempt_id}/diff` | unified diff |
+| GET | `/api-repair-attempts/{attempt_id}/logs` | 验证日志 stdout/stderr |
+| GET | `/api-repair-attempts/{attempt_id}/report` | validation/report.json |
+| POST | `/api-repair-attempts/{attempt_id}/approve` | 审批 proposal（admin） |
+| POST | `/api-repair-attempts/{attempt_id}/apply` | 应用候选修复（admin） |
+| POST | `/api-repair-attempts/{attempt_id}/discard` | 丢弃候选（admin） |
+| POST | `/api-repair-attempts/{attempt_id}/reject` | 驳回（admin） |
+| POST | `/api-repair-sessions/{session_id}/rollback` | 回滚到指定 revision（admin） |
+
+### 7.2 性能测试智能分析（`/api/v1/projects/{project_id}`）
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| POST | `/performance-tests/{test_id}/runs/{run_id}/ai-analysis` | 创建智能分析 |
+| GET | `/performance-tests/{test_id}/runs/{run_id}/ai-analysis` | 获取分析列表 |
+| POST | `/performance-analysis/{analysis_id}/reject` | 拒绝分析 |
+| POST | `/performance-analysis/{analysis_id}/apply-and-rerun` | 应用修复并重跑 |
+
+### 7.3 错误码
+
+自愈：`API_RUN_NOT_FOUND` / `API_REPAIR_RUN_NOT_FAILED` / `API_REPAIR_TARGET_UNSUPPORTED` / `API_REPAIR_SESSION_NOT_FOUND` / `API_REPAIR_SESSION_NOT_ACTIVE` / `API_REPAIR_ATTEMPT_NOT_FOUND` / `API_REPAIR_ATTEMPT_NOT_APPROVABLE` / `API_REPAIR_SCRIPT_CHANGE_NOT_ALLOWED` / `API_REPAIR_ATTEMPT_NOT_APPLICABLE` / `API_REPAIR_WORKSPACE_NOT_FOUND` / `API_REPAIR_COLLECTION_FAILED` / `API_REPAIR_REVISION_NOT_FOUND` / `API_REPAIR_ARTIFACT_NOT_FOUND` / `REPAIR_BASE_CHANGED`。
+
+性能修复：`PERFORMANCE_REPAIR_CHANGES_REQUIRED` / `PERFORMANCE_ANALYSIS_NOT_FOUND` / `PERFORMANCE_REPAIR_NOT_APPROVABLE` / `PERFORMANCE_REPAIR_ALREADY_APPLIED` / `PERFORMANCE_REPAIR_CHANGE_UNSUPPORTED` / `PERFORMANCE_RUN_NOT_FOUND` / `PERFORMANCE_TEST_NOT_FOUND` / `PERFORMANCE_REPAIR_SCRIPT_INVALID` / `PERFORMANCE_REPAIR_STATE_CHANGED` / `PERFORMANCE_REPAIR_BASELINE_CHANGED` / `PERFORMANCE_REPAIR_RERUN_FAILED`。
+
+---
+
+## 8. 前端页面清单
+
+| 页面 | 路径 | 功能 |
+|---|---|---|
+| 接口自动化运行详情 | `/projects/{projectId}/automation/api/runs/{runId}` | 展示运行结果；失败时显示"AI 分析与修复"按钮 |
+| 接口自动化修复抽屉 | `ApiRepairDrawer` 组件 | 修复会话状态、attempt 时间线、diff 对话框 |
+| 性能测试智能分析报告 | `/projects/{projectId}/performance-tests/{testId}/runs/{runId}/analysis/{analysisId}` | 展示分析报告；`apply_and_rerun` 按钮 |
+| 性能测试运行详情 | `/projects/{projectId}/performance-tests/{testId}/runs/{runId}` | 展示运行结果；进入 AI 分析入口 |
+
+---
+
+## 9. 验收规则
+
+### 9.1 接口自动化自愈
+
+- 失败 run 发起会话返回 `{session_id, attempt_id, status:'queued'}`；同 run 重复请求复用已有 session。
+- 诊断结果 `diagnosis` 字段符合 `FailureDiagnosis`；`proposal.script_repair_allowed=false` 时 attempt 落在 `proposal_ready`。
+- `approve → candidate_generating → candidate_validating → ready_to_apply` 计时日志可在 `validation.logs` 中看到验证 stdout/stderr。
+- `apply` 成功后新 run id 写入 `attempt.applied_run_id`，session.current_revision 自增，套件目录被替换为 attempt workspace 内容。
+- `apply` 期间发生异常会自动恢复原套件，attempt 状态置 `failed`。
+- `discard` 仅作用于 `ready_to_apply`；`reject` 写入 `decision='rejected'`、状态 `proposal_rejected`，不删除 workspace。
+- `rollback` 自动触发新 run（`command_summary` 含 `回退到 Revision <rev>: <reason>`），session 保持 `active`。
+- 修复产物（diagnosis / validation / diff / logs）按 attempt 目录隔离，跨项目不可访问。
+- UI 自动化运行详情页**不**展示修复抽屉或修复按钮。
+
+### 9.2 性能测试修复复测
+
+- 分析状态为 `waiting_approval` 且 `repair_status='available'` 时才显示"应用并重跑"按钮。
+- 选中的 change 必须在安全白名单内；`target_type='platform_code'` 的 change 不可选。
+- 预检通过：`application_status='completed'`，配置已更新，新 script 已创建，新压测运行已启动。
+- 预检失败：`application_status='preflight_failed'`，配置未变化，未启动压测。
+- 重新压测完成后，`applied_run_id` 写入分析会话，可在分析报告中查看修复后的运行结果。
+
+---
+
+## 10. 实现依据
+
+- **后端自愈服务**：`apps/backend/app/services/api_automation/self_healing.py`
+- **后端性能修复服务**：`apps/backend/app/services/performance_testing/repair_service.py`
+- **路由**：`apps/backend/app/api/v1/api_automation.py`（自愈 11 个端点）、`apps/backend/app/api/v1/performance_runs.py`（分析 + 修复复测端点）
+- **数据库**：`apps/backend/app/seed/schema.py`（`api_repair_sessions / api_repair_attempts / performance_analysis_sessions / api_test_case_versions / api_endpoint_oracle_facts / api_oracle_proposals`）
+- **前端**：
+  - `apps/frontend/src/components/ai-testing/api-automation/api-run-detail.tsx`
+  - `apps/frontend/src/components/ai-testing/api-automation/api-repair-drawer.tsx`
+  - `apps/frontend/src/app/(main)/projects/[projectId]/performance-tests/[testId]/runs/[runId]/analysis/[analysisId]/page.tsx`
+  - `apps/frontend/src/components/ai-testing/performance-testing/performance-analysis-report.tsx`
+- **客户端封装**：`apps/frontend/src/lib/api-client.ts`（修复 API + 性能分析 API）

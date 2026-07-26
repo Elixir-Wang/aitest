@@ -490,7 +490,11 @@ def test_analysis_service_creates_executes_and_lists_structured_analysis(
     assert completed["status"] == "waiting_approval"
     assert completed["category"] == "performance_config"
     assert completed["proposal"]["readonly"] is False
-    assert completed["available_actions"] == ["reject", "reanalyze"]
+    assert completed["analysis_status"] == "completed"
+    assert completed["repair_status"] == "not_applicable"
+    assert completed["available_actions"] == ["reanalyze"]
+    assert completed["metric_snapshot"]["verdict"] == "indeterminate"
+    assert completed["report_snapshot"]["verdict"] == "indeterminate"
     assert history[0]["id"] == created["id"]
 
 
@@ -506,6 +510,32 @@ def test_analysis_service_rejects_active_run(monkeypatch: pytest.MonkeyPatch, tm
         analysis_service.create_analysis("project-1", "perfrun-1", {"id": "u-admin", "role": "admin", "project_scope": "全部项目"})
 
     assert exc_info.value.detail["code"] == "PERFORMANCE_ANALYSIS_RUN_ACTIVE"
+
+
+def test_terminal_run_schedules_analysis_in_background(monkeypatch: pytest.MonkeyPatch) -> None:
+    started: dict[str, object] = {}
+
+    class FakeThread:
+        def __init__(self, *, target, args, name, daemon):
+            started.update({"target": target, "args": args, "name": name, "daemon": daemon})
+
+        def start(self) -> None:
+            started["started"] = True
+
+    monkeypatch.setattr(
+        analysis_service,
+        "create_analysis",
+        lambda project_id, run_id, actor: {"id": "perfanalysis-auto"},
+    )
+    monkeypatch.setattr(analysis_service.threading, "Thread", FakeThread)
+
+    analysis_id = analysis_service.schedule_automatic_analysis("project-1", "perfrun-1", "u-admin")
+
+    assert analysis_id == "perfanalysis-auto"
+    assert started["target"] is analysis_service.execute_analysis
+    assert started["args"] == ("perfanalysis-auto",)
+    assert started["daemon"] is True
+    assert started["started"] is True
 
 
 def test_analysis_service_exposes_actionable_rate_limit_error(

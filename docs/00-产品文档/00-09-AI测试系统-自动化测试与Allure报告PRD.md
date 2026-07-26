@@ -1,315 +1,403 @@
-# 00-09 AI测试系统 - UI 自动化测试与 Allure 报告 PRD
+# 00-09 AI 测试系统 - UI 自动化测试 PRD
 
-## 1. 这份文档解决什么问题
-
-本文细化第一期 UI 自动化测试代码生成、本地执行、Allure 报告归档和报告跳转。
-
-核心规则：
-
-- 第一版自动化只支持本地运行。
-- 第一版只做 UI 自动化，技术栈为 pytest + Playwright + Allure。
-- 接口自动化后续预留，技术栈为 pytest + requests + Allure；第一期只在导航中展示 Soon，不可选择、不可创建、不可执行。
-- 自动化代码基于已采纳测试用例生成。
-- UI 自动化生成支持两种入口：单条用例详情页点击“UI 自动化”，或在用例列表批量选择后批量生成。
-- UI 自动化生成可以自动触发探索定位补充，但不能绕过 locator 准入，也不能凭空编造 locator。
-- 批量 UI 自动化生成时，单条用例 locator 自动补齐失败不阻塞整个批次；系统继续处理其他可生成用例，最后汇总失败用例和缺失定位给人工处理。
-- 报告执行详情使用 Allure。
-- 系统自建报告中心只做业务视角汇总、运行记录、跳转和诊断入口，不重复实现 Allure 的步骤、截图、trace 展示能力。
-- 第一版不连接 Git 仓库管理生成代码。
-- 自动化代码是系统内可查看、可执行的产物，不提供 zip 下载，也不作为用户二次开发代码包外发。
+> **文件名历史说明**：文件名"自动化测试与 Allure 报告"为历史遗留。**本系统 UI 自动化不接入 Allure**，`pyproject.toml` 无 Allure 依赖；执行报告为 pytest 原生日志、Playwright trace、截图、视频（详见第 7 章）。
 
 ---
 
-## 2. 业务边界
+## 0. 事实源
 
-### 2.1 本模块负责
+- **基线日期**：2026-07-26
+- **唯一事实源**：工作区源码（含未提交代码）。不再参考旧 PRD 内容或口头描述。
 
-- 从已采纳测试用例生成 pytest + Playwright UI 自动化代码。
-- 生成页面对象、测试数据、断言、Allure 标注和运行配置。
-- 在本地 Runner 执行自动化测试。
-- 归档 Allure 原始结果和静态报告路径。
-- 将运行结果回写到测试用例、项目、控制台和失败诊断。
-- 跟踪每条用例的 UI 自动化生成进度、执行进度和结果状态。
-
-### 2.2 本模块不负责
-
-- 不负责需求分析。
-- 不负责生成知识库。
-- 不负责外部 CI/CD 调度。
-- 不负责 Git 提交、分支、PR。
-- 不负责外部缺陷系统对接。
-- 不负责接口自动化用例生成、pytest + requests 代码生成和接口自动化执行。
-
----
-
-## 3. 自动化类型边界
-
-| 类型 | 第一期状态 | 技术栈 | 导航状态 | 说明 |
-| --- | --- | --- | --- | --- |
-| UI 自动化 | 可用 | pytest + Playwright + Allure | 可选择 | 生成、查看、执行、报告、失败诊断、自愈 |
-| 接口自动化 | Soon | pytest + requests + Allure | 展示但不可选择 | 只预留入口、路由和数据模型扩展点 |
-
-接口自动化预留要求：
-
-- 项目导航中必须与 UI 自动化区分展示。
-- 接口自动化菜单显示 `Soon` 标识。
-- 点击接口自动化时，不进入编辑或执行页面，只展示“接口自动化暂未开放，后续支持 pytest + requests + Allure”。
-- 后端接口如果收到 `automation_type = api` 的创建、生成或执行请求，第一期必须返回明确的未开放错误，而不是静默创建。
-- UI 自动化代码目录由系统管理，支持页面内查看、覆盖生成和本地执行，不支持下载 zip。
-
----
-
-## 4. UI 自动化生成输入
-
-| 输入 | 说明 |
+| 事实维度 | 源码路径 |
 | --- | --- |
-| 已采纳测试用例 | 自动化生成的主输入 |
-| 项目知识库 | 提供业务规则、页面事实、状态流转 |
-| 站点探索文档 | 提供页面结构、业务路径、字段、按钮、弹窗、状态流转和真实操作路径 |
-| 元素定位信息 | 提供关键元素 locator、备用 locator、稳定性说明、页面截图、trace、页面快照、可访问名称和来源引用 |
-| 项目环境配置 | URL、登录方式、账号说明、storage state |
-| 模型配置 | 测试代码生成使用 coding 能力强的模型 |
-
-前置限制：
-
-- 用例未采纳时不能生成正式自动化代码。
-- Playwright UI 自动化代码生成时必须优先复用探索文档和元素定位信息，以减少代码生成阶段重复探索页面和因元素不足导致的生成失败。
-- 生成任务必须先完成 locator 准入检查；关键操作路径、断言目标和页面元素 locator 满足准入后，才允许生成正式可执行代码。
-- 缺少 locator 时，系统应自动创建定向探索定位补充任务，由探索 Agent 针对缺失页面、步骤和元素补充定位来源。
-- 自动探索成功后，必须将 locator、页面快照、截图、trace、操作路径或可访问名称等证据写回探索结果，并记录来源引用。
-- 自动探索完成后，系统必须重新执行 locator 准入检查；通过后继续生成 UI 自动化代码。
-- 单条用例自动探索失败时，该用例进入等待人工处理状态，展示失败原因和建议动作，例如等待登录、验证码、权限处理、页面不可达、元素歧义确认或禁止路径确认。
-- 批量生成场景下，失败用例不应中断批次；任务继续处理其他已采纳且通过 locator 准入的用例，并在任务结束时输出失败用例清单、缺失 locator、失败原因、候选元素、来源证据和建议动作。
-- 含待确认业务规则的用例生成代码前必须提示风险。
-- 生成任务必须先完成用例评审通过检查，再允许创建 UI 自动化生成任务。
-
-locator 准入规则：
-
-- 页面入口、前置操作、关键输入控件、提交/确认按钮、结果断言目标必须存在稳定 locator 或可替代定位策略。
-- 推荐优先级为 role/name、label、placeholder、test id、稳定文本、稳定 CSS 属性；不得优先使用易变化的绝对 XPath 或纯 nth-child。
-- 每个自动生成 locator 必须能追溯到探索任务、探索页面、操作记录、截图、trace 或页面快照。
-- 对于非关键辅助元素 locator 缺失，可以生成自动化草稿，但必须标记“需人工复核”，不能进入可执行基线。
-- 如果关键 locator 缺失且自动探索无法补齐，不得生成可执行自动化代码。
-
-自动探索定位流程：
-
-```mermaid
-flowchart TD
-    Start["点击生成 UI 自动化"] --> ReviewCheck["检查用例是否已采纳"]
-    ReviewCheck --> LocatorCheck["locator 准入检查"]
-    LocatorCheck -->|完整| Generate["生成 UI 自动化代码"]
-    LocatorCheck -->|缺失| Explore["自动创建定向探索定位任务"]
-    Explore --> WriteBack["写回 locator 来源和探索证据"]
-    WriteBack --> Recheck["重新执行 locator 准入检查"]
-    Recheck -->|通过| Generate
-    Recheck -->|仍缺失| MarkFail["标记该用例等待人工"]
-    MarkFail --> Continue["继续处理批次内其他用例"]
-    Continue --> Summary["任务结束汇总失败项"]
-```
+| 前端列表页 | `apps/frontend/src/app/(main)/automation/ui/page.tsx` |
+| 前端资产详情页 | `apps/frontend/src/app/(main)/projects/[projectId]/automation/ui/assets/[assetId]/page.tsx` |
+| 前端运行详情页 | `apps/frontend/src/app/(main)/projects/[projectId]/automation/ui/assets/[assetId]/runs/[runId]/page.tsx` |
+| 前端组件 | `apps/frontend/src/components/ai-testing/ui-automation/ui-automation-asset-detail.tsx`、`ui-automation-run-detail.tsx` |
+| 前端 API 客户端 | `apps/frontend/src/lib/api-client.ts:1904–1967`（`UiAutomation*` 函数） |
+| 后端 API | `apps/backend/app/api/v1/ui_automation.py` |
+| 后端服务 | `apps/backend/app/services/ui_automation/service.py` |
+| 后端 Agent | `apps/backend/app/agents/ui_automation/pytest_playwright/agent.py` |
+| 数据库 Schema | `apps/backend/app/seed/schema.py:1356–1431` |
+| CHECK 约束 | `schema.py:1377`（`test_case_id XOR manual_test_case_id`）及 `schema.py:1401`（同上） |
 
 ---
 
-## 5. UI 自动化代码产物
+## 1. 范围与目标
 
-建议目录结构：
+### 1.1 范围
 
-```text
-automation/
-  projects/
-    <project_key>/
-      ui/
-        tests/
-          test_login.py
-        pages/
-          login_page.py
-        data/
-          login_data.py
-        conftest.py
-        pytest.ini
-        README.md
-      api/
-        README.md  # Soon，占位说明，不生成可执行代码
-```
+本模块定义 **UI 自动化**（pytest + Playwright）的完整生命周期：
 
-代码要求：
+- **生成**：基于已采纳测试用例（`test_cases.status='approved'`）或手工用例（`manual_test_cases`），结合项目站点探索证据，生成可执行的 pytest 资产。
+- **资产**：pytest 套件目录，包含测试文件、页面对象文件、数据文件、计划文件。
+- **执行**：在选定的项目运行环境中执行 pytest，用 Playwright 进行浏览器自动化。
+- **监控**：实时浏览器画面（MJPEG live-view）、浏览器录像回放。
+- **报告**：pytest 原生日志、Playwright trace、失败截图、录屏视频；**不接入 Allure**。
+- **清理**：批量删除已完成运行及其关联的日志、截图、录像、trace。
 
-- 使用 pytest。
-- 使用 Playwright。
-- 使用 Page Object 或等价分层方式，避免所有逻辑堆在测试函数中。
-- Allure 必须标注 feature、story、title、step。
-- 失败时附加截图、trace 路径、预期和实际。
-- 不把业务 Bug 兼容进断言。
-- 不生成依赖远程 Git 的代码路径。
-- 第一版不得生成 requests 接口自动化代码。
-- 不提供代码 zip 下载或导出为二次开发包的能力。
+### 1.2 目标
+
+- 用例（已采纳或手工）→ 一键生成可执行 UI 自动化资产。
+- 资产有版本（`source_version`），但同一来源用例重复生成时 upsert，不维护历史版本。
+- 失败有证据（截图、trace、录像），无自动修复/自愈子系统。
+- 运行可实时监控，执行完成后可回放录像、下载证据。
+
+### 1.3 本模块不负责
+
+- 接口自动化测试（00-16）。
+- Allure 报告生成与展示（**未接入**）。
+- UI 自动化自愈/自动修复（00-10 范围外）。
+- 元素 locator 运行时自学习、外部 patch 应用。
+- 跨项目自动化执行、独立 CI/CD 调度。
 
 ---
 
-## 6. UI 自动化本地执行
+## 2. UI 自动化生成
 
-执行流程：
+### 2.1 来源用例约束
 
-```mermaid
-flowchart LR
-    Pick["选择已采纳用例"] --> Create["创建 UI 自动化生成任务"]
-    Create --> Gate["locator 准入检查"]
-    Gate --> Explore["缺失时自动探索定位"]
-    Explore --> Gate
-    Gate --> Progress["逐条生成并显示进度"]
-    Progress --> Code["生成代码与页面对象"]
-    Code --> Run["本地执行 pytest + Playwright"]
-    Run --> AllureRaw["生成 UI 自动化 Allure results"]
-    AllureRaw --> AllureReport["生成 Allure 静态报告"]
-    AllureReport --> Diagnose["失败进入诊断入口"]
-    Diagnose --> Done["执行通过或确认产品 Bug 后任务完成"]
-```
+每条生成任务必须关联 **且仅关联** 以下来源之一：
 
-运行参数：
-
-| 参数 | 说明 |
-| --- | --- |
-| 项目 | 运行所属项目 |
-| 套件 | 选择用例集合 |
-| 环境 | 本地、测试、预发等文本配置 |
-| 浏览器 | chromium、firefox、webkit，第一版默认 chromium |
-| headed | 是否有头运行 |
-| 重试次数 | pytest 重试策略，第一版可选 |
-| Allure 输出目录 | 系统生成并归档 |
-
----
-
-## 7. Allure 打开方式
-
-Allure 报告打开方式参考 Jenkins 集成 Allure 的体验：
-
-- pytest 执行完成后生成 Allure results。
-- 系统调用 Allure CLI 生成静态 Allure report。
-- 报告中心保存 Allure results 路径、Allure report 路径和可访问入口。
-- 用户在系统中点击 Allure 报告入口后，打开对应静态报告页面。
-- 第一版不在系统页面内重写 Allure 的步骤、附件、趋势和详情展示。
-- 如果报告未生成，提示用户重新生成报告。
-- 如果报告路径不可访问，提示检查本地 Runner、Allure CLI 和报告目录配置。
-
----
-
-## 8. Allure 与系统报告中心关系
-
-| 能力 | Allure | 系统报告中心 |
+| 来源 | 字段 | 准入条件 |
 | --- | --- | --- |
-| 步骤详情 | 是 | 跳转 Allure |
-| 截图/trace 附件 | 是 | 保存路径并跳转 |
-| 用例执行趋势 | 可选 | 是 |
-| 项目维度汇总 | 不作为主入口 | 是 |
-| 失败诊断入口 | 否 | 是 |
-| 与知识库/用例映射 | 否 | 是 |
+| 已采纳测试用例 | `test_case_id` | `test_cases.status = 'approved'` |
+| 手工测试用例 | `manual_test_case_id` | 任意（无需评审） |
 
-设计结论：
+数据库层通过 `CHECK ((test_case_id IS NOT NULL) != (manual_test_case_id IS NOT NULL))` 强制互斥（`schema.py:1377`）。
 
-- 第一版不自研完整自动化报告页面。
-- Allure 负责 UI 自动化执行细节。接口自动化后续也复用 Allure，但第一期不生成接口自动化报告。
-- 系统负责“项目、用例、知识库、失败诊断”之间的业务关联。
+### 2.2 生成流程
 
----
+1. **任务创建**：调用 `POST /projects/{project_id}/ui-automation/generation-runs`，传入 `test_case_id`（统一字段，实际传 `test_case_id` 或 `manual_test_case_id`），返回 `uigen-<hex>` ID，状态为 `queued`。
+2. **探索证据解析**：后端 `service.schedule_generation_run` 用后台线程执行 `_execute_generation_run_in_workspace`：
+   - 若请求带 `exploration_run_id` 且匹配同项目+环境，则使用指定探索任务；
+   - 否则按项目+环境匹配一个具有非空 `evidence["artifacts"]` 的探索任务；
+   - 都没有则记录空探索 ID，生成任务直接进入 `waiting_manual`，不创建资产。
+3. **文件写入**：写入 `testcases/<project_key>/cases/<id>.yaml`（用例数据），由 AI Agent 生成 `plan.json` + `test_*.py` + 页面对象文件。
+4. **资产校验**：用 `collect_suite` 沙盒运行 `pytest --collect`，语法/导入错误会回滚到生成前快照，run 状态写为 `failed`。
+5. **资产创建**：校验通过后 `upsert_asset` 写入 `ui_automation_assets`（状态 `ready`）。
+6. **错误处理**：任何异常均回滚目标文件，生成 run 状态写 `failed`，`error_message` 记录原因。
 
-## 9. 失败记录
+### 2.3 重新生成
 
-每个失败用例必须记录：
-
-- 运行 ID。
-- 用例 ID。
-- 自动化脚本路径。
-- 错误类型。
-- 错误堆栈摘要。
-- 截图路径。
-- trace 路径。
-- Allure 报告 URL 或本地路径。
-- 初步分类：产品 Bug、代码问题、数据问题、环境问题、需求不清楚、未知。
-- 是否已启用自愈。
-
-失败后不自动改代码。用户在失败详情中点击“启用自愈”后，才进入失败诊断与自愈模块。
+资产详情页"重新生成"按当前资产的来源用例、最近一次生成环境、最近一次探索 ID 重新发起生成任务。同来源用例的第二次生成会 upsert 现有资产，旧资产被替换。
 
 ---
 
-## 10. 页面设计
+## 3. UI 自动化资产
 
-### 10.1 自动化导航
+### 3.1 资产结构
 
-项目内“自动化”下分两个入口：
+每个资产对应一个项目独立套件目录（`data/projects/<project_id>/ui_automation/<asset_id>/`），包含：
 
-| 入口 | 路由 | 状态 | 行为 |
+| 文件类型 | 路径（相对套件根） | 说明 |
+| --- | --- | --- |
+| pytest 测试文件 | `suite/test_<sanitized_id>.py` | 生成的 Playwright 测试用例 |
+| 页面对象文件 | `suite/pages/` | 页面对象类（pytest-playwright 规范） |
+| 数据文件 | `suite/data/<asset_id>.yaml` | 用例数据 |
+| 计划文件 | `suite/plan.json` | 资产元数据、locator 摘要、`pytest_node_id` |
+
+### 3.2 资产字段
+
+| 字段 | 说明 |
+| --- | --- |
+| `id` | `uiasset-<hex>` |
+| `project_id` | 所属项目 |
+| `test_case_id` / `manual_test_case_id` | 二选一，与生成 run 一致的 CHECK 约束（`schema.py:1401`） |
+| `source_version` | 当前实现固定为 1 |
+| `generation_run_id` | 关联的成功生成任务 |
+| `status` | `ready`（生成成功） / `creating`（生成中）/ `failed`（生成失败） |
+| `pytest_node_id` | 形如 `test_file.py::test_<sanitized_id>`，定位单个用例 |
+| `suite_path` / `test_file_path` / `data_file_path` / `plan_file_path` | 相对套件根目录的路径 |
+| `source_hash` | 内容 hash（变更检测用） |
+| `latest_generation_run` / `latest_execution_run` | 最近一次生成/执行记录（API 附带） |
+| `locator_summary` | `{required, available, missing: string[]}`（当前 `available == required`，缺失不可枚举） |
+
+### 3.3 资产列表页
+
+`/automation/ui` 聚合所有项目的资产与进行中的生成任务，支持按测试用例名称、操作用例、文件路径搜索。
+
+---
+
+## 4. UI 自动化执行
+
+### 4.1 执行入口
+
+从资产详情页或执行记录列表点击"执行测试"，选择 `environment_id`，创建 `ui_automation_execution_runs`（状态 `queued`），调度后台执行线程。
+
+### 4.2 执行引擎
+
+`service.execute_execution_run` 启动 pytest 子进程，关键参数：
+
+- `pytest --tracing=retain-on-failure --video=on --output=<run_dir>/browser`
+- 环境变量注入：`UI_BASE_URL`、`UI_RESULT_PATH`、`UI_STORAGE_STATE`（当环境启用了 `reuse_auth_state`）
+- 敏感信息脱敏：stdout/stderr 中屏蔽 `authorization:bearer` / `token=` / `password=` / `cookie:` 字段
+
+### 4.3 产物收集
+
+执行完成后在 `runs/<run_id>/browser/` 目录收集：
+
+- `trace.zip`：Playwright trace（可通过 trace viewer 回放）
+- `*.webm` / `*.mp4`：浏览器录屏视频
+- `*.png`：失败截图
+
+子进程 stdout/stderr 写入 `runs/<run_id>/stdout.txt` / `stderr.txt`，解析后生成 `result.json`。
+
+### 4.4 停止执行
+
+监听 `_STOP_REQUESTED` 集合，对 `queued` 状态直接置 `cancelled`，对 `running` 状态先置 `stopping` 再对子进程发 SIGTERM，3 秒未退则 SIGKILL。
+
+### 4.5 超时
+
+执行超时默认 600 秒，超时后写入 `error_message` 并强制终止子进程。
+
+---
+
+## 5. 实时监控（MJPEG Live View）
+
+### 5.1 架构
+
+- `start_session`：临时分配本地端口，启动 CDP Screencast 线程（默认 1440×900）。
+- `get_execution_live_view`：返回会话状态枚举：
+  - `waiting`：执行尚未开始
+  - `starting`：CDP 会话初始化中
+  - `ready`：画面可用
+  - `unavailable`：CDP 无画面（30 秒无帧或无 Chromium 进程）
+  - `ended`：执行已结束
+
+### 5.2 流协议
+
+- `GET /runs/{run_id}/live-view`：返回 `{status, stream_path}`，前端据此渲染"实时画面"按钮。
+- `GET /runs/{run_id}/live-view/stream?token=<32位token>`：返回 `multipart/x-mixed-replace;boundary=frame` 的 MJPEG 流，需 token 鉴权。
+- CDP 30 秒无帧自动降级为 `unavailable`，执行不中断。
+
+### 5.3 会话清理
+
+`_prune_ended_sessions` 每 5 分钟清理已结束的 live-view 会话。
+
+---
+
+## 6. 报告与证据（无 Allure）
+
+### 6.1 Allure 不接入声明
+
+- `pyproject.toml` **无** `allure-pytest` / `allure-playwright` 依赖。
+- UI 自动化**不生成** `allure-results` / `allure-report`。
+- 前端**无**跳转 Allure 入口。
+
+### 6.2 证据类型
+
+| 证据类型 | 来源 | 下载路径 |
+| --- | --- | --- |
+| pytest stdout | `runs/<run_id>/stdout.txt`（脱敏后） | `GET /runs/{run_id}/logs` |
+| pytest stderr | `runs/<run_id>/stderr.txt`（脱敏后） | `GET /runs/{run_id}/logs` |
+| Playwright trace | `runs/<run_id>/browser/trace.zip` | `GET /runs/{run_id}/artifacts/trace?index=0` |
+| 浏览器录屏 | `runs/<run_id>/browser/*.webm` / `*.mp4` | `GET /runs/{run_id}/artifacts/video?index=0` |
+| 失败截图 | `runs/<run_id>/browser/*.png` | `GET /runs/{run_id}/artifacts/screenshot?index=<n>` |
+
+### 6.3 浏览器录像回放
+
+- 运行详情页在执行完成后加载录屏视频（`videoUrl`）。
+- Playwright trace 可通过 trace viewer 回放交互步骤。
+
+---
+
+## 7. 状态机
+
+### 7.1 生成任务（`ui_automation_generation_runs`）
+
+```
+queued → running → completed
+                  ↘ failed
+                  ↘ waiting_manual  （探索证据为空时）
+```
+
+重启恢复：`recover_interrupted_ui_automation_tasks` 将所有 `queued/running` 状态标记为 `failed`。
+
+### 7.2 资产（`ui_automation_assets`）
+
+```
+creating → ready
+         ↘ failed
+```
+
+### 7.3 执行任务（`ui_automation_execution_runs`）
+
+```
+queued → running → passed
+                  ↘ failed
+                  ↘ interrupted（超时）
+queued → cancelled（直接 stop）
+running → stopping → cancelled（stop + SIGTERM/SIGKILL）
+```
+
+重启恢复：执行任务被收敛为 `failed`（`stopping` 则 `cancelled`）。
+
+---
+
+## 8. 批量清理
+
+### 8.1 清理范围
+
+删除执行任务时，联动清理以下文件：
+
+- `runs/<run_id>/`（整个运行目录）
+  - `stdout.txt` / `stderr.txt`（日志）
+  - `browser/` 子目录（截图、录像、trace）
+
+### 8.2 清理约束
+
+- 仅非活跃状态的运行可删除：`queued` / `running` / `stopping` 状态禁止删除。
+- 违反约束返回 `409 UI_EXECUTION_RUN_ACTIVE`。
+
+### 8.3 路径安全
+
+删除前校验 `run_dir` 必须属于当前资产套件目录（`runs_root`），且目录名等于 `run_id`，防止路径穿越。
+
+---
+
+## 9. 数据模型
+
+### 9.1 `ui_automation_generation_runs`
+
+```sql
+CREATE TABLE IF NOT EXISTS ui_automation_generation_runs (
+  id TEXT PRIMARY KEY,                    -- uigen-<hex>
+  project_id TEXT NOT NULL,
+  test_case_id TEXT,                      -- 已采纳用例
+  manual_test_case_id TEXT,                -- 手工用例
+  environment_id TEXT NOT NULL,
+  exploration_run_id TEXT NOT NULL DEFAULT '',
+  task_id TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'queued',  -- queued/running/completed/failed/waiting_manual
+  suite_path TEXT NOT NULL DEFAULT '',
+  changed_files_json TEXT NOT NULL DEFAULT '[]',
+  error_message TEXT NOT NULL DEFAULT '',
+  created_by TEXT NOT NULL,
+  started_at TEXT,
+  finished_at TEXT,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE,
+  FOREIGN KEY(test_case_id) REFERENCES test_cases(id) ON DELETE CASCADE,
+  FOREIGN KEY(manual_test_case_id) REFERENCES manual_test_cases(id) ON DELETE CASCADE,
+  FOREIGN KEY(environment_id) REFERENCES project_environments(id) ON DELETE CASCADE,
+  CHECK ((test_case_id IS NOT NULL) != (manual_test_case_id IS NOT NULL))
+);
+CREATE INDEX IF NOT EXISTS idx_ui_generation_project_created ON ui_automation_generation_runs(project_id, created_at);
+```
+
+### 9.2 `ui_automation_assets`
+
+```sql
+CREATE TABLE IF NOT EXISTS ui_automation_assets (
+  id TEXT PRIMARY KEY,                    -- uiasset-<hex>
+  project_id TEXT NOT NULL,
+  test_case_id TEXT,                      -- 已采纳用例
+  manual_test_case_id TEXT,               -- 手工用例
+  source_version INTEGER NOT NULL DEFAULT 1,
+  generation_run_id TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'ready',   -- creating/ready/failed
+  pytest_node_id TEXT NOT NULL,           -- <test_file>::test_<sanitized_id>
+  suite_path TEXT NOT NULL,
+  test_file_path TEXT NOT NULL,
+  data_file_path TEXT NOT NULL,
+  plan_file_path TEXT NOT NULL,
+  source_hash TEXT NOT NULL,
+  created_by TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE,
+  FOREIGN KEY(test_case_id) REFERENCES test_cases(id) ON DELETE CASCADE,
+  FOREIGN KEY(manual_test_case_id) REFERENCES manual_test_cases(id) ON DELETE CASCADE,
+  FOREIGN KEY(generation_run_id) REFERENCES ui_automation_generation_runs(id) ON DELETE CASCADE,
+  CHECK ((test_case_id IS NOT NULL) != (manual_test_case_id IS NOT NULL))
+);
+CREATE INDEX IF NOT EXISTS idx_ui_assets_project_updated ON ui_automation_assets(project_id, updated_at);
+```
+
+### 9.3 `ui_automation_execution_runs`
+
+```sql
+CREATE TABLE IF NOT EXISTS ui_automation_execution_runs (
+  id TEXT PRIMARY KEY,                    -- uirun-<hex>
+  project_id TEXT NOT NULL,
+  asset_id TEXT NOT NULL,
+  environment_id TEXT NOT NULL,
+  task_id TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'queued',  -- queued/running/stopping/passed/failed/cancelled/interrupted
+  run_dir TEXT NOT NULL DEFAULT '',
+  result_json TEXT NOT NULL DEFAULT '{}',
+  stdout_path TEXT NOT NULL DEFAULT '',
+  stderr_path TEXT NOT NULL DEFAULT '',
+  trace_path TEXT NOT NULL DEFAULT '',
+  video_path TEXT NOT NULL DEFAULT '',
+  screenshot_paths_json TEXT NOT NULL DEFAULT '[]',
+  error_message TEXT NOT NULL DEFAULT '',
+  created_by TEXT NOT NULL,
+  started_at TEXT,
+  finished_at TEXT,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE,
+  FOREIGN KEY(asset_id) REFERENCES ui_automation_assets(id) ON DELETE CASCADE,
+  FOREIGN KEY(environment_id) REFERENCES project_environments(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_ui_execution_project_created ON ui_automation_execution_runs(project_id, created_at);
+```
+
+---
+
+## 10. API 路由清单
+
+前缀：`/api/v1/projects/{project_id}/ui-automation`，由 `app/api/v1/ui_automation.py` 暴露。
+
+| 方法 | 路径 | 说明 | 权限 |
 | --- | --- | --- | --- |
-| UI 自动化 | `/projects/:projectId/automation/ui` | 可用 | 进入套件、代码、生成进度、执行、报告页面 |
-| 接口自动化 | `/projects/:projectId/automation/api` | Soon，不可选择 | 展示占位说明，不允许创建和执行 |
+| POST | `/generation-runs` | 新建生成任务 | admin |
+| GET | `/generation-runs` | 生成任务列表 | user |
+| GET | `/generation-runs/{run_id}` | 生成任务详情 | user |
+| GET | `/assets` | 资产列表 | user |
+| GET | `/assets/{asset_id}` | 资产详情（含 locator_summary） | user |
+| GET | `/assets/{asset_id}/generation-runs` | 资产关联的生成运行 | user |
+| GET | `/assets/{asset_id}/runs` | 资产关联的执行运行 | user |
+| POST | `/assets/{asset_id}/runs` | 创建执行运行 | admin |
+| GET | `/runs/{run_id}` | 执行运行详情 | user |
+| POST | `/runs/{run_id}/stop` | 停止执行 | admin |
+| DELETE | `/runs/{run_id}` | 删除执行运行（仅非活跃） | admin |
+| GET | `/runs/{run_id}/logs` | stdout / stderr（含脱敏） | user |
+| GET | `/runs/{run_id}/live-view` | live-view 状态 + stream 路径 | user |
+| GET | `/runs/{run_id}/live-view/stream?token=...` | MJPEG 视频流 | token 鉴权 |
+| GET | `/runs/{run_id}/artifacts/{trace\|video\|screenshot}?index={n}` | 证据文件下载 | user |
 
-### 10.2 UI 自动化套件页
-
-展示：
-
-- 套件名称、关联用例数、UI 自动化用例数、最近运行结果、通过率。
-- locator 准入状态：已通过、自动探索中、等待人工、需复核。
-- 缺失 locator 清单和关联用例。
-- 操作：生成代码、查看代码、执行、查看运行记录、重新生成失败用例。
-- 对缺失 locator 的用例，提供“自动探索定位”“查看探索证据”“人工补充说明”操作。
-
-### 10.3 代码查看页
-
-展示：
-
-- 文件树。
-- 代码预览。
-- 来源用例。
-- 来源知识库。
-- 生成记录。
-
-第一版只支持本地文件查看、覆盖生成和执行，不做 Git diff、提交、PR，也不提供 zip 下载。
-
-### 10.4 运行记录页
-
-展示：
-
-- 运行状态、开始时间、结束时间、耗时、通过数、失败数、跳过数。
-- 每条用例的生成进度、执行进度、当前步骤和失败原因。
-- Allure 报告跳转。
-- 失败诊断入口。
+**错误码**：`UI_AUTOMATION_INPUT_REQUIRED`、`UI_TEST_CASE_NOT_FOUND`、`UI_TEST_CASE_NOT_APPROVED`、`UI_ENVIRONMENT_NOT_FOUND`、`UI_EXPLORATION_RUN_NOT_FOUND`、`UI_EXPLORATION_ENVIRONMENT_MISMATCH`、`UI_GENERATION_RUN_NOT_FOUND`、`UI_ASSET_NOT_FOUND`、`UI_EXECUTION_RUN_NOT_FOUND`、`UI_EXECUTION_RUN_ACTIVE`、`UI_EXECUTION_RUN_DIR_INVALID`、`UI_LIVE_VIEW_NOT_FOUND`、`UI_ARTIFACT_KIND_INVALID`、`UI_ARTIFACT_NOT_FOUND`、`PERMISSION_DENIED`。
 
 ---
 
-## 11. SQLite 存储策略
+## 11. 前端页面清单
 
-SQLite 保存：
-
-- 自动化套件。
-- 自动化类型，第一期只允许 `ui`，预留 `api`。
-- 用例到脚本映射。
-- 代码生成记录。
-- 执行记录。
-- Allure 结果路径。
-- 失败摘要。
-
-文件系统保存：
-
-- 自动化代码。
-- pytest 日志。
-- Allure results。
-- Allure report。
-- 截图、trace、video。
+| 页面 | 路由 | 核心组件 |
+| --- | --- | --- |
+| UI 自动化列表 | `/automation/ui` | `page.tsx`（聚合所有项目资产+生成任务） |
+| 资产详情 | `/projects/{projectId}/automation/ui/assets/{assetId}` | `ui-automation-asset-detail.tsx` |
+| 运行详情 | `/projects/{projectId}/automation/ui/assets/{assetId}/runs/{runId}` | `ui-automation-run-detail.tsx` |
 
 ---
 
-## 12. 验收标准
+## 12. 验收规则
 
-- 能从已采纳测试用例生成 pytest + Playwright UI 自动化代码。
-- UI 自动化代码能在本地 Runner 执行。
-- 执行后能生成 UI 自动化 Allure 报告并在系统中跳转。
-- 失败记录能关联到测试用例、脚本、Allure 报告和知识库来源。
-- 自动化生成任务必须显示逐条用例进度。
-- UI 自动化生成必须先执行 locator 准入检查。
-- locator 缺失时，系统能自动触发定向探索定位，并在补齐后继续生成。
-- 自动探索补充的 locator 必须记录来源引用，不能凭空生成。
-- 关键 locator 自动探索失败时，单条用例必须进入等待人工处理，不能生成可执行代码。
-- 批量生成时，单条用例等待人工不阻塞整批；系统必须继续生成其他可通过准入的用例，并在批次结束时汇总失败项供人工统一处理。
-- 只有执行通过，或者失败后确认是产品 Bug 并完成诊断，自动化任务才算完成。
-- 导航中 UI 自动化和接口自动化必须区分展示。
-- 接口自动化显示 Soon，不可选择，不允许创建、生成、执行。
-- 第一版不要求 Git 管理、CI 执行和外部缺陷系统对接。
-- 自动化代码只能在系统内查看和执行，不提供 zip 下载。
+| # | 规则 | 预期结果 |
+| --- | --- | --- |
+| 1 | 来源用例既非已采纳也非手工用例 | `404 UI_TEST_CASE_NOT_FOUND` 或 `409 UI_TEST_CASE_NOT_APPROVED` |
+| 2 | 运行环境与探索任务不属于当前项目 | `404 UI_ENVIRONMENT_NOT_FOUND` / `404 UI_EXPLORATION_RUN_NOT_FOUND` / `409 UI_EXPLORATION_ENVIRONMENT_MISMATCH` |
+| 3 | 无结构化探索证据时生成 | run 状态 `waiting_manual`，不创建资产 |
+| 4 | 生成成功后 | 资产状态 `ready`，详情接口返回 `locator_summary` |
+| 5 | 活跃状态（`queued/running/stopping`）执行运行无法删除 | `409 UI_EXECUTION_RUN_ACTIVE` |
+| 6 | 停止执行后 | `queued` 直接 `cancelled`；`running` → `stopping` → `cancelled` |
+| 7 | Live-view token 校验失败或会话已结束 | `404 UI_LIVE_VIEW_NOT_FOUND` |
+| 8 | `/runs/{id}/logs` 返回的文本中 | `authorization:bearer` / `token=` / `password=` / `cookie:` 被脱敏 |
+| 9 | 服务重启后 | 所有 `queued/running` 生成与执行任务被收敛为 `failed`/`cancelled` |
+| 10 | 执行完成后 | 运行详情页展示录屏视频、失败截图列表、trace 下载入口 |
+| 11 | 浏览器录像回放 | 运行详情页可播放 `runs/<run_id>/browser/*.webm` 或 `*.mp4` |
+| 12 | UI 自动化**不接入 Allure** | `pyproject.toml` 无 allure 依赖，前端无跳转 Allure 入口 |

@@ -1,864 +1,459 @@
-# 00-05 AI测试系统 - 知识库生成与更新 PRD
+# 00-05 AI 测试系统 · 知识库生成与更新 PRD（项目知识库）
 
-## 1. 这份文档解决什么问题
-
-本文细化项目知识库的生成、更新、版本、来源追踪和冲突处理。
-
-核心规则：
-
-- 上传文档、站点探索、澄清回答、在线编辑都只是来源证据。
-- 澄清回答必须先写回需求文档 Markdown 工作稿，生成新的需求文档版本；知识库以写回后的需求文档版本作为业务口径。
-- 没有需求文档时，探索文档必须先生成候选需求文档，并经过评审确认后才能作为知识库业务来源。
-- 正式知识库只能在知识库界面通过“生成知识库”创建。
-- 后续来源材料变化后，只能通过“更新知识库”生成新版本。
-- 知识库产物采用类似 `llm-wiki` 的模块化 Markdown 文档。
-- 第一版不使用向量检索，不引入 pgvector、Milvus、Qdrant、Elasticsearch 等检索基础设施。
-- 知识库检索采用 Karpathy `llm-wiki` 理论：不在每次查询时重新从原始文档切 chunk 检索，而是先把已确认来源编译成持续维护的 Markdown wiki；查询时先读 index，再进入相关页面，必要时回查 raw sources。
-- 知识库分三层：不可变原始来源层、LLM 维护的 wiki 层、约束 Agent 行为的 schema/规则层。
-- 正式知识库只沉淀已确认的需求事实、页面事实、融合事实和测试关注点；待确认问题、阻塞项、未确认冲突和失败诊断结果不能作为正式知识条目，也不能作为知识库更新来源。
-- `llm-wiki` 必须覆盖已确认需求文档和已完成探索文档中的全部可测试内容，但不是逐字复制原文；原文完整性由来源引用矩阵和覆盖校验保证。
-- `quality/` 用于知识库质量检查，`testing/` 用于测试设计视角，两者作用不同，不能混用。
-- 每次生成和更新必须记录来源、变更摘要、影响模块和历史版本。
-- 需求文档和探索文档的版本变化日志必须作为知识库更新的触发输入。
-- 新增需求材料完成增量归并并生成新的需求文档版本后，才能作为知识库更新来源。
+> **范围声明**：本文档描述当前工作区代码实现的"项目知识库检索对话 + 检索来源设置"能力；全局/公司知识库文档管理（上传、文件夹、转换）见 PRD 00-22。
+>
+> 基线日期：2026-07-26
+>
+> 事实源：`apps/frontend/src/app/(main)/knowledge/page.tsx`、`apps/frontend/src/components/ai-testing/knowledge-search-settings.tsx`、`apps/backend/app/api/v1/knowledge.py`、`apps/backend/app/services/knowledge/service.py`、`apps/backend/app/services/knowledge/global_service.py`、`apps/backend/app/agents/knowledge/service.py`、`apps/backend/app/agents/knowledge/agent.py`、`apps/backend/app/seed/schema.py`、`apps/backend/app/seed/seeds.py` 当前工作区源码（含未提交代码）
 
 ---
 
-## 2. 业务边界
+## 1. 范围与目标
 
-### 2.1 本模块负责
+### 1.1 目标
 
-- 展示可用于知识库的来源材料
-- 判断是否可以生成知识库
-- 生成模块化知识库文档
-- 识别来源更新并生成更新计划
-- 处理需求文档和探索文档的融合
-- 记录知识库版本和来源引用
-- 在更新预览页提示受影响测试资产，但不把测试用例和自动化脚本写入知识库内容
+- 让用户可以向"当前项目"或"全部项目"提问，把可命中的项目内产物作为上下文喂给知识 Agent，生成可追溯答案
+- 让检索范围可被细粒度控制（全局 / 项目两级，来源类型开关）
+- 让对话历史可被追溯、被复用（conversation_id 续聊）
+- 查询必须包含最终需求（最终需求为最高业务事实依据）
 
-### 2.2 本模块不负责
+### 1.2 项目知识库 vs 全局知识库边界
 
-- 不负责上传和编辑需求文档
-- 不负责执行站点探索
-- 不直接生成测试用例
-- 不直接修改自动化代码
-
----
-
-## 3. 来源材料
-
-| 来源 | 说明 | 是否可直接入正式知识库 |
+| 维度 | 项目知识库（本文） | 全局/公司知识库（PRD 00-22） |
 | --- | --- | --- |
-| 需求文档版本 | Markdown 工作稿和历史版本 | 否 |
-| 需求分析结果 | 模块、流程、规则、疑点 | 否 |
-| 澄清写回记录 | 用户确认问题后写回需求文档的审计记录 | 否 |
-| 站点探索文档 | 页面、字段、操作、状态流转、locator | 否 |
-| 候选需求文档 | 基于探索文档反推并等待评审确认的需求工作稿 | 否 |
-| 人工补充说明 | 用户手动补充的业务事实 | 否 |
-| 失败诊断结果 | Bug/代码/环境/数据问题分类；只保存在失败诊断、自动化运行记录、报告中心或内部 Bug 记录中 | 否 |
+| 对象 | 检索对话、来源开关、对话历史 | 文档/文件夹/库 CRUD、上传、转换 |
+| 路由 | `/knowledge`、`/projects/:projectId/knowledge` | `/global-knowledge-bases` |
+| API 前缀 | `/api/v1/knowledge*`、`/api/v1/projects/:projectId/knowledge*` | `/api/v1/global-knowledge*`、`/api/v1/company-knowledge-bases*` |
+| 内容 | 内存会话 + LLM Agent 调用 | 物理文件 + 数据库记录 |
+| 角色 | 项目成员可检索；admin 可改开关 | 仅 admin |
+| 复用关系 | 把 PRD 00-22 的可见 md 文件作为来源之一（`company_knowledge`） | 提供方 |
 
-所有来源材料必须先进入“可选来源”列表。用户点击“生成知识库”或“更新知识库”后，系统才生成正式知识库版本。
+### 1.3 知识库状态（知识库就绪度）
 
-正式知识库的准入规则：
+系统对每个项目维护以下知识库就绪状态（本仓库**当前无前端状态展示**，后端逻辑已实现于 `service.py` 的 blockers 机制）：
 
-- 只有已确认的需求文档版本、已确认候选需求文档、已完成且无关键阻塞的探索结果、已确认人工补充说明，才能进入正式知识库。
-- 需求澄清内容必须先写回需求文档新版本，不能以“澄清问答原文”直接进入知识库。
-- 待确认问题、无法探索阻塞、未确认冲突、诊断发现的需求/探索差异，必须停留在评审、探索、诊断或知识库更新检查流程中。
-- 如果存在影响业务规则、流程预期、验收口径或关键页面事实的待确认问题，知识库构建状态只能是“阻塞”，不能发布为可用于正式用例生成的版本。
-- 失败诊断结果不写入知识库，也不作为知识库更新来源；如果失败暴露出需求不清、页面事实变化或 locator 变化，必须回到需求、探索或定位来源模块形成新的上游来源后，再由知识库显式更新。
+| 状态 | 含义 | 可用于正式测试用例生成 |
+| --- | --- | --- |
+| **构建中 / 阻塞（blocker）** | 有来源启用但无可读内容，或源文件物理路径缺失 | 不可（需要 AI 协助处理阻塞） |
+| **已就绪（无阻塞）** | 至少一个启用的来源有可读内容 | 可用 |
 
-知识库构建状态判定：
+阻塞消息示例：
+- "需求文档「XX」当前版本文件不存在。"
+- "当前启用的检索来源没有可读取内容。"
+- "当前没有可读取的公司知识库文件。"
 
-| 构建结果 | 状态 | 是否可用于正式用例生成 | 判定规则 |
+---
+
+## 2. 知识库对话问答
+
+### 2.1 用户入口与页面路由
+
+| 入口 | 路由 | 模式 | 说明 |
 | --- | --- | --- | --- |
-| 已创建构建任务，正在生成、更新或检查 | 构建中 | 否 | 包括排队、运行、写入文件、执行 lint、生成来源引用矩阵和检查冲突的过程 |
-| 来源检查存在关键阻塞 | 阻塞 | 否 | 存在关键澄清未回答、需求与探索关键冲突未确认、核心模块无法探索且无人工说明、候选需求未确认 |
-| 门禁通过并发布 | 已发布 | 是 | 来源已确认、无关键阻塞、lint 无失败项，成为正式知识库版本，下游用例生成只能选择已发布版本 |
+| 知识库（主入口） | `/knowledge` | 三 Tab：知识库问答 / 公司知识库 / 检索设置 | 统一入口，同时支持跨项目与项目内对话 |
+| 项目知识库 | `/projects/:projectId/knowledge` | 旧路由（已合并到 `/knowledge`） | 保留兼容，实际功能通过 `/knowledge` 的项目切换实现 |
 
-状态边界：
+前端实现：
+- `apps/frontend/src/app/(main)/knowledge/page.tsx`
+- `apps/frontend/src/components/ai-testing/knowledge-search-settings.tsx`
 
-- 阻塞表示存在必须回到上游处理的问题，不能通过“直接发布”绕过。
-- 构建中表示知识库产物尚未完成或尚未完成检查，不能被测试用例、自动化或诊断等下游任务使用。
-- 已发布表示当前知识库可作为正式测试资产生产链路的可信输入。
-- 已发布版本不可原地覆盖；更新知识库必须生成新 KnowledgeBuild。
-- 如果已发布后出现来源更新，第一版不新增“已过期”状态，只在页面提示“存在来源更新，建议重新构建”；用户触发更新后进入“构建中”。
+### 2.2 前端页面结构（`/knowledge` 单页三 Tab）
 
-阻塞处理闭环：
+```
+知识库页面
+├── Tab 1：知识库问答（project / all 模式）
+│   ├── 范围切换：全部项目 / 指定项目
+│   ├── 模型选择（capability_id = "knowledge_query"）
+│   ├── 思考过程显示开关（show_thinking）
+│   ├── 对话历史侧边栏（展开/收起/新建/删除）
+│   ├── 快捷问题按钮（查需求 / 看探索 / 查来源 / 看模块）
+│   ├── 消息流区域（user + assistant 消息对）
+│   │   ├── Assistant 消息支持展开"深度思考"（thinking_delta 渲染）
+│   │   └── 加载状态：PulsatingDots 动画
+│   └── 输入框（含停止按钮）
+├── Tab 2：公司知识库（文档目录树 + Markdown 预览）
+│   ├── 知识库列表页（创建/查看/编辑/删除）
+│   ├── 知识库详情页（目录树 + 文件预览）
+│   └── 文件夹/文件 CRUD（新建文件夹/上传 Markdown/删除）
+└── Tab 3：检索设置
+    ├── 5 种来源开关（Switch 控件）
+    ├── 全局模式 / 项目模式标签
+    └── 恢复全局设置按钮（仅项目模式可见）
+```
 
-- 知识库进入“阻塞”后，必须输出阻塞摘要和阻塞清单，不能只显示构建失败。
-- 每条阻塞项必须包含问题类型、影响模块、影响范围、来源位置、证据引用和建议动作。
-- 来源位置必须尽量定位到需求文档段落、探索页面、截图、trace、页面快照、澄清记录或候选需求确认记录。
-- 阻塞详情页必须提供 AI 对话入口，用于解释阻塞原因、定位关键来源、对比需求与探索差异、生成澄清问题、建议重新探索范围或生成修改草稿。
-- AI 对话只能生成建议、草稿、差异预览或待确认补充记录，不能直接把未确认事实写入已发布知识库。
-- 用户处理阻塞的方式包括修改需求文档、确认冲突项、补充澄清说明、发起重新探索、补充探索文档或标记非核心风险可接受。
-- 阻塞项处理完成后，用户点击“重新生成知识库”，系统创建新的构建任务，状态重新进入“构建中”。
+### 2.3 快捷问题（4 个）
+
+| 按钮文案 | Prompt |
+| --- | --- |
+| 查需求 | 帮我查询当前项目最终需求文档中的核心业务规则。 |
+| 看探索 | 帮我总结当前项目探索记录覆盖了哪些页面和模块。 |
+| 查来源 | 帮我追踪当前项目关键结论的来源依据，包括需求版本、探索记录和对应位置。 |
+| 看模块 | 帮我按知识库模块梳理当前项目的业务域、页面事实、规则条目和模块之间的关系。 |
+
+### 2.4 查询模型配置
+
+- 前端通过 `GET /model-assignments` 获取当前 `knowledge_query` capability 的模型分配
+- 通过 `PUT /model-assignments/knowledge_query` 更新（仅 admin 可操作）
+- 后端使用 `resolve_model_selection("knowledge_query")` 路由到对应模型
+
+### 2.5 流式响应
+
+事件类型（SSE）：`message_delta / thinking_delta / metadata / error / done`
+
+| 事件 | 字段 | 说明 |
+| --- | --- | --- |
+| `message_delta.delta` | string | 正文增量（累加到消息 body） |
+| `thinking_delta.delta` | string | 思考增量（仅当 `show_thinking=true`；前端渲染为有序列表） |
+| `metadata.result` | `KnowledgeQueryResult` | 包含 conversation、messages、answer |
+| `error` | `code/message/result` | 错误时持久化对话；code=`KNOWLEDGE_AGENT_TIMEOUT` |
+| `done` | — | 流式结束 |
+
+前端处理逻辑（`page.tsx`）：
+- `message_delta`：追加到 assistant 消息 body
+- `thinking_delta`：追加到 assistant 消息 `thinking` 字段，追加 `thinkingStartedAt`
+- `metadata`：持久化 conversation，更新 `activeProjectConversationId`
+- `error`：持久化 conversation + 结果后抛出，移除空 assistant 消息
+- AbortError：保留已有内容的 assistant 消息，丢弃空消息
+
+### 2.6 多轮对话
+
+- 首次查询无 `conversation_id`，服务端创建新会话（title = 问题前 28 字符）
+- 后续查询携带 `conversation_id`，续接历史对话
+- 对话历史持久化，刷新页面仍可加载（`GET /knowledge/conversations`）
+- 删除对话：只删除当前用户的对话（仓库层校验）
+
+### 2.7 思考过程展示
+
+- 模型支持 `thinking_toggle`（`show_thinking` 参数控制）
+- 支持模型：MiniMax、DeepSeek（provider 或 model name 包含关键字）
+- 其他模型：`extra_body.thinking={type:"disabled"}`
+- 前端展示：可折叠有序列表，含"思考中/已思考"状态 + 用时（如"用时 12 秒"）
+- `thinking_delta` 脱敏：移除 `<!-- source_metadata -->`、工具调用行、序号前缀
 
 ---
 
-## 4. 知识库版本
+## 3. 检索来源设置
 
-### 4.1 KnowledgeBuild
+### 3.1 5 种来源类型
 
-| 字段 | 说明 |
+| source_type | 含义 | 实际读取 |
+| --- | --- | --- |
+| `final_requirements` | 当前项目最终需求 Markdown | `documents` 中 `current_version_id` 对应版本的物理文件（通过 `resolve_stored_path` 解析） |
+| `explorations` | 当前项目页面探索产物 | `exploration_artifacts` 中 `artifact_type='page_yaml'` 且 `.yaml` 后缀、可解码、非空 |
+| `test_cases` | 当前项目已采纳测试用例 | `test_cases` 中 `status='approved'`（字段拼接为 Markdown） |
+| `api_information` | 当前项目接口资产 + 接口场景 | `api_endpoints` + `api_scenarios`（各自拼接为 Markdown） |
+| `company_knowledge` | 全局/公司知识库可见 md 文件 | `global_knowledge_vault_files` 中 `conversion_status ∈ {success, completed, available}`；优先读物理 `markdown_path`，回退 `markdown_content` 字段 |
+
+### 3.2 默认值
+
+```python
+DEFAULT_KNOWLEDGE_SEARCH_SOURCES = {
+    "final_requirements": True,   # 必须启用
+    "explorations": True,
+    "test_cases": False,
+    "api_information": False,
+    "company_knowledge": True,
+}
+```
+
+### 3.3 继承语义（全局 / 项目两级）
+
+解析顺序（`resolve_knowledge_search_settings`）：
+1. project（项目自定义）→ origin=`project`，`inherited=False`
+2. global（全局设置）→ origin=`global`，`inherited=True`
+3. system（默认值）→ origin=`system`，`inherited=scope != "__all_projects__"`
+
+DELETE 项目设置 → 恢复到全局值（前端"恢复全局设置"按钮）
+
+### 3.4 与请求参数的关系
+
+| 请求参数 | 行为 |
 | --- | --- |
-| 项目 ID | 所属项目 |
-| 构建编号 | KB-001、KB-002 |
-| 构建类型 | 首次生成、增量更新、手动重建 |
-| 输入来源 | 已确认文档版本、分析版本、探索任务、澄清写回记录、候选需求确认记录 |
-| 构建状态 | 构建中、阻塞、已发布 |
-| 变更摘要 | 本次新增、修改、废弃内容摘要 |
-| 阻塞摘要 | 待确认问题、未解决冲突、无法探索模块等构建阻塞 |
-| 输出目录 | 生成的模块化 Markdown 目录 |
-| 创建人 | 操作人 |
-| 创建时间 | 系统生成 |
+| `include_requirements=False` | 跳过 `final_requirements/explorations/test_cases/api_information` 四类，仅保留 `company_knowledge` |
+| `include_company_knowledge=False` | 强制关闭 `company_knowledge` |
 
-### 4.2 KnowledgeItem
+### 3.5 校验规则
 
-| 字段 | 说明 |
-| --- | --- |
-| 所属构建 | 对应 KnowledgeBuild |
-| 所属模块 | 模块 key |
-| 知识类型 | 需求事实、页面事实、融合事实、测试关注点 |
-| 知识内容 | 具体事实 |
-| 来源引用 | 来源文档、段落、探索页面、澄清写回记录、候选需求确认记录 |
-| 状态 | 已确认、已废弃 |
-
-说明：
-
-- `KnowledgeItem` 不保存待确认事实。待确认内容属于澄清问题、探索阻塞、来源冲突或构建阻塞，不属于正式知识条目。
-- 如果某条内容需要确认，必须先回到需求评审、探索补充、人工编辑或诊断确认流程；确认后通过来源版本更新再进入知识库。
+- 必须至少有 1 个 `enabled=True` 的来源（`KNOWLEDGE_SEARCH_SOURCE_REQUIRED`）
+- 来源类型必须在白名单（`KNOWLEDGE_SEARCH_SOURCE_TYPES`）中
+- 非 admin 修改设置返回 403 `KNOWLEDGE_SEARCH_SETTINGS_FORBIDDEN`
 
 ---
 
-## 5. 知识库检索方式
+## 4. 知识库生成与更新（非向量检索）
 
-第一版不做向量检索。知识库不是把文档切 chunk 后写入向量库，而是把项目知识组织成模型可读、可导航、可引用、可维护的 `llm-wiki`。
+### 4.1 检索机制：LLM Agentic RAG
 
-### 5.1 llm-wiki 技术原理
+本系统**不使用向量检索**。知识查询流程：
 
-传统 RAG 的常见方式是：查询发生时，从原始文档中召回相关 chunk，再临时拼装答案。这个方式可以回答问题，但每次查询都要重新发现、重新拼接、重新综合上下文，知识不会自然沉淀。
+```
+用户问题
+  → service._collect_query_input() 收集所有启用来源的文件内容
+  → service._collect_project_sources()
+       ├─ final_requirements: 读 source_document_versions 物理文件
+       ├─ explorations: 读 exploration_artifacts YAML
+       ├─ test_cases: 从 test_case_repo 读已采纳用例
+       └─ api_information: 从 api_automation_repo 读接口资产
+  → service._collect_company_knowledge_sources()（公司知识库）
+  → 组装为 KnowledgeQueryInput（source_documents 列表）
+  → knowledge_agent_service.stream_knowledge_agent()
+       ├─ 虚拟文件系统：每个 source_doc 生成一个虚拟文件
+       ├─ Agent prompt: 告知文件路径清单，要求先用 glob/grep 定位
+       └─ Agent 工具：read_file / grep / glob（Deep Agents StateBackend）
+  → 流式 yield message_delta / thinking_delta / metadata
+```
 
-本系统采用的 llm-wiki 思路是：在原始来源和下游任务之间增加一层持续维护的 Markdown wiki。知识库生成时，LLM 不只是做索引，而是把已确认来源编译成模块化页面、交叉引用、来源引用矩阵、冲突清单和更新日志。后续查询优先读取已经整理好的 wiki，而不是每次从原始需求和探索文档重新推理。
+### 4.2 来源文件虚拟路径映射
 
-核心价值：
+Agent 可见的虚拟文件系统结构（`agent/service.py` `_virtual_files`）：
 
-- **知识可累积**：每次需求变更、探索更新、澄清写回和人工确认补充都可以更新 wiki，而不是只留在一次对话里。
-- **知识可导航**：通过 `index.md`、模块索引、页面标题、标签和 SQLite 索引定位上下文。
-- **知识可追溯**：每条关键事实都能回到原始需求版本、探索任务、澄清写回记录或人工确认记录。
-- **知识可维护**：通过 lint/健康检查发现过期事实、孤立页面、缺少来源和来源变化。
-- **知识可复用**：测试用例生成、UI 自动化代码生成、失败诊断都读取同一套 wiki。
+```
+/README.md               ← 知识库文件清单（含来源优先级说明）
+/final-requirements/     ← 最终需求（业务事实最高依据）
+/explorations/           ← 探索产物
+/test-cases/             ← 已采纳测试用例
+/api-information/        ← 接口资产与场景
+/company-knowledge/     ← 公司知识库 md 文件
+```
 
-### 5.2 三层架构
+每个文件顶部含 JSON 元数据注释：`<!-- source_metadata: {...} -->`，用于核对来源。
 
-| 层级 | 内容 | 存储 | 规则 |
+### 4.3 阻塞处理
+
+- 源文件路径解析失败 / 文件不存在：进入 blocker 列表（不抛错）
+- 所有来源无内容：返回 blocker 列表，不再调用 Agent
+- 全部项目模式：只要有任何 source_documents，blockers 自动清空
+
+### 4.4 失败与降级
+
+| 场景 | 行为 |
+| --- | --- |
+| Agent 调用失败 | 返回固定提示 `KNOWLEDGE_QUERY_FAILED_MESSAGE` |
+| Agent 超时（300s） | 返回 `KNOWLEDGE_QUERY_TIMEOUT_MESSAGE` + error 事件 |
+| 来源全部失效 | 返回 blocker 列表（不调用 Agent） |
+| 公司知识库无可见文件 | 返回 `当前没有可读取的公司知识库文件。` |
+
+---
+
+## 5. 跨项目对话（`__all_projects__`）
+
+### 5.1 虚拟项目
+
+`__all_projects__` 是系统保留的"虚拟项目"：
+
+```python
+# apps/backend/app/seed/seeds.py:907-916
+INSERT INTO projects (id, name, status, description, created_by)
+VALUES ('__all_projects__', '全部项目知识库', 'archived',
+        '系统保留项目，用于全部项目知识库对话历史。', 'system')
+```
+
+- 状态为 `archived`，不显示在项目列表
+- 用于承载"全部项目"会话历史
+- 由 `_ensure_all_projects_conversation_scope` 在首次访问时自动创建
+
+### 5.2 跨项目查询流程
+
+```
+stream_all_project_knowledge_query()
+  → project_repo.list_visible(db, actor) 收集所有可见项目
+  → 逐项目调用 _collect_project_sources()
+  → source_documents 跨越所有项目
+  → project_id=""、project_name="全部项目"
+  → knowledge_agent_service（统一 Agent）
+```
+
+### 5.3 统一接口路径
+
+| 范围 | 对话列表 | 对话详情 | 查询 |
 | --- | --- | --- | --- |
-| Raw Sources 原始来源层 | 需求文档版本、探索文档、澄清写回记录、候选需求确认记录、人工补充记录 | 文件系统 + SQLite 元数据 | 不可变，不被 LLM 覆盖 |
-| Wiki 知识层 | 项目总览、模块页、状态流转、测试关注点、来源引用矩阵、更新日志 | Markdown 文件 + SQLite 索引 | 只保存已确认知识，由 KnowledgeBuilderAgent 生成和维护 |
-| Schema 规则层 | wiki 目录规范、页面模板、frontmatter、引用格式、更新流程、lint 规则 | Markdown/配置文件 | 约束 Agent 行为，避免泛化写作 |
-
-原则：
-
-- Raw Sources 是事实源，wiki 是编译产物。
-- wiki 可以更新、重建和废弃，但不能反向覆盖 Raw Sources。
-- schema 是知识库维护说明书，Agent 生成、更新、检索都必须遵守。
-- SQLite 不是向量库，只保存索引、状态、引用、锚点和检索辅助数据。
-- 存储层状态可以使用英文枚举，前端必须显示中文文案，避免用户直接看到 `confirmed`、`draft`、`pending`、`deprecated` 这类技术状态。
-
-### 5.3 Wiki 目录结构
-
-建议每个项目每个知识库版本生成一个独立目录：
-
-```text
-knowledge/
-  KB-001/
-    AGENTS.md
-    index.md
-    log.md
-    00-项目总览.md
-    01-模块索引.md
-    modules/
-      用户登录与权限.md
-      项目管理.md
-      需求.md
-      探索.md
-    maps/
-      source-reference-matrix.md
-      module-source-map.md
-      page-requirement-map.md
-    quality/
-      stale-claims.md
-      lint-report.md
-    testing/
-      test-focus.md
-      risk-paths.md
-      state-flows.md
-    build/
-      build-summary.md
-      update-plan.md
-      build-blockers.md
-      conflict-check.md
-      changelog.md
-```
-
-关键文件说明：
-
-| 文件 | 作用 |
-| --- | --- |
-| `AGENTS.md` | wiki schema，规定页面结构、引用格式、更新流程和禁止事项 |
-| `index.md` | 内容导向索引，列出所有页面、摘要、标签、来源数量和更新时间 |
-| `log.md` | 时间线日志，记录每次生成、更新、查询沉淀和 lint |
-| `00-项目总览.md` | 项目业务目标、范围、角色、核心流程 |
-| `01-模块索引.md` | 模块清单、模块关系、入口页面、关键对象 |
-| `modules/*.md` | 每个业务模块的可测试知识页 |
-| `source-reference-matrix.md` | 知识条目到来源材料的引用矩阵 |
-| `lint-report.md` | 健康检查结果 |
-| `build/build-blockers.md` | 构建或更新阻塞报告，不属于正式知识内容 |
-| `build/conflict-check.md` | 需求、探索、诊断差异检查报告，不属于正式知识内容 |
-| `quality/stale-claims.md` | 记录被新来源替代、过期或需要废弃的旧知识声明 |
-| `quality/lint-report.md` | 记录来源覆盖、断链、重复模块、缺少测试关注点等检查结果 |
-| `testing/test-focus.md` | 按模块汇总测试关注点、边界、权限、异常和断言建议 |
-| `testing/risk-paths.md` | 汇总高风险业务路径、异常路径和回归重点 |
-| `testing/state-flows.md` | 汇总状态流转、前置依赖、触发动作和可断言状态 |
-
-说明：
-
-- `build/build-blockers.md` 和 `build/conflict-check.md` 是构建检查产物，用于解释为什么当前知识库版本不能发布或为什么需要人工处理。
-- 这两个文件不进入 `index.md` 的知识索引，不参与测试用例生成和自动化代码生成的正式上下文。
-- 如果阻塞或冲突被解决，必须通过修改需求文档、补充探索文档、确认候选需求或人工补充来源形成新的来源版本，再重新生成或更新知识库。
-- `quality/` 目录是质量审计区，用于判断当前 wiki 是否健康；其中内容不等同于业务知识。
-- `testing/` 目录是测试视角知识区，只沉淀已确认内容，可被测试用例生成和 UI 自动化生成读取。
-
-### 5.4 Wiki 页面格式
-
-每个模块页必须使用统一结构，便于 Agent 和人类阅读。
-
-```markdown
----
-module_key: login
-module_name: 用户登录与权限
-status: confirmed
-source_count: 8
-updated_at: 2026-05-14
-tags: [auth, role, ui]
----
-
-# 用户登录与权限
-
-## 1. 模块定位
-
-## 2. 业务规则
-
-## 3. 页面事实
-
-## 4. 字段与校验
-
-## 5. 操作与状态流转
-
-## 6. 权限差异
-
-## 7. 测试关注点
-
-## 8. 风险路径
-
-## 9. 来源引用
-```
-
-规则：
-
-- 每条关键规则必须带来源引用。
-- 页面事实和业务规则必须分开写，不能把探索结果直接当业务规则。
-- 模块页只能写已确认事实，不允许出现“待确认事实”小节。
-- 来源引用使用稳定格式，例如 `[REQ:v3#2.1]`、`[EXP:run-004#login-page]`、`[CLAR:q-013]`。
-- 失败诊断记录不能作为知识来源引用；如诊断暴露需求、页面事实或 locator 问题，必须先形成需求澄清、探索补充或定位来源更新，再以对应来源引用进入知识库。
-- 页面事实主要由站点探索补充，包括页面结构、真实字段、按钮、提示语、路由、弹窗、状态回显、操作路径和 locator。
-- 需求文档负责业务意图、业务规则、流程预期和验收口径；探索结果只能补充页面事实，不能直接改写业务规则。
-
-### 5.5 index.md 检索原则
-
-`index.md` 是查询入口，不是普通目录。每次知识库生成或更新都必须同步更新。
-
-索引项建议字段：
-
-| 字段 | 说明 |
-| --- | --- |
-| 页面路径 | Markdown 文件路径 |
-| 页面标题 | 人类可读标题 |
-| 模块 key | 稳定模块标识 |
-| 一句话摘要 | 页面内容摘要 |
-| 关键词 | 业务对象、页面、状态、角色、操作 |
-| 来源数量 | 引用来源数量 |
-| 状态 | confirmed、draft、pending、deprecated |
-| 中文显示 | 已确认、草稿、待处理、已废弃 |
-| 最近更新 | 更新时间 |
-
-查询时，Agent 必须先读 `index.md` 和 SQLite 模块索引，再决定读取哪些 wiki 页面。
-
-当需求文档版本变化日志或探索文档版本变化日志出现新记录时，系统必须标记知识库“存在可更新来源”。
-
-### 5.6 log.md 维护原则
-
-`log.md` 是追加式时间线，用于让 Agent 知道知识库最近发生了什么。
-
-日志格式建议：
-
-```markdown
-## [2026-05-14 10:32] ingest | 需求文档 v3
-- 输入来源：REQ-DOC-001 v3
-- 影响模块：登录、项目管理
-- 变更摘要：补充登录失败提示和项目归档规则
-- 输出：modules/用户登录与权限.md, modules/项目管理.md
-
-## [2026-05-14 11:05] lint | KB-001
-- 发现冲突：2
-- 孤立页面：0
-- 缺少来源引用：1
-```
-
-规则：
-
-- 生成知识库、更新知识库、查询沉淀、lint 都必须追加日志。
-- 日志只追加，不改写历史。
-- SQLite 保存日志条目的结构化索引，Markdown 保存完整人类可读记录。
-
-### 5.7 版本变化驱动更新
-
-知识库不是靠人工凭感觉检查变更，而是靠版本变化日志驱动增量更新。
-
-触发条件：
-
-- 需求文档生成新版本。
-- 需求文档版本变化日志标记触发知识库更新。
-- 探索文档生成新版本。
-- 探索文档版本变化日志标记触发知识库更新。
-- 澄清写回记录、AI 对话修改补丁、候选需求确认记录发生变化。
-- 新增需求材料完成归并，生成新的需求文档版本和版本变化日志。
-
-处理步骤：
-
-1. 读取变更日志，定位受影响模块。
-2. 读取相关 wiki 页面和 `source-reference-matrix`。
-3. 生成更新计划和影响摘要。
-4. 对比当前知识库版本与上一版本差异。
-5. 标记新增、修改、废弃条目，并单独输出阻塞项和冲突检查结果。
-6. 输出更新预览，等待用户确认。
-
-### 5.8 检索流程
-
-1. 用户或下游任务提出问题，例如“生成用户登录模块测试用例”。
-2. 系统读取当前 `KnowledgeBuild` 的 `index.md`、`00-项目总览.md`、`01-模块索引.md` 和 SQLite 模块索引。
-3. 模型根据模块名、业务对象、页面、状态、角色、操作、标签和来源引用选择候选页面。
-4. 系统读取候选模块页、`maps/source-reference-matrix.md`、`testing/state-flows.md`。
-5. 如果 wiki 页存在来源不足或版本过期，系统回查 Raw Sources 对应片段。
-6. 模型基于 wiki + 必要 raw source 片段生成回答、测试用例或自动化代码；测试用例和自动化代码作为下游产物保存，不写入知识库 vault。
-7. 输出必须带来源引用，不能声称来自知识库但没有来源。
-8. 如果本次查询产生了可复用分析，例如新的风险路径或对比表，用户确认后可以作为新 wiki 页面或更新记录沉淀。
-
-### 5.9 查询路由策略
-
-| 查询类型 | 读取顺序 |
-| --- | --- |
-| 生成测试用例 | index -> 模块页 -> 测试关注点 -> 状态流转 -> 来源引用矩阵 |
-| 生成 UI 自动化代码 | index -> 模块页 -> 页面事实 -> locator -> 已采纳用例 |
-| 失败诊断 | index -> 模块页 -> 预期规则 -> 页面事实；诊断结果只保存在诊断模块，不回写知识库 |
-| 需求变更影响分析 | log -> update-plan -> 受影响模块 -> 受影响测试资产 |
-| 解释某条规则来源 | 知识条目 -> 来源引用矩阵 -> Raw Source |
-| 查构建阻塞 | build-blockers -> conflict-check -> 来源材料处理页 |
-
-SQLite 在检索中的职责：
-
-- 保存模块 key、标题、标签、业务对象、页面路径、来源版本、更新时间。
-- 保存知识条目到 Markdown 文件和标题锚点的映射。
-- 保存需求、探索、澄清、人工补充与知识条目的引用关系。
-- 保存已废弃、受影响等状态，帮助任务过滤不可用知识。
-- 保存 `index.md` 的结构化副本，便于快速筛选模块。
-- 保存 `log.md` 条目的结构化副本，便于增量更新和最近变更查询。
-
-Markdown 在检索中的职责：
-
-- 承载完整业务语义、规则说明、流程、状态流转、依赖关系和风险点。
-- 通过目录和标题保持人工可读。
-- 通过来源引用矩阵保持可追溯。
-- 通过双向链接和标题锚点形成可导航 wiki。
-
-第一版不做：
-
-- 向量 embedding。
-- 相似度召回。
-- 自动 chunk 入库。
-- 基于向量相似度的事实合并。
+| 项目级 | `GET /projects/:projectId/knowledge/conversations` | `GET /projects/:projectId/knowledge/conversations/:id` | `POST /projects/:projectId/knowledge/query/stream` |
+| 全部项目 | `GET /knowledge/conversations` | `GET /knowledge/conversations/:id` | `POST /knowledge/query/stream` |
+| 检索设置 | `GET /projects/:projectId/knowledge/search-settings` | — | — |
+| 全局设置 | `GET /knowledge/search-settings` | — | — |
 
 ---
 
-## 6. Wiki 生成与维护 Agent
+## 6. 数据模型
 
-### 6.1 KnowledgeBuilderAgent 职责
+### 6.1 `knowledge_conversations`
 
-KnowledgeBuilderAgent 不是简单摘要器，而是 wiki maintainer。
+对话会话表。
 
-职责：
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `id` | TEXT PRIMARY KEY | UUID |
+| `project_id` | TEXT NOT NULL FK→projects | 真实项目 ID 或 `__all_projects__` |
+| `title` | TEXT NOT NULL DEFAULT '新对话' | 前 28 字符问题 |
+| `created_by` | TEXT NOT NULL FK→users | 创建者 |
+| `created_at` | TEXT NOT NULL | ISO 时间戳 |
+| `updated_at` | TEXT NOT NULL | ISO 时间戳 |
 
-- 读取已确认 Raw Sources。
-- 生成或更新模块页。
-- 更新 `index.md`。
-- 追加 `log.md`。
-- 更新来源引用矩阵。
-- 标记冲突和待确认问题。
-- 维护模块间链接。
-- 生成 lint 报告。
+索引：
+- `idx_knowledge_conversations_project_updated`：`(project_id, created_by, updated_at)`
 
-禁止：
+### 6.2 `knowledge_conversation_messages`
 
-- 禁止改写 Raw Sources。
-- 禁止把待确认内容写成已确认事实。
-- 禁止无来源生成关键业务规则。
-- 禁止静默删除旧知识，必须标记废弃并记录来源。
+对话消息表。
 
-### 6.2 Wiki Schema
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `id` | TEXT PRIMARY KEY | UUID |
+| `conversation_id` | TEXT NOT NULL FK→knowledge_conversations | 所属对话 |
+| `role` | TEXT NOT NULL CHECK(role IN ('user', 'assistant')) | 角色 |
+| `content` | TEXT NOT NULL | 消息正文 |
+| `used_requirement_versions_json` | TEXT NOT NULL DEFAULT '[]' | Agent 调用了哪些需求版本 |
+| `created_at` | TEXT NOT NULL | ISO 时间戳 |
 
-每个项目知识库目录必须包含 `AGENTS.md`，作为该知识库的 schema。
+索引：
+- `idx_knowledge_conversation_messages_conversation_created`：`(conversation_id, created_at)`
 
-Schema 至少包含：
+### 6.3 `knowledge_search_source_settings`
 
-- 目录结构。
-- 页面 frontmatter 字段。
-- 模块页模板。
-- 来源引用格式。
-- 知识状态定义。
-- 更新步骤。
-- lint 检查项。
-- 禁止事项。
-- 查询时读取顺序。
+检索来源开关表。
 
----
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `scope_key` | TEXT NOT NULL | `__all_projects__` 或具体 `project_id` |
+| `source_type` | TEXT NOT NULL | `final_requirements/explorations/test_cases/api_information/company_knowledge` |
+| `enabled` | INTEGER NOT NULL CHECK(enabled IN (0,1)) | 0=关闭，1=开启 |
+| `created_by` | TEXT NOT NULL | 创建者 |
+| `updated_by` | TEXT NOT NULL | 更新者 |
+| `created_at` | TEXT NOT NULL | ISO 时间戳 |
+| `updated_at` | TEXT NOT NULL | ISO 时间戳 |
 
-## 7. 首次生成知识库
-
-### 7.1 入口
-
-知识库界面提供“生成知识库”按钮。
-
-按钮可用条件：
-
-- 项目存在至少一个已确认来源材料。
-- 已确认来源材料必须包含已确认的需求文档版本；该版本可以来自上传需求文档，也可以来自探索文档反推后的候选需求文档。
-- 站点探索文档只能作为页面事实补充来源，不能单独满足正式知识库生成条件。
-- 如果存在待确认关键冲突项，按钮仍可点击以生成检查结果，但正式知识库版本必须标记为“阻塞”，不能发布为可用于正式用例生成的版本。
-
-### 7.2 生成路径
-
-| 场景 | 生成方式 |
-| --- | --- |
-| 只有需求文档 | 按需求模块生成业务知识库，页面事实标记为待探索 |
-| 只有探索文档 | 先生成候选需求文档并完成模块评审，确认后按候选需求模块生成业务知识库，页面事实来自探索文档 |
-| 需求文档 + 探索文档 | 做来源融合，生成业务规则 + 页面事实融合知识库 |
-
-### 7.3 生成产物
-
-建议输出目录结构：
-
-```text
-knowledge/
-  KB-001/
-    AGENTS.md
-    index.md
-    log.md
-    00-项目总览.md
-    01-模块索引.md
-    modules/
-      用户登录与权限.md
-      项目管理.md
-      需求文档管理.md
-    maps/
-      source-reference-matrix.md
-      module-source-map.md
-      page-requirement-map.md
-    quality/
-      stale-claims.md
-      lint-report.md
-    testing/
-      state-flows.md
-      test-focus.md
-      risk-paths.md
-    build/
-      build-summary.md
-      update-plan.md
-      build-blockers.md
-      conflict-check.md
-      changelog.md
-```
+主键：`(scope_key, source_type)` — 每个 scope 每个 source_type 只有一条记录。
 
 ---
 
-## 8. 有需求文档和探索文档时的融合
+## 7. API 路由清单（按 `knowledge.py` 顺序）
 
-### 8.1 来源优先级
+### 7.1 全局检索设置
 
-| 内容 | 主来源 |
-| --- | --- |
-| 业务目标 | 需求文档 |
-| 业务规则 | 写回澄清后的需求文档版本 |
-| 流程预期 | 需求文档 |
-| 验收口径 | 需求文档 |
-| 页面结构 | 站点探索 |
-| 字段展示 | 站点探索 |
-| 操作按钮 | 站点探索 |
-| 状态回显 | 站点探索 |
-| locator | 站点探索 |
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| GET | `/knowledge/search-settings` | 获取全局检索来源设置 |
+| PUT | `/knowledge/search-settings` | 更新全局检索来源设置（仅 admin） |
 
-### 8.2 融合步骤
+### 7.2 项目检索设置
 
-1. 读取需求分析模块树。
-2. 读取探索模块树。
-3. 建立 `SourceFusionMap`。
-4. 将页面事实补充到对应业务模块。
-5. 将需求未覆盖但页面存在的功能标记为“需求缺口”。
-6. 将需求存在但页面未发现的功能标记为“待探索”。
-7. 将冲突项写入 `SourceConflictItem`。
-8. 冲突项和需求缺口经确认后，必须写回需求文档新版本、补充探索文档新版本或形成构建阻塞项；未确认内容不能写入正式知识库。
-9. 生成知识库更新预览。
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| GET | `/projects/:projectId/knowledge/search-settings` | 获取项目检索来源设置（含继承语义） |
+| PUT | `/projects/:projectId/knowledge/search-settings` | 更新项目检索来源设置（仅 admin） |
+| DELETE | `/projects/:projectId/knowledge/search-settings` | 删除项目设置，恢复到全局（仅 admin） |
 
-### 8.3 冲突处理
+### 7.3 项目查询
 
-冲突项不能静默合并。
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| POST | `/projects/:projectId/knowledge/query` | 项目内同步查询 |
+| POST | `/projects/:projectId/knowledge/query/stream` | 项目内流式（SSE）查询 |
 
-| 冲突类型 | 示例 | 处理方式 | 测试策略 |
+### 7.4 全部项目查询
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| POST | `/knowledge/query/stream` | 全部项目流式（SSE）查询 |
+
+### 7.5 全部项目对话
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| GET | `/knowledge/conversations` | 全部项目对话列表 |
+| GET | `/knowledge/conversations/:conversationId` | 全部项目对话详情 |
+| DELETE | `/knowledge/conversations/:conversationId` | 删除全部项目对话 |
+
+### 7.6 项目对话
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| GET | `/projects/:projectId/knowledge/conversations` | 项目内对话列表 |
+| GET | `/projects/:projectId/knowledge/conversations/:conversationId` | 项目内对话详情 |
+| DELETE | `/projects/:projectId/knowledge/conversations/:conversationId` | 删除项目内对话 |
+
+实现依据：`apps/backend/app/api/v1/knowledge.py`
+
+---
+
+## 8. 前端页面清单
+
+| 路由 | 组件 | Tab | 说明 |
 | --- | --- | --- | --- |
-| 字段冲突 | 需求写手机号必填，页面不是必填 | 生成待确认问题 | 以实际页面为准，但需确认是需求错误还是实现错误；生成对比测试用例验证实际行为 |
-| 状态冲突 | 需求有”审批中”，页面没有该状态 | 标记状态缺失 | 补充探索缺失状态，标记为待确认测试点；如确认缺失则作为缺陷 |
-| 流程冲突 | 需求写必须二次确认，页面直接提交 | 标记流程不一致 | 生成对比测试用例，验证实际流程；确认是需求变更还是实现遗漏 |
-| 权限冲突 | 需求写访客只读，页面有编辑按钮 | 标记权限风险 | 作为安全测试重点，必须澄清；生成越权测试用例验证实际权限 |
-| 页面缺失 | 需求有导出功能，页面没找到入口 | 标记待探索或缺失 | 重新探索确认是否真的缺失；如确认缺失则作为缺陷或需求变更 |
-| 需求缺口 | 页面有批量导入，需求未描述 | 标记需求缺口 | 补充需求文档或确认为隐藏功能；生成补充测试用例覆盖该功能 |
-| 提示语冲突 | 需求写”删除成功”，页面显示”已删除” | 标记提示语差异 | 确认是否影响用户体验；如不影响可接受，如影响则作为优化项 |
-| 数据规则冲突 | 需求写用户名最长50字符，页面允许100字符 | 标记规则不一致 | 生成边界值测试用例验证实际限制；确认以哪个为准 |
+| `/knowledge` | `knowledge/page.tsx` | — | 知识库统一入口页 |
+| — | `ProjectKnowledgeWorkspace`（内联组件） | 知识库问答 | 流式对话、快捷问题、模型选择、历史管理 |
+| — | `CompanyKnowledgeVault`（内联组件） | 公司知识库 | 目录树 + Markdown 预览（完整 CRUD） |
+| — | `KnowledgeSearchSettings` | 检索设置 | 5 种来源开关、全局/项目切换 |
 
-### 8.4 冲突处理测试策略
-
-针对不同冲突类型，采用不同的测试策略：
-
-#### 8.4.1 字段冲突测试策略
-
-```markdown
-冲突：需求写手机号必填，页面不是必填
-
-测试策略：
-1. 验证实际行为：不填手机号能否提交成功
-2. 确认冲突原因：
-   - 需求文档错误？
-   - 实现遗漏？
-   - 需求变更未同步？
-3. 生成测试用例：
-   - 正常用例：填写手机号提交
-   - 异常用例：不填手机号提交
-   - 边界用例：手机号格式校验
-4. 确认处理方式：
-   - 如需求错误：更新需求文档
-   - 如实现遗漏：提交缺陷
-   - 如需求变更：更新需求文档和知识库
-```
-
-#### 8.4.2 状态冲突测试策略
-
-```markdown
-冲突：需求有”审批中”状态，页面没有该状态
-
-测试策略：
-1. 重新探索确认：是否真的没有该状态
-2. 检查状态流转：
-   - 该状态是否可达？
-   - 是否有其他状态替代？
-3. 生成测试用例：
-   - 尝试触发”审批中”状态
-   - 验证状态流转完整性
-4. 确认处理方式：
-   - 如确实缺失：作为缺陷
-   - 如需求变更：更新需求文档
-   - 如状态合并：更新状态流转图
-```
-
-#### 8.4.3 权限冲突测试策略
-
-```markdown
-冲突：需求写访客只读，页面有编辑按钮
-
-测试策略：
-1. 验证实际权限：访客点击编辑按钮会发生什么
-2. 生成安全测试用例：
-   - 访客尝试编辑操作
-   - 访客尝试删除操作
-   - 访客尝试越权访问
-3. 确认安全风险：
-   - 是否存在越权漏洞？
-   - 是否只是UI显示问题？
-4. 确认处理方式：
-   - 如存在越权：高优先级缺陷
-   - 如只是UI问题：中优先级缺陷
-   - 如需求错误：更新需求文档
-```
+关键子组件（均在 `knowledge/page.tsx` 内）：
+- `ProjectKnowledgeWorkspace`：对话主体（消息列表 + 输入框 + 快捷按钮）
+- `KnowledgeChatTopControls`：新建对话 / 深度思考 / 展开历史
+- `ChatMessage`：消息渲染（含思考展开详情）
+- `CompanyKnowledgeVault`：公司知识库目录 + 预览
+- `CompanyTreeNode`：目录树递归节点
 
 ---
 
-## 9. Wiki Lint 与健康检查
+## 9. 验收规则
 
-知识库每次生成或更新后必须执行 lint。
+| ID | 验收内容 | 核对依据路径 |
+| --- | --- | --- |
+| AC-01 | `/knowledge` 三个 Tab 均正常切换，内容正确 | `apps/frontend/src/app/(main)/knowledge/page.tsx:1171-1304` |
+| AC-02 | 发起流式查询，事件依次出现 `message_delta → metadata → done` | `apps/frontend/src/app/(main)/knowledge/page.tsx:720-781` |
+| AC-03 | 关闭 `company_knowledge` 后，回答引用中不含公司知识库文档；操作日志 `company_knowledge_files` 为空 | `apps/backend/app/services/knowledge/service.py:635-670` |
+| AC-04 | 把项目级 `test_cases` 关闭并保留全局 `test_cases` 开启，项目内查询不应包含用例上下文 | `apps/backend/app/services/knowledge/service.py:628-629` |
+| AC-05 | 管理员修改全局检索设置后，未自定义的项目查询立刻反映新设置（继承语义） | `apps/backend/app/services/knowledge/service.py:62-87` |
+| AC-06 | 把项目设置改回全局值后（DELETE），项目内查询回到全局默认 | `apps/backend/app/services/knowledge/service.py:121-126` |
+| AC-07 | 管理员以外角色 PUT 设置返回 403 `KNOWLEDGE_SEARCH_SETTINGS_FORBIDDEN` | `apps/backend/app/services/knowledge/service.py:138-140` |
+| AC-08 | 对话历史持久化，刷新页面后仍可加载；删除对话后列表已移除 | `apps/frontend/src/app/(main)/knowledge/page.tsx:504-578` |
+| AC-09 | `show_thinking=true` 时，Assistant 消息出现可折叠思考详情 | `apps/frontend/src/app/(main)/knowledge/page.tsx:733-751` |
+| AC-10 | 快捷问题（查需求/看探索/查来源/看模块）点击后自动填入输入框 | `apps/frontend/src/app/(main)/knowledge/page.tsx:1735-1748` |
+| AC-11 | 查询模型选择（`knowledge_query` capability）正常加载和保存 | `apps/frontend/src/app/(main)/knowledge/page.tsx:406-447` |
+| AC-12 | 阻塞状态（所有来源无内容）：返回 blocker 列表而非调用 Agent | `apps/backend/app/services/knowledge/service.py:224-229` |
+| AC-13 | 上传到公司知识库的 `.docx` 转换失败时，该文件不作为检索来源出现 | `apps/backend/app/services/knowledge/service.py:649`（`conversion_status` 过滤） |
+| AC-14 | `__all_projects__` 虚拟项目不显示在项目列表（status=archived） | `apps/backend/app/seed/seeds.py:911-915` |
+| AC-15 | 全部项目查询收集所有可见项目的来源 | `apps/backend/app/services/knowledge/service.py:548-564` |
 
-检查项：
+---
 
-| 检查项 | 说明 |
+## 10. 未实现 / 缺口清单
+
+以下功能在旧 PRD 中描述或 PRD 其他章节提及，但**当前代码中无前端入口**，记录于此以便后续补充：
+
+| 缺口 | 描述 | 相关 PRD 章节 |
+| --- | --- | --- |
+| 知识库状态三态展示 | 知识库"构建中 / 阻塞 / 已发布"三态目前无独立前端状态页；blocker 消息以内联文本形式出现在查询结果中 | §1.3（本文） |
+| 阻塞清单展示页 | 阻塞页应展示阻塞清单、来源位置、影响范围、建议动作、AI 协助处理入口；当前仅有 blocker 消息文本 | §1.3、PRD 00-12 |
+| 知识图谱 | 文档 12.5 提及知识图谱，当前无实现 | PRD 00-12 §12.5 |
+| Wiki 健康状态展示 | 文档 12.1 提及 Wiki 健康状态展示，当前无前端入口 | PRD 00-12 §12.1 |
+| 版本变化日志入口 | 文档 12.1 提及版本变化日志入口，当前无前端入口 | PRD 00-12 §12.1 |
+| 同步查询（非流式） | `POST /projects/:projectId/knowledge/query` 已实现，但前端当前仅使用流式接口 | `apps/backend/app/api/v1/knowledge.py:46-52` |
+
+---
+
+## 11. 已知不实现项
+
+以下能力在旧 PRD 中描述，但本仓库代码已删除或从未实现，**不应在评审中描述为已上线**：
+
+- 项目知识库自动构建 / 版本化 / 章节级 diff
+- "llm-wiki / Raw Sources / Wiki Layer / Schema Layer" 三层结构
+- 知识库健康检查 / lint 调度器
+- 知识库导入向导（OCR/PDF/Confluence 同步等）
+- 知识库可视化目录树
+- 项目工作稿中间层（已下线，当前直接读取 `documents.current_version_id` 对应版本）
+
+---
+
+## 12. 实现依据（精确路径）
+
+| 类别 | 路径 |
 | --- | --- |
-| 缺少来源引用 | 关键事实没有引用 Raw Source |
-| 待确认误写 | 待确认内容被写成确定规则 |
-| 冲突未处理 | 需求、探索、诊断之间存在未确认冲突 |
-| 过期事实 | 旧来源已被新版本替代但 wiki 未更新 |
-| 孤立页面 | 页面没有被 index 或其他页面引用 |
-| 断链 | Markdown 链接目标不存在 |
-| 重复模块 | 多个模块页表达同一业务对象 |
-| 缺少页面事实 | 已有探索来源但模块页没有页面事实 |
-| 缺少测试关注点 | 模块页没有测试关注点或风险路径 |
-| 来源覆盖不足 | 知识库没有覆盖已确认需求模块 |
-
-lint 结果：
-
-- 生成 `quality/lint-report.md`。
-- SQLite 保存 lint 问题索引。
-- 严重问题阻止知识库状态变为“可用于生成正式测试用例”。
-- 非严重问题允许生成，但必须标记为待处理。
-
----
-
-## 10. Wiki 图谱与可视化
-
-知识库界面可以像 Obsidian 一样查看和导航，并且支持知识库模块关系图谱。
-
-### 10.1 Obsidian 式查看
-
-要求：
-
-- 左侧目录树，类似 Obsidian vault。
-- 中间 Markdown 阅读视图。
-- 右侧来源引用、待确认问题、冲突和测试关注点。
-- 支持双向链接预览。
-- 支持按模块、标签、状态、来源类型过滤。
-- 支持快速打开 `index.md`、`log.md`、`AGENTS.md`、模块页和地图页。
-
-### 10.2 知识库模块关系图谱
-
-知识库模块关系图谱用于显示知识库内部模块、页面、规则、状态、角色和来源之间的关系。图谱只服务于理解知识库结构和模块关联，不展示测试用例、自动化脚本和失败诊断之间的关系。
-
-节点类型：
-
-- 模块
-- 页面
-- 字段
-- 状态
-- 角色
-- 规则
-- 来源文档
-- 澄清问题
-
-边类型：
-
-- 属于
-- 引用
-- 依赖
-- 触发
-- 冲突
-- 补充
-- 写回
-
-图谱用途：
-
-- 理解模块关系。
-- 查找知识孤岛和断链。
-- 发现模块、页面、规则和来源之间的依赖。
-- 辅助测试工程师快速定位相关知识库页面。
-
-不做范围：
-
-- 不展示测试用例节点。
-- 不展示自动化脚本节点。
-- 不展示失败诊断节点。
-- 不作为测试资产影响分析图；测试用例和自动化只作为下游影响提示展示在更新预览页，不进入知识库 vault。
-
----
-
-## 11. 更新知识库
-
-### 11.1 触发条件
-
-知识库界面出现“存在可更新来源”提示的条件：
-
-- 需求文档产生新版本
-- 需求分析重新生成
-- 澄清答案写回需求文档并产生新版本
-- 站点探索任务产生新结果
-- 候选需求文档评审确认
-- 冲突项被确认
-- 人工补充来源材料
-
-### 11.2 更新计划
-
-点击“更新知识库”后，先生成更新计划。
-
-更新计划必须包含：
-
-- 输入来源清单
-- 影响模块
-- 新增事实
-- 修改事实
-- 废弃事实
-- 构建阻塞项
-- 受影响测试资产摘要
-- 建议动作
-
-### 11.3 更新执行
-
-执行规则：
-
-- 不覆盖旧知识库版本。
-- 创建新的 `KnowledgeBuild`。
-- 保留旧版文档目录。
-- 生成变更记录。
-- 更新后的知识条目保留来源引用。
-- 更新 `index.md`。
-- 追加 `log.md`。
-- 执行 wiki lint。
-- 对被新版本替代的事实标记 stale 或 deprecated，不能静默删除。
-
----
-
-## 12. 页面设计
-
-### 12.1 知识库首页
-
-展示：
-
-- 当前知识库版本
-- 最近更新时间
-- 来源材料状态
-- 是否存在可更新来源
-- 待确认冲突项数量
-- 受影响测试资产提示
-- 操作：生成知识库、更新知识库、查看历史版本
-- Wiki 健康状态：构建中、阻塞、已发布
-- 版本变化日志入口
-- 知识图谱入口
-
-### 12.2 阻塞处理页
-
-展示：
-
-- 阻塞摘要。
-- 阻塞清单，按严重程度、模块、来源类型筛选。
-- 每条阻塞的来源位置、影响范围和建议动作。
-- 关联需求文档段落、探索页面、截图、trace、页面快照或澄清记录。
-- AI 协助处理对话框。
-- 操作：查看来源、生成澄清问题、发起重新探索、生成修改草稿、标记非核心风险可接受、重新生成知识库。
-
-AI 协助处理支持：
-
-- 解释当前阻塞为什么影响知识库发布。
-- 帮用户定位需求文档或探索文档中的关键位置。
-- 对比需求和探索差异，输出冲突点。
-- 生成澄清问题、修订建议或探索补充建议。
-- 推荐重新探索的页面、模块和操作路径。
-
-AI 输出必须经过用户确认，确认后只能形成需求文档新版本、探索文档补充、澄清记录、冲突确认记录或重新探索任务，再通过重新生成知识库进入正式版本。
-
-### 12.3 来源材料页
-
-展示：
-
-- 需求文档版本
-- 需求分析版本
-- 澄清写回记录
-- 探索文档
-- 人工补充说明
-- 是否已进入当前知识库版本
-- 版本变化日志
-- 关联知识库模块图谱关系
-
-### 12.4 更新预览页
-
-展示：
-
-- 更新计划
-- 模块影响
-- 来源引用
-- 冲突项
-- 受影响测试资产摘要
-- 操作：确认更新、取消、返回处理冲突
-
-### 12.5 图谱页
-
-展示：
-
-- 模块关系图
-- 页面关系图
-- 来源关系图
-- 冲突关系图
-
-支持：
-
-- 按模块搜索节点
-- 按关系类型过滤
-- 点击节点查看 Markdown 页面
-- 点击边查看来源或影响说明
-
----
-
-## 13. SQLite 存储策略
-
-SQLite 保存：
-
-- 知识库版本记录
-- 来源引用关系
-- 知识条目索引
-- 模块索引
-- 模块标签、标题锚点、业务对象、页面路径等 llm-wiki 导航索引
-- Wiki 页面索引
-- index.md 结构化副本
-- log.md 结构化副本
-- Wiki lint 问题
-- 版本变化日志
-- 图谱节点和边索引
-- 冲突项
-- 更新计划
-- 受影响资产关系
-
-文件系统保存：
-
-- 模块化知识库 Markdown 文档
-- `AGENTS.md`
-- `index.md`
-- `log.md`
-- 版本变化日志
-- 历史版本目录
-- 来源引用矩阵
-- 更新报告
-- lint 报告
-- 图谱数据导出
-
----
-
-## 14. 验收标准
-
-- 上传文档后不会自动生成知识库。
-- 探索完成后不会自动生成知识库。
-- 知识库界面能看到可选来源材料。
-- 知识库检索不依赖向量库，必须能通过模块索引、Markdown 文档和来源引用矩阵定位上下文。
-- 知识库目录必须包含 `AGENTS.md`、`index.md` 和 `log.md`。
-- 查询必须先读取 `index.md` 或 SQLite 模块索引，再读取相关模块页。
-- 每条关键知识必须有来源引用，能回查 Raw Sources。
-- 每次生成或更新必须追加 `log.md`。
-- 每次生成或更新必须执行 wiki lint 并输出 `quality/lint-report.md`。
-- 需求文档和探索文档更新后必须有版本变化记录，知识库能够据此判断是否需要更新。
-- 知识库界面要像 Obsidian 一样可浏览目录和 Markdown 页面。
-- 知识库界面要支持查看知识图谱。
-- 没有需求文档时，不能直接基于探索文档生成正式知识库；必须先生成候选需求文档并完成评审确认。
-- 有需求文档和探索文档时，必须生成来源融合映射和冲突项。
-- 冲突项未确认时，不能作为已确认知识写入。
-- 更新知识库前必须生成更新计划。
-- 更新知识库后必须生成新版本，旧版本可回看。
-- 知识库 Markdown 文档必须按模块拆分。
-- 每条关键知识必须能追溯到来源材料。
+| 后端服务 | `apps/backend/app/services/knowledge/service.py`（核心） |
+| 后端 Agent | `apps/backend/app/agents/knowledge/service.py`、`apps/backend/app/agents/knowledge/agent.py` |
+| 后端 Schema | `apps/backend/app/schemas/knowledge.py` |
+| 后端路由 | `apps/backend/app/api/v1/knowledge.py` |
+| 后端种子数据 | `apps/backend/app/seed/seeds.py:907-916`（`__all_projects__` 虚拟项目） |
+| 数据库 Schema | `apps/backend/app/seed/schema.py`（`knowledge_conversations`、`knowledge_conversation_messages`、`knowledge_search_source_settings`、`global_knowledge_bases`、`global_knowledge_folders`、`global_knowledge_vault_files` 表） |
+| 前端页面 | `apps/frontend/src/app/(main)/knowledge/page.tsx` |
+| 前端检索设置组件 | `apps/frontend/src/components/ai-testing/knowledge-search-settings.tsx` |
+| 前端 API 客户端 | `apps/frontend/src/lib/api-client.ts`（`knowledge.*` 命名空间） |

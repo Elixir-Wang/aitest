@@ -29,6 +29,22 @@ function TaskStatusBadge({ task }: { task: ApiTaskItem }) {
   );
 }
 
+const TASK_SOURCE_TYPE_LABELS: Record<string, string> = {
+  exploration_run: "Playwright 探索任务",
+  requirement_file: "需求文件上传转换",
+  requirement_analysis_run: "AI 需求分析任务",
+  requirement_finalization_run: "需求定稿",
+  test_case_generation_run: "用例集生成任务",
+  test_point_generation_run: "测试点生成任务",
+  api_automation_generation_run: "接口用例生成",
+  api_script_generation_run: "接口脚本生成",
+  api_automation_run: "接口自动化执行",
+};
+
+function getTaskSourceTypeLabel(sourceType: string) {
+  return TASK_SOURCE_TYPE_LABELS[sourceType] ?? sourceType;
+}
+
 function OverflowTooltipText({ value }: { value: string }) {
   const textRef = useRef<HTMLSpanElement>(null);
   const [isOverflowing, setIsOverflowing] = useState(false);
@@ -312,7 +328,7 @@ function TaskDetail({ task }: { task: ApiTaskItem }) {
     ["状态", task.status_label],
     ["更新时间", formatDateTime(task.updated_at)],
     ["任务 ID", task.source_id],
-    ["任务来源", task.source_type],
+    ["任务来源", getTaskSourceTypeLabel(task.source_type)],
     ["摘要", task.summary || "-"],
     ["详情地址", task.detail_url || "-"],
   ];

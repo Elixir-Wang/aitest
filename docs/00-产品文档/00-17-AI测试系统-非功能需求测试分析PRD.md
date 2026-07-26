@@ -1,465 +1,999 @@
-# 00-17 AI测试系统 - 非功能需求测试分析 PRD
+# 00-17 AI测试系统 - 性能测试 PRD
 
-## 1. 这份文档解决什么问题
-
-本文细化非功能需求的测试分析方法，包括性能、兼容性、安全、可用性等维度的测试需求识别和测试策略。
-
-核心规则：
-
-- 非功能需求测试分析必须在需求分析阶段同步进行，不能等到功能测试完成后再补充。
-- 每个模块的需求分析必须包含非功能需求测试关注点。
-- 非功能需求测试用例必须有明确的测试指标和验收标准。
-- 非功能需求测试结果必须纳入测试报告和质量评估。
-
----
-
-## 2. 业务边界
-
-### 2.1 本模块负责
-
-- 识别非功能需求测试关注点
-- 制定非功能需求测试策略
-- 定义非功能需求测试指标和验收标准
-- 生成非功能需求测试用例
-- 记录非功能需求测试结果
-
-### 2.2 本模块不负责
-
-- 不负责功能需求测试
-- 不负责性能优化实施
-- 不负责安全漏洞修复
-- 不负责兼容性问题修复
+> **历史命名说明**：原文件名"非功能需求测试分析"为历史遗留命名，当前文件实际承担性能测试（Performance Testing）产品需求文档职责，特此说明。
+>
+> **基线日期**：2026-07-26
+>
+> **事实源**：当前工作区源码，以下列文件为准：
+> - 后端 API：`apps/backend/app/api/v1/performance_tests.py`、`apps/backend/app/api/v1/performance_runs.py`、`apps/backend/app/api/v1/performance_scenarios.py`
+> - 后端服务：`apps/backend/app/services/performance_testing/{service.py,script_service.py,analysis_service.py,headless_worker.py,scenario_service.py,repair_service.py,locust_runtime.py,metric_snapshot_service.py,run_repo.py}`
+> - 后端仓储：`apps/backend/app/repositories/{performance_test_repo.py,performance_script_repo.py}`
+> - 后端 Agent：`apps/backend/app/agents/performance_testing/{script_generation/service.py,diagnosis/agent.py,diagnosis/service.py}`
+> - 数据库：`apps/backend/app/seed/schema.py`（含 11 张性能测试相关表）
+> - 前端：`apps/frontend/src/components/ai-testing/performance-testing/`（含 performance-test-form、script-review、locust-console、performance-ai-analysis-drawer、performance-analysis-report 等组件）
+> - 前端 API 客户端：`apps/frontend/src/lib/api-client.ts:1486-1735`
+>
+> **状态标签**：已实现 / 未实现 / 占位说明。
+>
+> **关键结论**：
+> - 性能测试已实现"托管 Locust 场景 + 脚本生成/审核 + 运行 + 实时监控 + 停止/重置/重跑 + AI 诊断（含证据/配置建议/应用并重跑）"完整闭环；
+> - 性能场景（Scenario）独立运行使用 `performance_runs` 与 `performance_run_gate_results`；
+> - 泛化的非功能测试（容量、可靠性、安全性、混沌等）当前 **未实现**。
 
 ---
 
-## 3. 非功能需求测试维度
+## 1. 范围与目标
 
-| 维度 | 说明 | 测试重点 |
+### 1.1 本 PRD 覆盖范围
+
+本 PRD 覆盖以下完整功能：
+
+- **性能任务（Performance Test）**：单接口性能任务，关联接口环境、目标端点、请求配置、负载配置、成功规则、质量目标。
+- **性能场景（Performance Scenario）**：多接口场景编排，含场景定义 JSON、负载画像、数据源、质量门禁（`quality_gate_json`）、安全策略（`safety_policy_json`）。
+- **脚本生命周期**：Locust 脚本 AI 生成 → 校验 → 审核（确认/驳回/重新生成）→ 确认。
+- **运行与监控**：`performance_test_runs` 独立运行 + `performance_runs` 场景级运行 + SSE 实时流 + 报告下载。
+- **性能 AI 分析**：`performance_analysis_sessions` 会话管理 + 诊断证据 + 配置建议 + 修复复测。
+- **性能指标快照服务**：`metric_snapshot_service.py` 提供 `build_metric_snapshot` / `build_report_snapshot`。
+- **修复复测**：`repair_service.apply_and_rerun` 包含预检（preflight）、配置更新、自动重跑。
+
+### 1.2 性能任务 vs 性能场景双轨
+
+| 维度 | 性能任务（Performance Test） | 性能场景（Performance Scenario） |
 | --- | --- | --- |
-| 性能 | 响应时间、吞吐量、资源占用 | 页面加载、接口响应、并发处理 |
-| 兼容性 | 浏览器、操作系统、分辨率 | 主流浏览器、常见分辨率 |
-| 安全 | 认证、授权、数据保护 | 越权、注入、敏感数据 |
-| 可用性 | 易用性、无障碍、用户体验 | 操作流程、提示信息、错误处理 |
-| 可靠性 | 稳定性、容错性、恢复能力 | 异常处理、数据一致性 |
-| 可维护性 | 日志、监控、问题定位 | 日志完整性、错误追踪 |
+| 定位 | 单接口性能验证 | 多接口场景编排 |
+| 运行记录表 | `performance_test_runs` | `performance_runs` |
+| 关联测试 | `performance_test`（关联 endpoint + environment） | `performance_scenario`（关联 environment） |
+| 负载配置 | `load_config_json`（fixed/gradient/stress/spike/endurance） | `load_profile_json`（fixed/stages + ramp/hold/steps） |
+| 质量门禁 | `success_rules_json`（成功规则，运行时判定） | `quality_gate_json`（`max_fail_ratio`/`max_p95_rt` 等，场景结束后判定） |
+| 脚本生成 | AI 生成 `performance_test_script`，需确认 | 场景内直接引用 endpoint |
+| 路由前缀 | `/projects/{project_id}/performance-tests` | `/projects/{project_id}/performance-scenarios` |
+| 运行路由 | `/projects/{project_id}/performance-test-runs` | `/projects/{project_id}/performance-runs` |
+
+### 1.3 本 PRD 不覆盖
+
+- 接口/UI 自动化（00-16 / 00-09）；
+- 泛化非功能测试（容量、可靠性、安全性、混沌等）—— **未实现**；
+- Allure 报告（性能测试不接入 Allure）；
+- 报告中心聚合（00-13 占位）。
 
 ---
 
-## 4. 性能测试需求分析
+## 2. 性能任务（Performance Test）子模块
 
-### 4.1 性能测试场景识别
+### 2.1 概述
 
-基于需求文档，识别性能测试关键场景：
+性能任务是针对单个 API 接口的性能验证单元。一个任务绑定一个 `endpoint_id` 和一个 `api_environment_id`，配置负载参数和成功判定规则，生成 Locust 脚本后运行。
 
-| 场景类型 | 识别规则 | 示例 |
+### 2.2 核心字段
+
+| 字段 | 类型 | 说明 |
 | --- | --- | --- |
-| 高频操作 | 用户频繁使用的功能 | 项目列表查询、用例列表查询 |
-| 大数据量 | 涉及大量数据处理的功能 | 批量生成测试用例、批量执行自动化 |
-| 复杂计算 | 涉及复杂逻辑或AI计算的功能 | 需求分析、知识库生成、用例生成 |
-| 并发场景 | 多用户同时操作的功能 | 多人编辑需求文档、并发执行测试 |
-| 文件处理 | 涉及文件上传、下载、转换的功能 | 需求文档上传、Allure报告生成 |
+| `id` | TEXT | 主键，格式 `perftest-<hex8>` |
+| `project_id` | TEXT | 所属项目 |
+| `name` | TEXT | 任务名称，同项目内唯一 |
+| `description` | TEXT | 描述 |
+| `target_type` | TEXT | 目前固定为 `endpoint` |
+| `endpoint_id` | TEXT | 关联接口 ID（必须属于同一项目） |
+| `api_environment_id` | TEXT | 关联环境 ID（必须属于同一项目） |
+| `request_config_json` | TEXT | 请求配置，含 method/path/headers/body/params 等 |
+| `load_config_json` | TEXT | 负载配置，含 mode/users/spawn_rate/duration 等 |
+| `data_config_json` | TEXT | 数据源配置，含 source/csv_file_name/json_rows 等 |
+| `circuit_breaker_json` | TEXT | 熔断器配置（JSON 字段，非独立模块） |
+| `performance_goal_json` | TEXT | 性能目标，含 max_fail_ratio/max_p95_rt 等 |
+| `success_rules_json` | TEXT | 成功规则列表，含 kind/status_codes/json_path 等 |
+| `created_by` | TEXT | 创建者 ID |
 
-### 4.2 性能测试指标
+### 2.3 负载配置（PerformanceLoadConfig）
 
-| 指标类型 | 指标名称 | 验收标准 | 测试方法 |
-| --- | --- | --- | --- |
-| 响应时间 | 页面加载时间 | < 2秒（首屏）、< 1秒（切换） | 浏览器开发者工具、Lighthouse |
-| 响应时间 | 接口响应时间 | < 500ms（查询）、< 2秒（复杂计算） | 接口测试工具、APM监控 |
-| 吞吐量 | 并发用户数 | 支持50并发用户 | 压力测试工具（JMeter、Locust） |
-| 吞吐量 | 每秒请求数 | > 100 QPS（查询接口） | 压力测试工具 |
-| 资源占用 | CPU占用率 | < 70%（正常负载） | 系统监控工具 |
-| 资源占用 | 内存占用 | < 2GB（后端进程） | 系统监控工具 |
-| 资源占用 | 数据库连接数 | < 50（正常负载） | 数据库监控 |
-
-### 4.3 性能测试用例模板
-
-```markdown
-# 性能测试用例：项目列表查询
-
-## 测试目标
-验证项目列表查询在不同数据量下的响应时间
-
-## 测试环境
-- 服务器配置：4核8GB
-- 数据库：SQLite
-- 并发用户数：10
-
-## 测试数据
-- 项目数量：10、100、1000、10000
-- 每个项目包含：10个需求文档、50个测试用例
-
-## 测试步骤
-1. 准备测试数据
-2. 清空缓存
-3. 发起查询请求
-4. 记录响应时间
-5. 重复10次取平均值
-
-## 验收标准
-- 10个项目：< 200ms
-- 100个项目：< 500ms
-- 1000个项目：< 1秒
-- 10000个项目：< 2秒
-
-## 测试结果
-- 实际响应时间：
-- 是否通过：
-- 性能瓶颈分析：
+```json
+{
+  "mode": "fixed",          // fixed | gradient | stress | spike | endurance
+  "users": 10,
+  "spawn_rate": 1,
+  "measurement_duration_seconds": 60,
+  "request_timeout_seconds": 30,
+  "wait_time_min_seconds": 0,
+  "wait_time_max_seconds": 1,
+  "stages": []              // gradient/stress/spike/endurance 模式时使用
+}
 ```
 
-### 4.4 性能测试关注点
+### 2.4 成功规则（PerformanceSuccessRule）
 
-需求分析时必须识别以下性能关注点：
+```json
+[
+  {"kind": "status_code", "status_codes": [200]},
+  {"kind": "jsonpath_equals", "json_path": "$.code", "expected": 0}
+]
+```
 
-| 关注点 | 检查内容 | 风险 |
-| --- | --- | --- |
-| 数据量 | 需求是否明确数据量级 | 大数据量下性能下降 |
-| 分页 | 列表查询是否支持分页 | 一次加载过多数据 |
-| 缓存 | 是否需要缓存机制 | 重复计算浪费资源 |
-| 异步处理 | 耗时操作是否异步处理 | 阻塞用户操作 |
-| 批量操作 | 批量操作是否有数量限制 | 批量操作超时 |
-| 文件大小 | 文件上传是否有大小限制 | 大文件上传失败或超时 |
+### 2.5 熔断器（circuit_breaker_json）
 
----
-
-## 5. 兼容性测试需求分析
-
-### 5.1 浏览器兼容性
-
-| 浏览器 | 版本 | 优先级 | 测试重点 |
-| --- | --- | --- | --- |
-| Chrome | 最新版、最新版-1 | P0 | 全功能测试 |
-| Edge | 最新版 | P0 | 全功能测试 |
-| Firefox | 最新版 | P1 | 核心功能测试 |
-| Safari | 最新版 | P1 | 核心功能测试 |
-
-兼容性测试关注点：
-
-- 页面布局是否正常
-- 交互功能是否正常
-- 文件上传下载是否正常
-- 弹窗和提示是否正常
-- CSS样式是否正常
-- JavaScript是否正常执行
-
-### 5.2 分辨率兼容性
-
-| 分辨率 | 设备类型 | 优先级 | 测试重点 |
-| --- | --- | --- | --- |
-| 1920x1080 | 桌面显示器 | P0 | 全功能测试 |
-| 1366x768 | 笔记本 | P0 | 全功能测试 |
-| 1440x900 | 笔记本 | P1 | 核心功能测试 |
-| 2560x1440 | 高分屏 | P1 | 布局和字体测试 |
-
-兼容性测试关注点：
-
-- 页面元素是否完整显示
-- 滚动条是否正常
-- 弹窗是否居中
-- 表格是否自适应
-- 侧边栏是否正常收起展开
-
-### 5.3 操作系统兼容性
-
-| 操作系统 | 版本 | 优先级 | 测试重点 |
-| --- | --- | --- | --- |
-| Windows | 10、11 | P0 | 全功能测试 |
-| macOS | 最新版、最新版-1 | P0 | 全功能测试 |
-| Linux | Ubuntu 20.04+ | P1 | 核心功能测试 |
+当前为 JSON 配置字段，不作为独立模块实现。字段记录熔断相关配置，供 AI 诊断时参考。
 
 ---
 
-## 6. 安全测试需求分析
+## 3. 性能场景（Performance Scenario）子模块
 
-### 6.1 安全测试场景
+### 3.1 概述
 
-| 场景类型 | 测试内容 | 风险等级 |
+性能场景用于编排多接口组合的复杂性能测试场景，支持阶段化负载、数据驱动和质量门禁判定。
+
+### 3.2 核心字段
+
+| 字段 | 类型 | 说明 |
 | --- | --- | --- |
-| 认证安全 | 登录、会话管理、密码策略 | 高 |
-| 授权安全 | 权限控制、越权访问 | 高 |
-| 数据安全 | 敏感数据加密、传输安全 | 高 |
-| 注入攻击 | SQL注入、XSS、CSRF | 高 |
-| 文件安全 | 文件上传、路径遍历 | 中 |
-| 接口安全 | 接口鉴权、参数校验 | 中 |
+| `id` | TEXT | 主键，格式 `perfscenario-<hex8>` |
+| `project_id` | TEXT | 所属项目 |
+| `name` | TEXT | 场景名称，同项目内唯一 |
+| `description` | TEXT | 描述 |
+| `api_environment_id` | TEXT | 关联环境 ID |
+| `scenario_definition_json` | TEXT | 场景定义，含 personas/steps/权重等 |
+| `load_profile_json` | TEXT | 负载画像，含 mode/target_users/spawn_rate/warmup/measurement/stages |
+| `data_source_json` | TEXT | 数据源，含 source/dataset_id/rows |
+| `quality_gate_json` | TEXT | 质量门禁，含 max_fail_ratio/max_p95_rt/max_avg_rt/min_avg_rps/min_req_count |
+| `safety_policy_json` | TEXT | 安全策略，含 max_concurrent_users/stop_on_error 等 |
+| `created_by` | TEXT | 创建者 ID |
 
-### 6.2 安全测试检查清单
+### 3.3 场景运行（performance_runs）
 
-#### 6.2.1 认证安全
+创建场景运行后，状态机如下：
 
-- [ ] 密码是否加密存储
-- [ ] 是否支持密码强度校验
-- [ ] 是否有登录失败次数限制
-- [ ] 是否有会话超时机制
-- [ ] 是否支持强制登出
-- [ ] 是否防止暴力破解
+```
+created → validating → starting → warming_up → measuring → stopping → finished
+                                          ↓（质量态）      ↓
+                                     passed / failed / not_configured / not_evaluated
+```
 
-#### 6.2.2 授权安全
+场景运行结束后，`scenario_service.save_quality_gate_result` 写入 `performance_run_gate_results`，记录每条门禁规则的 metric/operator/threshold/actual/status/reason。
 
-- [ ] 是否有完整的权限控制
-- [ ] 是否防止越权访问（水平越权、垂直越权）
-- [ ] 是否有接口级权限校验
-- [ ] 是否有数据级权限隔离
-- [ ] 是否防止权限提升
-- [ ] 是否有操作审计日志
+### 3.4 质量门禁规则（evaluate_quality_gate）
 
-#### 6.2.3 数据安全
+| 规则字段 | 对应指标 | 操作符 |
+| --- | --- | --- |
+| `max_fail_ratio` | `failure_rate` | `<=` |
+| `max_average_response_time_ms` | `average_response_time_ms` | `<=` |
+| `max_p95_response_time_ms` | `p95_response_time_ms` | `<=` |
+| `min_average_rps` | `requests_per_second` | `>=` |
+| `min_request_count` | `request_count` | `>=` |
 
-- [ ] 敏感数据是否加密存储
-- [ ] 敏感数据是否加密传输（HTTPS）
-- [ ] 是否防止敏感数据泄露（日志、错误信息）
-- [ ] 是否有数据备份机制
-- [ ] 是否有数据删除机制
-- [ ] 是否符合数据保护法规
+---
 
-#### 6.2.4 注入攻击防护
+## 4. 接口编辑与脚本生命周期
 
-- [ ] 是否防止SQL注入
-- [ ] 是否防止XSS攻击
-- [ ] 是否防止CSRF攻击
-- [ ] 是否防止命令注入
-- [ ] 是否防止路径遍历
-- [ ] 是否有输入校验和过滤
+### 4.1 性能任务 CRUD
 
-#### 6.2.5 文件安全
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| GET | `/projects/{project_id}/performance-tests` | 列表 |
+| POST | `/projects/{project_id}/performance-tests` | 创建（需 admin） |
+| GET | `/projects/{project_id}/performance-tests/{test_id}` | 详情 |
+| PATCH | `/projects/{project_id}/performance-tests/{test_id}` | 更新（需 admin） |
+| DELETE | `/projects/{project_id}/performance-tests/{test_id}` | 删除（需 active 运行停止后） |
+| POST | `/projects/{project_id}/performance-tests/request-preview` | 请求预览（从 endpoint + environment 构造） |
 
-- [ ] 文件上传是否有类型限制
-- [ ] 文件上传是否有大小限制
-- [ ] 文件上传是否有病毒扫描
-- [ ] 文件存储路径是否安全
-- [ ] 文件下载是否有权限控制
-- [ ] 是否防止文件包含漏洞
+### 4.2 脚本生成（AI 计划 + 脚本渲染）
 
-### 6.3 安全测试用例模板
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| POST | `/projects/{project_id}/performance-tests/{test_id}/scripts/generate` | 生成脚本 |
+| GET | `/projects/{project_id}/performance-tests/{test_id}/scripts` | 列表脚本 |
+| GET | `/projects/{project_id}/performance-tests/{test_id}/scripts/{script_id}` | 详情 |
+| PATCH | `/projects/{project_id}/performance-tests/{test_id}/scripts/{script_id}/configuration` | 修改脚本配置（仅 pending 状态） |
+| POST | `/projects/{project_id}/performance-tests/{test_id}/scripts/{script_id}/confirm` | 确认脚本 |
 
-```markdown
-# 安全测试用例：越权访问测试
+**脚本状态**：`pending_confirmation`（待确认）→ `confirmed`（已确认）→ `superseded`（被取代）
 
-## 测试目标
-验证访客无法访问测试工程师的项目
+**确认条件**：脚本校验必须 `validation_result.valid == true`，否则返回 `409 PERFORMANCE_SCRIPT_NOT_CONFIRMABLE`。
 
-## 测试前置
-- 测试工程师账号：tester_01
-- 访客账号：guest_01
-- 测试工程师创建项目：project_test_01
+### 4.3 脚本生成流程
 
-## 测试步骤
-1. 使用测试工程师账号登录
-2. 创建项目 project_test_01
-3. 记录项目ID
-4. 退出登录
-5. 使用访客账号登录
-6. 尝试访问项目详情页（直接输入URL）
-7. 尝试编辑项目（调用接口）
-8. 尝试删除项目（调用接口）
-
-## 预期结果
-- 访问项目详情页：返回403或跳转到无权限页面
-- 编辑项目：返回403，提示无权限
-- 删除项目：返回403，提示无权限
-- 不能绕过前端限制直接调用接口
-
-## 风险等级
-高
-
-## 测试结果
-- 实际结果：
-- 是否通过：
-- 安全风险：
+```mermaid
+flowchart TD
+    A[创建 PerformanceTest] --> B[POST /scripts/generate]
+    B --> C[build_ai_or_default_plan]
+    C --> D[render_locust_script]
+    D --> E[validate_locust_script]
+    E --> F{validation.valid?}
+    F -- 是 --> G[validation_status = pending_confirmation]
+    F -- 否 --> H[validation_status = validation_failed]
+    G --> I[用户审核]
+    I --> J{确认?}
+    J -- 确认 --> K[status = confirmed]
+    J -- 驳回 --> L[可重新生成覆盖]
 ```
 
 ---
 
-## 7. 可用性测试需求分析
+## 5. 运行与生命周期
 
-### 7.1 可用性测试维度
+### 5.1 性能任务运行（performance_test_runs）
 
-| 维度 | 测试内容 | 验收标准 |
+**创建运行**：
+
+```
+POST /projects/{project_id}/performance-tests/{test_id}/runs
+Body: { "script_id": "<script_id>" }
+```
+
+- 必须传入 `script_id`，且该脚本 `validation_status == 'confirmed'`
+- 校验 endpoint / environment 属于同一项目
+- 创建 `performance_test_runs` 记录，状态 `created`
+
+**启动运行**：
+
+```
+POST /projects/{project_id}/performance-tests/{test_id}/runs/{run_id}/start
+Body（可选）: { "users": 10, "spawn_rate": 1, "run_time": 60, "host": "http://..." }
+```
+
+**状态机（run_repo.py:7-16）**：
+
+```
+created → starting → running → { completed | stopped | failed | cancelled }
+                     ↓
+              stopping → stopped
+```
+
+**终止条件**：
+
+| 终止方式 | 状态 |
+| --- | --- |
+| Locust 自然结束（return_code=0） | `completed` |
+| 用户主动停止（`stop_headless_run`） | `stopped` |
+| Locust 异常退出（return_code≠0） | `failed` |
+| 进程未响应被 kill | `failed` |
+| 用户在 created 状态取消 | `cancelled` |
+
+**运行控制**：
+
+| 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| 易用性 | 操作流程是否简洁、直观 | 核心操作 <= 3步 |
-| 一致性 | 交互方式是否一致 | 相同操作使用相同交互 |
-| 反馈性 | 操作是否有明确反馈 | 所有操作有成功/失败提示 |
-| 容错性 | 是否防止误操作 | 危险操作有二次确认 |
-| 帮助性 | 是否有帮助信息 | 复杂功能有帮助文档或提示 |
-| 无障碍 | 是否支持无障碍访问 | 符合WCAG 2.1 AA标准 |
+| POST | `/projects/{project_id}/performance-test-runs/{run_id}/stop` | 停止运行 |
+| POST | `/projects/{project_id}/performance-test-runs/{run_id}/reset-stats` | 重置统计（拒绝 created/stopping 状态） |
+| GET | `/projects/{project_id}/performance-test-runs/{run_id}/state` | 当前状态 |
+| GET | `/projects/{project_id}/performance-tests/{test_id}/runs/history` | 最近 10 次运行记录 |
 
-### 7.2 可用性测试检查清单
+### 5.2 运行统计与事件
 
-#### 7.2.1 操作流程
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| GET | `/projects/{project_id}/performance-test-runs/{run_id}/stats` | 完整统计（含 run + stats + failures + exceptions + events） |
+| GET | `/projects/{project_id}/performance-test-runs/{run_id}/charts` | 直方图/历史曲线（优先从 result_stats_history.csv 读取） |
+| GET | `/projects/{project_id}/performance-test-runs/{run_id}/failures` | 失败请求列表 |
+| GET | `/projects/{project_id}/performance-test-runs/{run_id}/exceptions` | 异常事件列表 |
 
-- [ ] 核心操作流程是否简洁（<= 3步）
-- [ ] 操作步骤是否符合用户习惯
-- [ ] 是否有快捷操作方式
-- [ ] 是否支持批量操作
-- [ ] 是否支持撤销操作
-- [ ] 是否有操作引导
+---
 
-#### 7.2.2 提示信息
+## 6. 子进程执行（headless_worker）
 
-- [ ] 成功提示是否明确
-- [ ] 失败提示是否明确原因
-- [ ] 警告提示是否突出
-- [ ] 帮助提示是否易懂
-- [ ] 错误提示是否有解决建议
-- [ ] 提示位置是否合理
+### 6.1 Locust 进程管理
 
-#### 7.2.3 表单设计
+`headless_worker` 负责启动和管理 Locust 子进程：
 
-- [ ] 必填项是否有明确标识
-- [ ] 字段是否有说明或示例
-- [ ] 校验是否实时反馈
-- [ ] 错误提示是否在字段旁边
-- [ ] 是否支持自动填充
-- [ ] 是否有字段长度提示
+```python
+def build_headless_command(*, run_dir, users, spawn_rate, duration_seconds):
+    return [
+        sys.executable, "-m", "locust", "-f", "locustfile.py",
+        "--headless", "--users", str(users), "--spawn-rate", str(spawn_rate),
+        "--run-time", f"{duration_seconds}s",
+        "--csv", str(run_dir / "result"),
+        "--csv-full-history", "--html", str(run_dir / "result.html")
+    ]
+```
 
-#### 7.2.4 无障碍访问
+### 6.2 运行产物目录
 
-- [ ] 是否支持键盘导航
-- [ ] 是否有合理的Tab顺序
-- [ ] 是否有语义化HTML标签
-- [ ] 图片是否有alt文本
-- [ ] 是否有合理的颜色对比度
-- [ ] 是否支持屏幕阅读器
+```
+apps/backend/data/projects/<project_id>/performance_testing/runs/<run_id>/
+├── locustfile.py          # 固定 Locust 运行时模板（locust_runtime.py 生成）
+├── generated_locustfile.py # AI 生成的 Locust 脚本
+├── runtime.json           # 运行时环境配置（API base URL + headers + variables）
+├── result.html            # Locust HTML 报告
+├── result_stats.csv       # 请求统计
+├── result_stats_history.csv # 时序统计（--csv-full-history）
+├── result_failures.csv    # 失败请求详情
+├── result_exceptions.csv  # 异常事件
+├── stdout.log             # 标准输出
+├── stderr.log             # 标准错误
+└── locust-events.jsonl    # 实时事件流
+```
 
-### 7.3 可用性测试用例模板
+### 6.3 最近 10 次运行保留
 
-```markdown
-# 可用性测试用例：创建项目流程
+`headless_worker._prune_run_history` 在每次 `create_run_session` 和 Locust 结束后，保留同一 `performance_test_id` 下最近 10 次非 active 运行的产物目录，其余删除。
 
-## 测试目标
-验证创建项目流程是否简洁、直观
+---
 
-## 测试步骤
-1. 点击"创建项目"按钮
-2. 填写项目名称
-3. 选择项目类型
-4. 添加项目成员
-5. 点击"确定"
+## 7. 实时监控（SSE 流）
 
-## 可用性检查
-- [ ] 操作步骤是否 <= 3步
-- [ ] 必填项是否有明确标识
-- [ ] 字段是否有说明或示例
-- [ ] 校验是否实时反馈
-- [ ] 成功后是否有明确提示
-- [ ] 是否自动跳转到项目详情页
+### 7.1 SSE 端点
 
-## 用户体验评分
-- 易用性：（1-5分）
-- 流畅性：（1-5分）
-- 满意度：（1-5分）
+```
+GET /projects/{project_id}/performance-test-runs/{run_id}/stream
+```
 
-## 改进建议
+### 7.2 事件类型
+
+| 事件类型 | 触发条件 | 说明 |
+| --- | --- | --- |
+| `run` | run 状态/时间戳/错误信息变化 | 推送完整 run payload |
+| `stats` | 新 stat 采样到达 | 推送 run + latest stat + failures + exceptions |
+| `log` | 新事件记录到达 | 推送事件行 |
+| `done` | 状态进入 `completed/stopped/failed/cancelled` | SSE 断开 |
+
+### 7.3 前端对接
+
+前端 `api-client.ts` 中 `streamPerformanceRun()` 函数消费该 SSE 流，驱动 `locust-console.tsx` 组件实时展示控制台输出和统计数据。
+
+---
+
+## 8. Locust 报告下载白名单
+
+### 8.1 支持下载的文件（REPORT_FILES）
+
+| 文件名 | 内容说明 |
+| --- | --- |
+| `result.html` | Locust HTML 报告 |
+| `result_stats.csv` | 请求统计 CSV |
+| `result_stats_history.csv` | 时序统计 CSV |
+| `result_failures.csv` | 失败请求 CSV |
+| `result_exceptions.csv` | 异常事件 CSV |
+| `result_tasks.csv` | 任务统计 CSV |
+| `stdout.log` | 标准输出日志 |
+| `stderr.log` | 标准错误日志 |
+
+### 8.2 安全约束
+
+- 文件名必须在 `REPORT_FILES` 白名单内；
+- 使用 `Path(filename).name != filename` 防止路径穿越；
+- 校验 `directory not in report.parents` 防止目录遍历；
+- 任意违规返回 `400 PERFORMANCE_REPORT_INVALID` 或 `404 PERFORMANCE_REPORT_NOT_FOUND`。
+
+---
+
+## 9. 性能 AI 分析
+
+### 9.1 分析能力
+
+`agents/performance_testing/diagnosis/service.py`：
+
+- **CAPABILITY_ID**：`performance_report_analysis`
+- **PROMPT_VERSION**：`"v2-zh"`
+- **Agent**：通过 `performance_diagnosis_agent(model)` 创建，仅使用工具，无自定义工具
+- **输出类型**：`PerformanceDiagnosis`（含 category/direct_cause/root_cause/confidence/evidence/findings/recommendations/proposed_changes）
+
+### 9.2 分析流程
+
+```mermaid
+flowchart TD
+    A[POST /performance-test-runs/{run_id}/ai-analysis] --> B[create_analysis: status=collecting]
+    B --> C[BackgroundTasks: execute_analysis]
+    C --> D[collect_performance_evidence]
+    D --> E[build_metric_snapshot]
+    E --> F[diagnose_performance with PROMPT_VERSION=v2-zh]
+    F --> G[build_report_snapshot]
+    G --> H[update: status=waiting_approval, repair_status=available]
+```
+
+### 9.3 证据收集（analysis_evidence）
+
+分析前收集：run 元数据 + performance_test 配置 + stats + failures + exceptions + latest_summary，构成 `evidence` 字典传入 Agent。
+
+### 9.4 性能指标快照服务（metric_snapshot_service.py）
+
+- **CALCULATOR_VERSION**：`"performance-metrics-v1"`
+- `build_metric_snapshot(evidence)`：构建完整快照，含 schema_version/quality/aggregate/capacity/objectives/verdict/series/evidence_index
+- `build_report_snapshot(metric_snapshot, diagnosis)`：将 AI 诊断结果结构化为报告快照，含 executive_summary/capacity_summary/findings/recommendations
+
+---
+
+## 10. 性能分析会话状态机
+
+### 10.1 分析状态（analysis_session.status）
+
+```
+collecting → analyzing → waiting_approval
+                ↓              ↓
+             failed         failed / rejected
+```
+
+| 状态 | 说明 |
+| --- | --- |
+| `collecting` | 刚创建，等待证据收集 |
+| `analyzing` | 正在执行 AI 诊断 |
+| `waiting_approval` | 诊断完成，等待用户审核 |
+| `failed` | 分析执行失败 |
+| `rejected` | 用户主动驳回 |
+
+### 10.2 分析子状态（analysis_status / analysis_stage）
+
+| analysis_status | analysis_stage | 说明 |
+| --- | --- | --- |
+| `collecting` | - | 证据收集中 |
+| `analyzing` | `ai_diagnosis` | AI 诊断执行中 |
+| `analyzing` | `report_ready` | 诊断完成，报告就绪 |
+| `completed` | `report_ready` | 用户已审核（apply 或 reject） |
+| `failed` | `failed` | 分析失败 |
+
+### 10.3 修复状态（repair_status）
+
+| repair_status | 说明 |
+| --- | --- |
+| `not_applicable` | 无可应用修改 |
+| `available` | 有可应用修改，等待审核 |
+| `preflighting` | 预检中 |
+| `rerunning` | 重跑中 |
+| `completed` | 已完成修复 |
+| `rejected` | 用户驳回 |
+
+### 10.4 应用状态（application_status）
+
+```
+not_requested → preflighting → preflight_failed
+                   ↓
+               rerunning → completed / apply_failed
+```
+
+| 状态 | 说明 |
+| --- | --- |
+| `not_requested` | 未发起应用 |
+| `preflighting` | 正在预检（单请求验证） |
+| `preflight_failed` | 预检失败，未修改配置 |
+| `rerunning` | 预检通过，正在创建新脚本和重跑 |
+| `completed` | 完成修复复测 |
+| `apply_failed` | 重跑启动失败 |
+| `superseded` | 被新的分析取代 |
+
+---
+
+## 11. 修复复测（repair_service）
+
+### 11.1 流程
+
+```
+POST /performance-analysis/{analysis_id}/apply-and-rerun
+Body: { "change_ids": ["<change_id_1>", "<change_id_2>"] }
+```
+
+1. **校验**：`change_ids` 中的 `ProposedChange` 必须存在于分析的 `proposal.changes` 中，且 `target_type != 'platform_code'`
+2. **预检**：`_send_preflight` 发送单次请求验证修改后配置是否可正常工作
+3. **预检失败**：更新 `application_status=preflight_failed`，不修改原配置
+4. **预检通过**：更新原 `performance_test` 的 request_config/load_config/data_config/success_rules
+5. **生成新脚本**：基于修改后配置生成新脚本并自动确认
+6. **启动重跑**：创建新 run 并启动 `headless_worker`
+7. **记录**：更新 `applied_run_id` / `applied_script_id` / `applied_at`
+
+### 11.2 支持的修改目标（ALLOWED_TARGETS）
+
+```
+request_config.path_parameters
+request_config.query_parameters
+request_config.headers
+request_config.body
+request_config.random_seed
+load_config.request_timeout_seconds
+load_config.wait_time_min_seconds
+load_config.wait_time_max_seconds
+data_config
+data_config.json_rows
+success_rules
 ```
 
 ---
 
-## 8. 可靠性测试需求分析
+## 12. 数据模型
 
-### 8.1 可靠性测试场景
+### 12.1 概览（11 张表）
 
-| 场景类型 | 测试内容 | 验收标准 |
+| 序号 | 表名 | 用途 |
 | --- | --- | --- |
-| 异常处理 | 网络异常、服务异常、数据异常 | 有明确错误提示，不崩溃 |
-| 数据一致性 | 并发操作、事务回滚 | 数据不丢失、不错乱 |
-| 容错能力 | 非法输入、边界值、空值 | 有校验和提示，不崩溃 |
-| 恢复能力 | 服务重启、数据恢复 | 能自动恢复或手动恢复 |
-| 稳定性 | 长时间运行、大数据量 | 不内存泄漏、不性能下降 |
+| 1 | `performance_tests` | 性能任务主记录 |
+| 2 | `performance_test_scripts` | 脚本版本记录 |
+| 3 | `performance_test_runs` | 性能任务运行记录 |
+| 4 | `performance_test_run_stats` | 运行统计时序采样 |
+| 5 | `performance_test_run_failures` | 运行失败请求记录 |
+| 6 | `performance_test_run_exceptions` | 运行异常事件记录 |
+| 7 | `performance_test_run_events` | 运行事件日志 |
+| 8 | `performance_analysis_sessions` | AI 分析会话 |
+| 9 | `performance_scenarios` | 性能场景定义 |
+| 10 | `performance_runs` | 场景运行记录 |
+| 11 | `performance_run_gate_results` | 场景质量门禁结果 |
 
-### 8.2 可靠性测试检查清单
+### 12.2 `performance_tests`
 
-#### 8.2.1 异常处理
+```sql
+CREATE TABLE IF NOT EXISTS performance_tests (
+  id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  target_type TEXT NOT NULL CHECK(target_type IN ('endpoint')) DEFAULT 'endpoint',
+  endpoint_id TEXT NOT NULL,
+  api_environment_id TEXT NOT NULL,
+  request_config_json TEXT NOT NULL DEFAULT '{}',
+  load_config_json TEXT NOT NULL DEFAULT '{}',
+  data_config_json TEXT NOT NULL DEFAULT '{}',
+  circuit_breaker_json TEXT NOT NULL DEFAULT '{}',
+  performance_goal_json TEXT NOT NULL DEFAULT '{}',
+  success_rules_json TEXT NOT NULL DEFAULT '[]',
+  created_by TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+-- 索引：project_id 上的查询（隐含主键）
+-- UNIQUE(project_id, name)
+```
 
-- [ ] 网络中断时是否有提示
-- [ ] 服务异常时是否有提示
-- [ ] 数据异常时是否有提示
-- [ ] 异常是否有日志记录
-- [ ] 异常是否有监控告警
-- [ ] 异常是否有恢复机制
+### 12.3 `performance_test_scripts`
 
-#### 8.2.2 数据一致性
+```sql
+CREATE TABLE IF NOT EXISTS performance_test_scripts (
+  id TEXT PRIMARY KEY,
+  performance_test_id TEXT NOT NULL,
+  project_id TEXT NOT NULL,
+  version INTEGER NOT NULL,
+  generation_source TEXT NOT NULL CHECK(generation_source IN ('ai_plan', 'default_plan', 'user_edited')),
+  model_id TEXT,
+  prompt_version TEXT,
+  template_version TEXT,
+  input_hash TEXT NOT NULL,
+  plan_json TEXT NOT NULL DEFAULT '{}',
+  code TEXT NOT NULL DEFAULT '',
+  assumptions_json TEXT NOT NULL DEFAULT '[]',
+  required_runtime_variables_json TEXT NOT NULL DEFAULT '[]',
+  validation_status TEXT NOT NULL CHECK(validation_status IN ('pending_confirmation', 'confirmed', 'validation_failed', 'superseded')),
+  validation_result_json TEXT NOT NULL DEFAULT '{}',
+  confirmed_by TEXT,
+  confirmed_at TEXT,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY(performance_test_id) REFERENCES performance_tests(id) ON DELETE CASCADE
+);
+-- 索引：performance_test_id + version
+-- 索引：project_id
+```
 
-- [ ] 并发操作是否有冲突检测
-- [ ] 事务失败是否回滚
-- [ ] 数据修改是否有版本控制
-- [ ] 数据删除是否有确认
-- [ ] 级联删除是否正确处理
-- [ ] 数据备份是否定期执行
+### 12.4 `performance_test_runs`
 
-#### 8.2.3 容错能力
+```sql
+CREATE TABLE IF NOT EXISTS performance_test_runs (
+  id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL,
+  performance_test_id TEXT NOT NULL,
+  script_id TEXT NOT NULL,
+  status TEXT NOT NULL CHECK(status IN ('created', 'starting', 'running', 'stopping', 'completed', 'stopped', 'failed', 'cancelled')),
+  load_config_json TEXT NOT NULL DEFAULT '{}',
+  runtime_config_json TEXT NOT NULL DEFAULT '{}',
+  latest_summary_json TEXT NOT NULL DEFAULT '{}',
+  report_directory TEXT,
+  error_code TEXT,
+  error_message TEXT,
+  trace_id TEXT,
+  created_by TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  started_at TEXT,
+  finished_at TEXT,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY(performance_test_id) REFERENCES performance_tests(id) ON DELETE CASCADE,
+  FOREIGN KEY(script_id) REFERENCES performance_test_scripts(id)
+);
+-- 索引：project_id + performance_test_id + status（用于历史查询和清理）
+```
 
-- [ ] 非法输入是否有校验
-- [ ] 边界值是否有校验
-- [ ] 空值是否有处理
-- [ ] 特殊字符是否有处理
-- [ ] 超长输入是否有限制
-- [ ] 错误输入是否有提示
+### 12.5 `performance_test_run_stats`
+
+```sql
+CREATE TABLE IF NOT EXISTS performance_test_run_stats (
+  id TEXT PRIMARY KEY,
+  run_id TEXT NOT NULL,
+  sampled_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  user_count INTEGER NOT NULL DEFAULT 0,
+  request_count INTEGER NOT NULL DEFAULT 0,
+  failure_count INTEGER NOT NULL DEFAULT 0,
+  requests_per_second REAL NOT NULL DEFAULT 0.0,
+  failures_per_second REAL NOT NULL DEFAULT 0.0,
+  failure_rate REAL NOT NULL DEFAULT 0.0,
+  average_response_time_ms REAL NOT NULL DEFAULT 0.0,
+  p50_response_time_ms REAL NOT NULL DEFAULT 0.0,
+  p95_response_time_ms REAL NOT NULL DEFAULT 0.0,
+  p99_response_time_ms REAL NOT NULL DEFAULT 0.0,
+  min_response_time_ms REAL NOT NULL DEFAULT 0.0,
+  max_response_time_ms REAL NOT NULL DEFAULT 0.0,
+  stats_json TEXT NOT NULL DEFAULT '{}',
+  FOREIGN KEY(run_id) REFERENCES performance_test_runs(id) ON DELETE CASCADE
+);
+-- 索引：run_id + sampled_at（时序查询）
+```
+
+### 12.6 `performance_test_run_failures`
+
+```sql
+CREATE TABLE IF NOT EXISTS performance_test_run_failures (
+  id TEXT PRIMARY KEY,
+  run_id TEXT NOT NULL,
+  request_name TEXT NOT NULL,
+  method TEXT NOT NULL DEFAULT '',
+  reason TEXT NOT NULL,
+  count INTEGER NOT NULL DEFAULT 1,
+  status_code INTEGER,
+  response_excerpt TEXT NOT NULL DEFAULT '',
+  FOREIGN KEY(run_id) REFERENCES performance_test_runs(id) ON DELETE CASCADE
+);
+```
+
+### 12.7 `performance_test_run_exceptions`
+
+```sql
+CREATE TABLE IF NOT EXISTS performance_test_run_exceptions (
+  id TEXT PRIMARY KEY,
+  run_id TEXT NOT NULL,
+  request_name TEXT NOT NULL DEFAULT '',
+  exception_type TEXT NOT NULL,
+  message TEXT NOT NULL,
+  count INTEGER NOT NULL DEFAULT 1,
+  FOREIGN KEY(run_id) REFERENCES performance_test_runs(id) ON DELETE CASCADE
+);
+```
+
+### 12.8 `performance_test_run_events`
+
+```sql
+CREATE TABLE IF NOT EXISTS performance_test_run_events (
+  id TEXT PRIMARY KEY,
+  run_id TEXT NOT NULL,
+  event_type TEXT NOT NULL,
+  level TEXT NOT NULL DEFAULT 'info',
+  message TEXT NOT NULL DEFAULT '',
+  detail_json TEXT NOT NULL DEFAULT '{}',
+  occurred_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY(run_id) REFERENCES performance_test_runs(id) ON DELETE CASCADE
+);
+-- 索引：run_id + occurred_at
+```
+
+### 12.9 `performance_analysis_sessions`
+
+```sql
+CREATE TABLE IF NOT EXISTS performance_analysis_sessions (
+  id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL,
+  run_id TEXT NOT NULL,
+  status TEXT NOT NULL CHECK(status IN ('collecting', 'analyzing', 'waiting_approval', 'failed', 'rejected')),
+  analysis_status TEXT NOT NULL DEFAULT 'collecting',
+  analysis_stage TEXT NOT NULL DEFAULT '',
+  repair_status TEXT NOT NULL DEFAULT 'not_applicable',
+  analysis_version INTEGER NOT NULL DEFAULT 1,
+  category TEXT NOT NULL DEFAULT '',
+  summary TEXT NOT NULL DEFAULT '',
+  direct_cause TEXT NOT NULL DEFAULT '',
+  root_cause TEXT NOT NULL DEFAULT '',
+  confidence REAL NOT NULL DEFAULT 0.0,
+  evidence_json TEXT NOT NULL DEFAULT '[]',
+  missing_evidence_json TEXT NOT NULL DEFAULT '[]',
+  proposal_json TEXT NOT NULL DEFAULT '{"changes":[]}',
+  metric_snapshot_json TEXT NOT NULL DEFAULT '{}',
+  report_snapshot_json TEXT NOT NULL DEFAULT '{}',
+  calculator_version TEXT NOT NULL DEFAULT '',
+  prompt_version TEXT NOT NULL DEFAULT '',
+  source_fingerprint TEXT NOT NULL DEFAULT '',
+  audience TEXT NOT NULL DEFAULT 'engineer',
+  model_name TEXT NOT NULL DEFAULT '',
+  error_message TEXT NOT NULL DEFAULT '',
+  created_by TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  finished_at TEXT,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  application_status TEXT NOT NULL DEFAULT 'not_requested',
+  applicable_change_ids_json TEXT NOT NULL DEFAULT '[]',
+  selected_change_ids_json TEXT NOT NULL DEFAULT '[]',
+  preflight_json TEXT NOT NULL DEFAULT '{}',
+  applied_script_id TEXT,
+  applied_run_id TEXT,
+  applied_by TEXT,
+  applied_at TEXT,
+  FOREIGN KEY(run_id) REFERENCES performance_test_runs(id) ON DELETE CASCADE
+);
+-- 索引：project_id + run_id + status（查询活跃分析）
+```
+
+### 12.10 `performance_scenarios`
+
+```sql
+CREATE TABLE IF NOT EXISTS performance_scenarios (
+  id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  api_environment_id TEXT NOT NULL,
+  scenario_definition_json TEXT NOT NULL DEFAULT '{}',
+  load_profile_json TEXT NOT NULL DEFAULT '{}',
+  data_source_json TEXT NOT NULL DEFAULT '{}',
+  quality_gate_json TEXT NOT NULL DEFAULT '{}',
+  safety_policy_json TEXT NOT NULL DEFAULT '{}',
+  created_by TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(project_id, name)
+);
+```
+
+### 12.11 `performance_runs`（场景运行）
+
+```sql
+CREATE TABLE IF NOT EXISTS performance_runs (
+  id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL,
+  scenario_id TEXT NOT NULL,
+  process_status TEXT NOT NULL CHECK(process_status IN ('created', 'validating', 'starting', 'warming_up', 'measuring', 'stopping', 'finished')) DEFAULT 'created',
+  stop_reason TEXT NOT NULL DEFAULT '',
+  quality_status TEXT NOT NULL DEFAULT 'not_evaluated',
+  run_snapshot_json TEXT NOT NULL DEFAULT '{}',
+  latest_summary_json TEXT NOT NULL DEFAULT '{}',
+  script_hash TEXT,
+  locust_version TEXT,
+  exit_code INTEGER,
+  error_code TEXT,
+  error_message TEXT,
+  created_by TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  started_at TEXT,
+  measurement_started_at TEXT,
+  finished_at TEXT,
+  FOREIGN KEY(scenario_id) REFERENCES performance_scenarios(id) ON DELETE CASCADE
+);
+-- 索引：project_id + scenario_id + process_status
+```
+
+### 12.12 `performance_run_gate_results`
+
+```sql
+CREATE TABLE IF NOT EXISTS performance_run_gate_results (
+  id TEXT PRIMARY KEY,
+  run_id TEXT NOT NULL,
+  metric TEXT NOT NULL,
+  operator TEXT NOT NULL,
+  threshold REAL,
+  actual REAL,
+  status TEXT NOT NULL,
+  reason TEXT NOT NULL DEFAULT '',
+  evaluated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY(run_id) REFERENCES performance_runs(id) ON DELETE CASCADE
+);
+```
 
 ---
 
-## 9. 可维护性测试需求分析
+## 13. API 路由清单
 
-### 9.1 可维护性测试维度
+### 13.1 performance_tests.py（test_router）
 
-| 维度 | 测试内容 | 验收标准 |
-| --- | --- | --- |
-| 日志完整性 | 关键操作是否有日志 | 所有关键操作有日志 |
-| 日志可读性 | 日志是否易于理解 | 日志包含时间、用户、操作、结果 |
-| 错误追踪 | 错误是否可追踪 | 错误有唯一ID和堆栈信息 |
-| 监控指标 | 是否有监控指标 | 有性能、错误、业务指标 |
-| 问题定位 | 问题是否易于定位 | 有完整的操作路径和上下文 |
+前缀：`/projects/{project_id}/performance-tests`
 
-### 9.2 日志记录检查清单
+| 方法 | 路径 | 认证 | 说明 |
+| --- | --- | --- | --- |
+| POST | `/request-preview` | current_user | 请求预览 |
+| POST | `` | require_admin | 创建测试 |
+| GET | `` | current_user | 列表 |
+| POST | `/{test_id}/scripts/generate` | require_admin | 生成脚本 |
+| GET | `/{test_id}/scripts` | current_user | 脚本列表 |
+| GET | `/{test_id}/scripts/{script_id}` | current_user | 脚本详情 |
+| PATCH | `/{test_id}/scripts/{script_id}/configuration` | require_admin | 修改脚本配置 |
+| POST | `/{test_id}/scripts/{script_id}/confirm` | require_admin | 确认脚本 |
+| GET | `/{test_id}` | current_user | 测试详情 |
+| PATCH | `/{test_id}` | require_admin | 更新测试 |
+| DELETE | `/{test_id}` | current_user | 删除测试 |
 
-- [ ] 用户登录/登出是否有日志
-- [ ] 权限变更是否有日志
-- [ ] 数据创建/修改/删除是否有日志
-- [ ] 文件上传/下载是否有日志
-- [ ] 异常操作是否有日志
-- [ ] 日志是否包含用户ID、操作时间、操作内容、操作结果
-- [ ] 日志是否有日志级别（INFO、WARN、ERROR）
-- [ ] 敏感数据是否脱敏
+### 13.2 performance_runs.py
+
+**test_router**：前缀 `/projects/{project_id}/performance-tests/{test_id}`
+
+| 方法 | 路径 | 认证 | 说明 |
+| --- | --- | --- | --- |
+| POST | `/runs` | current_user | 创建运行 |
+| POST | `/runs/{run_id}/start` | current_user | 启动运行 |
+| GET | `/runs/history` | current_user | 最近 10 次历史 |
+
+**run_router**：前缀 `/projects/{project_id}/performance-test-runs`
+
+| 方法 | 路径 | 认证 | 说明 |
+| --- | --- | --- | --- |
+| GET | `/{run_id}` | current_user | 运行详情 |
+| DELETE | `/{run_id}` | current_user | 删除（仅非 active） |
+| POST | `/{run_id}/ai-analysis` | current_user | 创建 AI 分析 |
+| GET | `/{run_id}/ai-analysis` | current_user | 分析列表 |
+| GET | `/{run_id}/stats` | current_user | 完整统计 |
+| GET | `/{run_id}/state` | current_user | 运行状态 |
+| GET | `/{run_id}/charts` | current_user | 图表数据 |
+| GET | `/{run_id}/failures` | current_user | 失败请求 |
+| GET | `/{run_id}/exceptions` | current_user | 异常事件 |
+| POST | `/{run_id}/stop` | current_user | 停止运行 |
+| POST | `/{run_id}/reset-stats` | current_user | 重置统计 |
+| GET | `/{run_id}/reports` | current_user | 报告列表 |
+| GET | `/{run_id}/reports/{filename}` | current_user | 下载报告 |
+| GET | `/{run_id}/stream` | current_user | SSE 实时流 |
+
+**analysis_router**：前缀 `/projects/{project_id}/performance-analysis`
+
+| 方法 | 路径 | 认证 | 说明 |
+| --- | --- | --- | --- |
+| GET | `/{analysis_id}` | current_user | 分析详情 |
+| POST | `/{analysis_id}/reject` | current_user | 驳回分析 |
+| POST | `/{analysis_id}/apply-and-rerun` | current_user | 应用并重跑 |
+
+### 13.3 performance_scenarios.py
+
+**router**：前缀 `/projects/{project_id}/performance-scenarios`
+
+| 方法 | 路径 | 认证 | 说明 |
+| --- | --- | --- | --- |
+| POST | `` | require_admin | 创建场景 |
+| GET | `` | current_user | 列表 |
+| GET | `/{scenario_id}` | current_user | 详情 |
+| PATCH | `/{scenario_id}` | require_admin | 更新 |
+| DELETE | `/{scenario_id}` | require_admin | 删除 |
+| POST | `/{scenario_id}/runs` | require_admin | 创建场景运行 |
+
+**run_router**：前缀 `/projects/{project_id}/performance-runs`
+
+| 方法 | 路径 | 认证 | 说明 |
+| --- | --- | --- | --- |
+| GET | `/{run_id}` | current_user | 场景运行详情 |
 
 ---
 
-## 10. 非功能需求测试用例生成
+## 14. 前端页面清单
 
-### 10.1 生成规则
-
-非功能需求测试用例生成必须基于：
-
-- 需求文档中的非功能需求描述
-- 知识库中的非功能需求关注点
-- 行业标准和最佳实践
-- 历史缺陷和风险点
-
-### 10.2 用例优先级
-
-| 优先级 | 说明 | 示例 |
+| 页面路径 | 组件 | 说明 |
 | --- | --- | --- |
-| P0 | 核心功能的非功能需求 | 登录性能、权限安全 |
-| P1 | 重要功能的非功能需求 | 列表查询性能、文件上传安全 |
-| P2 | 一般功能的非功能需求 | 帮助页面性能、日志完整性 |
-
-### 10.3 用例覆盖率
-
-非功能需求测试用例必须覆盖：
-
-- 所有核心功能的性能测试
-- 所有涉及权限的安全测试
-- 所有用户交互的可用性测试
-- 所有异常场景的可靠性测试
-- 所有关键操作的可维护性测试
+| `/performance-tests` | `all-performance-test-list.tsx` | 跨项目性能测试列表 |
+| `/projects/:projectId/performance-tests` | 同上（项目级） | 项目内性能测试列表 |
+| `/performance-tests/new` | `performance-test-form.tsx` | 新建性能测试 |
+| `/projects/:projectId/performance-tests/new` | 同上 | 项目级新建 |
+| `/projects/:projectId/performance-tests/:testId` | - | 性能测试详情 |
+| `/projects/:projectId/performance-tests/:testId/scripts/:scriptId` | `script-review.tsx` | 脚本审核页面 |
+| `/projects/:projectId/performance-tests/:testId/runs/:runId` | `locust-console.tsx` + `locust-statistics-table.tsx` | 运行详情 + 实时控制台 |
+| - | `performance-ai-analysis-drawer.tsx` | AI 分析抽屉 |
+| - | `performance-analysis-report.tsx` | 性能分析报告展示 |
 
 ---
 
-## 11. 验收标准
+## 15. 验收规则
 
-- 每个模块的需求分析必须包含非功能需求测试关注点
-- 非功能需求测试用例必须有明确的测试指标和验收标准
-- 性能测试必须覆盖高频操作、大数据量、复杂计算、并发场景
-- 安全测试必须覆盖认证、授权、数据安全、注入攻击
-- 兼容性测试必须覆盖主流浏览器和常见分辨率
-- 可用性测试必须覆盖操作流程、提示信息、表单设计、无障碍访问
-- 可靠性测试必须覆盖异常处理、数据一致性、容错能力
-- 可维护性测试必须覆盖日志完整性、错误追踪、监控指标
-- 非功能需求测试结果必须纳入测试报告和质量评估
+### 15.1 脚本审核
+
+| 验收项 | 核对依据 |
+| --- | --- |
+| 未确认脚本不能启动运行 | `performance_runs.py:_script_lookup` 中 `validation_status != 'confirmed'` → `409 PERFORMANCE_SCRIPT_NOT_CONFIRMED` |
+| 确认前脚本校验必须通过 | `script_service.py:confirm_script` 检查 `validation_result.valid` |
+
+### 15.2 运行控制
+
+| 验收项 | 核对依据 |
+| --- | --- |
+| created/stopping 状态拒绝 reset-stats | `performance_runs.py:reset_performance_run_stats` 中状态校验 |
+| active 状态运行拒绝删除 | `performance_runs.py:delete_performance_run` 中 `ACTIVE_STATUSES` 校验 |
+| 启动后状态推进 `starting → running` | `headless_worker.py:_monitor_run` 状态更新 |
+| 终端状态推送 `done` 事件后 SSE 断开 | `performance_runs.py:stream_performance_run` 中 `TERMINAL_STATUSES` 判断 |
+
+### 15.3 报告下载
+
+| 验收项 | 核对依据 |
+| --- | --- |
+| 仅白名单文件可下载 | `performance_runs.py:download_performance_run_report` 中 `filename in REPORT_FILES` |
+| 路径穿越防护 | `Path(filename).name != filename` + `directory not in report.parents` |
+
+### 15.4 AI 分析与修复
+
+| 验收项 | 核对依据 |
+| --- | --- |
+| 仅终端运行（completed/stopped/failed/cancelled）可启动分析 | `analysis_service.py:create_analysis` 中 `TERMINAL_RUN_STATUSES` 校验 |
+| 已有活跃分析时拒绝新建 | `performance_analysis_repo.find_active_analysis_for_run` |
+| apply-and-rerun 必须传入 change_ids | `repair_service.py:apply_and_rerun` 中 `selected_ids` 非空校验 |
+| platform_code 类型修改不可直接应用 | `repair_service.py:is_supported_change` 返回 False |
+| 预检失败不修改原配置 | `repair_service.py:apply_and_rerun` 中 `preflight_failed` 分支 |
+
+### 15.5 性能场景
+
+| 验收项 | 核对依据 |
+| --- | --- |
+| 场景 endpoint 属于同项目 | `scenario_service.py:_validate_payload` 中 `endpoint.project_id == project_id` |
+| 场景 environment 属于同项目 | `scenario_service.py:_validate_payload` 中 `environment.project_id == project_id` |
+| 场景运行结束写入 `performance_run_gate_results` | `scenario_service.py:save_quality_gate_result` |
+
+---
+
+## 16. 完整用户流程图
+
+```mermaid
+flowchart TD
+    subgraph 创建阶段
+        A[用户在 UI 填写 PerformanceTestCreateIn] --> B[POST /performance-tests 创建任务]
+        B --> C[关联 endpoint + environment]
+        C --> D[POST /scripts/generate 生成草稿脚本]
+        D --> E[validate_locust_script 校验]
+        E --> F{valid?}
+        F -- 否 --> G[validation_status = validation_failed]
+        F -- 是 --> H[validation_status = pending_confirmation]
+        H --> I[用户在 script-review.tsx 审核]
+        I --> J{确认?}
+        J -- 确认 --> K[POST /scripts/{id}/confirm]
+        K --> L[status = confirmed]
+        J -- 驳回 --> M[可重新生成覆盖]
+    end
+
+    subgraph 运行阶段
+        L --> N[POST /performance-tests/{test_id}/runs 创建运行]
+        N --> O[headless_worker 创建 session]
+        O --> P[写入 performance_test_runs, status=created]
+        P --> Q[POST /runs/{run_id}/start 启动]
+        Q --> R[headless_worker 启动 Locust 子进程]
+        R --> S[状态: starting → running]
+        S --> T[SSE /performance-test-runs/{run_id}/stream 实时推送]
+        T --> U[前端 locust-console.tsx 展示实时数据]
+        U --> V[Locust 运行结束]
+        V --> W{return_code?}
+        W -- 0 --> X[状态: completed]
+        W -- 非0 --> Y[状态: failed]
+        X --> Z[自动调度 AI 分析]
+        Z --> AA[execute_analysis 收集证据 + 诊断]
+    end
+
+    subgraph AI 分析阶段
+        AA --> AB[build_metric_snapshot 构建快照]
+        AB --> AC[diagnose_performance PROMPT_VERSION=v2-zh]
+        AC --> AD[build_report_snapshot 生成报告]
+        AD --> AE[状态: waiting_approval, repair_status=available]
+        AE --> AF[performance-analysis-report.tsx 展示报告]
+        AF --> AG{用户操作?}
+        AG -- 驳回 --> AH[status=rejected]
+        AG -- 应用部分修改 --> AI[POST /analysis/{id}/apply-and-rerun]
+        AI --> AJ[_send_preflight 预检]
+        AJ --> AK{preflight passed?}
+        AK -- 否 --> AL[application_status=preflight_failed]
+        AK -- 是 --> AM[更新 performance_test 配置]
+        AM --> AN[生成新脚本 + 自动确认]
+        AN --> AO[创建新 run 并启动]
+        AO --> AP[application_status=completed]
+    end
+
+    style A fill:#e1f5fe
+    style L fill:#c8e6c9
+    style X fill:#c8e6c9
+    style AE fill:#fff9c4
+    style AP fill:#c8e6c9
+```
+
+---
+
+## 17. 错误码参考
+
+| 错误码 | HTTP 状态 | 说明 |
+| --- | --- | --- |
+| `PERFORMANCE_TEST_NOT_FOUND` | 404 | 性能测试不存在 |
+| `PERFORMANCE_SCRIPT_NOT_FOUND` | 404 | 脚本不存在 |
+| `PERFORMANCE_SCRIPT_NOT_CONFIRMED` | 409 | 脚本未确认，不能启动运行 |
+| `PERFORMANCE_SCRIPT_NOT_CONFIRMABLE` | 409 | 脚本校验未通过，不能确认 |
+| `PERFORMANCE_SCRIPT_IMMUTABLE` | 409 | 已确认脚本不可修改 |
+| `PERFORMANCE_RUN_NOT_FOUND` | 404 | 性能运行不存在 |
+| `PERFORMANCE_RUN_ACTIVE` | 409 | 运行中的压测不能删除 |
+| `PERFORMANCE_RUN_START_INVALID` | 409 | 运行启动参数无效 |
+| `PERFORMANCE_STATS_RESET_INVALID` | 409 | 当前状态不支持重置统计 |
+| `PERFORMANCE_REPORT_INVALID` | 400 | 不支持的报告文件 |
+| `PERFORMANCE_REPORT_NOT_FOUND` | 404 | 报告文件不存在 |
+| `PERFORMANCE_ENDPOINT_INVALID` | 400/409 | 接口引用无效 |
+| `PERFORMANCE_ENVIRONMENT_INVALID` | 400/409 | 环境引用无效 |
+| `PERFORMANCE_TEST_NAME_CONFLICT` | 409 | 同项目内名称冲突 |
+| `PERFORMANCE_ANALYSIS_NOT_FOUND` | 404 | 分析会话不存在 |
+| `PERFORMANCE_ANALYSIS_RUN_ACTIVE` | 409 | 运行未结束不能启动分析 |
+| `PERFORMANCE_ANALYSIS_ALREADY_RUNNING` | 409 | 该运行已有活跃分析 |
+| `PERFORMANCE_ANALYSIS_NO_EVIDENCE` | 400 | 没有可供分析的证据 |
+| `PERFORMANCE_ANALYSIS_REVIEW_INVALID` | 409 | 当前状态不能驳回 |
+| `PERFORMANCE_REPAIR_CHANGES_REQUIRED` | 422 | 必须选择修复建议 |
+| `PERFORMANCE_REPAIR_NOT_APPROVABLE` | 409 | 当前状态不能应用修复 |
+| `PERFORMANCE_REPAIR_ALREADY_APPLIED` | 409 | 已在修复中或已完成 |
+| `PERFORMANCE_REPAIR_CHANGE_UNSUPPORTED` | 422 | 选中的修复建议不支持 |
+| `PERFORMANCE_REPAIR_BASELINE_CHANGED` | 409 | 配置已变化，需重新分析 |
+| `PERFORMANCE_REPAIR_SCRIPT_INVALID` | 422 | 修复后脚本校验失败 |
+| `PERFORMANCE_REPAIR_RERUN_FAILED` | 500 | 修复应用但重跑启动失败 |
+| `PERMISSION_DENIED` | 403 | 无权访问 |
+| `NOT_FOUND` | 404 | 资源不存在 |

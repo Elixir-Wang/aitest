@@ -7,6 +7,7 @@ type BreadcrumbModuleKey = keyof typeof breadcrumbModules;
 
 const breadcrumbModules = {
   dashboard: { section: "工作台", label: "控制台", href: "/dashboard" },
+  agents: { section: "工作台", label: "硅基员工", href: "/agents" },
   tasks: { section: "工作台", label: "任务中心", href: "/tasks" },
   projects: { section: "项目工作区", label: "项目", href: "/projects" },
   requirements: { section: "项目工作区", label: "需求", href: "/requirements" },

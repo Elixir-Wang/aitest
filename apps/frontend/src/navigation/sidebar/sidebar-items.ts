@@ -13,6 +13,7 @@ import {
   type LucideIcon,
   NotebookTabs,
   PlaySquare,
+  Sparkles,
   TestTubeDiagonal,
   Users,
 } from "lucide-react";
@@ -55,6 +56,12 @@ export const sidebarItems: NavGroup[] = [
         title: "控制台",
         url: "/dashboard",
         icon: LayoutDashboard,
+      },
+      {
+        title: "硅基员工",
+        url: "/agents",
+        icon: Sparkles,
+        isNew: true,
       },
       {
         title: "任务中心",

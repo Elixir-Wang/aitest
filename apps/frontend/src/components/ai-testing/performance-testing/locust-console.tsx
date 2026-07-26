@@ -2,10 +2,26 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 
-import { Activity, Bot, Clock3, FileClock, FileText, Gauge, RotateCcw, ShieldX, Square, Users, X } from "lucide-react";
-import { toast } from "@/lib/toast";
+import {
+  Activity,
+  Bot,
+  ChartNoAxesCombined,
+  Clock3,
+  Download,
+  FileClock,
+  FileText,
+  Gauge,
+  LayoutDashboard,
+  RotateCcw,
+  ShieldAlert,
+  ShieldX,
+  Square,
+  Users,
+  X,
+} from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -31,6 +47,7 @@ import {
   stopPerformanceRun,
   streamPerformanceRun,
 } from "@/lib/api-client";
+import { toast } from "@/lib/toast";
 
 import { type LocustChartSample, LocustChartsPanel } from "./locust-charts-panel";
 import { LocustGenericTable, LocustStatisticsTable } from "./locust-statistics-table";
@@ -224,27 +241,18 @@ export function LocustConsole({ projectId, testId, runId }: { projectId: string;
   const canAnalyze = Boolean(run && TERMINAL_STATUSES.has(run.status));
 
   return (
-    <div className="space-y-3">
-      <header className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_12px_32px_-28px_rgba(15,23,42,0.55)] dark:border-slate-800 dark:bg-slate-900/80 dark:shadow-black/20">
-        <div className="flex flex-wrap items-center justify-between gap-4 border-slate-100 border-b px-4 py-4 sm:px-5 dark:border-slate-800">
-          <div className="flex min-w-0 items-center gap-4">
-            <div className="relative flex size-11 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white shadow-[0_8px_18px_-10px_rgba(37,99,235,0.9)]">
-              <Activity aria-hidden="true" className="size-6" strokeWidth={2.2} />
-              <span className="absolute -right-1 -bottom-1 size-3 rounded-full border-2 border-background bg-emerald-400" />
-            </div>
-            <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="font-semibold text-[1.1rem] text-slate-950 tracking-tight dark:text-slate-100">
-                  LOCUST
-                </span>
-                <Badge className={statusBadgeClass(run?.status)} variant="outline">
-                  {statusText(run?.status)}
-                </Badge>
-              </div>
-              <p className="mt-0.5 truncate font-mono text-[11px] text-slate-500 dark:text-slate-400">运行 / {runId}</p>
-            </div>
+    <div className="space-y-6">
+      <header className="space-y-6">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="flex min-w-0 flex-wrap items-center gap-x-5 gap-y-2 text-slate-500 text-sm dark:text-slate-400">
+            <Image alt="Locust" className="h-8 w-12 shrink-0" height={32} src="/brand/locust-mark.svg" width={48} />
+            <Badge className={statusBadgeClass(run?.status)} variant="outline">
+              {statusText(run?.status)}
+            </Badge>
+            <span>开始时间：{run?.started_at ? formatRunTime(run.started_at) : "尚未开始"}</span>
+            <span>持续时间：{formatRunDuration(run?.started_at, run?.finished_at)}</span>
           </div>
-          <div className="flex w-full items-center justify-end gap-2 sm:w-auto">
+          <div className="flex w-full flex-wrap items-center justify-start gap-2 sm:w-auto sm:justify-end">
             <Button className="h-9 px-3" onClick={() => void openHistory()} size="sm" variant="outline">
               <FileClock className="mr-2 size-3.5" /> 历史记录
             </Button>
@@ -301,15 +309,29 @@ export function LocustConsole({ projectId, testId, runId }: { projectId: string;
             </Button>
           </div>
         </div>
-        <div className="grid grid-cols-2 divide-x divide-slate-100 sm:grid-cols-3 lg:grid-cols-6 dark:divide-slate-800">
-          <Metric icon={Users} label="用户数" tone="slate" value={aggregate.user_count} />
-          <Metric icon={Activity} label="每秒请求数" tone="blue" value={aggregate.requests_per_second} />
-          <Metric icon={Gauge} label="失败率" tone="red" suffix="%" value={percentage(aggregate.failure_rate)} />
-          <Metric icon={FileText} label="请求数" tone="blue" value={aggregate.request_count} />
-          <Metric icon={ShieldX} label="失败数" tone="purple" value={aggregate.failure_count} />
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+          <Metric icon={Users} label="用户数" secondary="并发用户" tone="green" value={aggregate.user_count} />
+          <Metric
+            icon={Activity}
+            label="每秒请求数"
+            secondary="RPS"
+            tone="blue"
+            value={aggregate.requests_per_second}
+          />
+          <Metric
+            icon={Gauge}
+            label="失败率"
+            secondary={`失败请求数 ${formatNumber(aggregate.failure_count ?? 0)}`}
+            suffix="%"
+            tone="purple"
+            value={percentage(aggregate.failure_rate)}
+          />
+          <Metric icon={FileText} label="请求数" secondary="总请求数" tone="orange" value={aggregate.request_count} />
+          <Metric icon={ShieldX} label="失败数" secondary="失败请求数" tone="red" value={aggregate.failure_count} />
           <Metric
             icon={Clock3}
             label="平均响应时间"
+            secondary={`P95: ${formatNumber(aggregate.p95_response_time_ms ?? 0)} ms`}
             tone="amber"
             suffix=" ms"
             value={aggregate.average_response_time_ms}
@@ -324,6 +346,7 @@ export function LocustConsole({ projectId, testId, runId }: { projectId: string;
         open={analysisOpen}
         projectId={projectId}
         runId={runId}
+        testId={testId}
       />
       <Sheet onOpenChange={setHistoryOpen} open={historyOpen}>
         <SheetContent className="w-full overflow-y-auto sm:max-w-xl" side="right">
@@ -380,73 +403,85 @@ export function LocustConsole({ projectId, testId, runId }: { projectId: string;
         </div>
       ) : null}
 
-      <Tabs defaultValue="statistics">
+      <Tabs className="gap-4" defaultValue="summary">
         <TabsList
-          className="h-12 w-full justify-start gap-5 overflow-x-auto rounded-none border-slate-200 border-b bg-transparent p-0 dark:border-slate-800"
+          className="h-16 w-full justify-start gap-8 overflow-x-auto rounded-lg border border-slate-200 bg-white px-5 py-0 shadow-[0_10px_24px_-24px_rgba(15,23,42,0.5)] dark:border-slate-800 dark:bg-slate-900"
           variant="line"
         >
           <TabsTrigger
-            className="h-12 rounded-none px-1 text-slate-500 text-sm data-[state=active]:text-slate-950 dark:text-slate-400 dark:data-[state=active]:text-slate-100"
-            value="statistics"
+            className="h-16 rounded-none px-1 text-slate-500 text-sm data-[state=active]:text-emerald-600 dark:text-slate-400 dark:data-[state=active]:text-emerald-400"
+            value="summary"
           >
-            统计
+            <LayoutDashboard aria-hidden="true" />
+            统计汇总
           </TabsTrigger>
           <TabsTrigger
-            className="h-12 rounded-none px-1 text-slate-500 text-sm data-[state=active]:text-slate-950 dark:text-slate-400 dark:data-[state=active]:text-slate-100"
+            className="h-16 rounded-none px-1 text-slate-500 text-sm data-[state=active]:text-emerald-600 dark:text-slate-400 dark:data-[state=active]:text-emerald-400"
             value="charts"
           >
-            趋势图
+            <ChartNoAxesCombined aria-hidden="true" />
+            趋势图表
           </TabsTrigger>
           <TabsTrigger
-            className="h-12 rounded-none px-1 text-slate-500 text-sm data-[state=active]:text-slate-950 dark:text-slate-400 dark:data-[state=active]:text-slate-100"
-            value="failures"
+            className="h-16 rounded-none px-1 text-slate-500 text-sm data-[state=active]:text-emerald-600 dark:text-slate-400 dark:data-[state=active]:text-emerald-400"
+            value="requests"
           >
-            失败请求
+            <FileText aria-hidden="true" />
+            请求统计
           </TabsTrigger>
           <TabsTrigger
-            className="h-12 rounded-none px-1 text-slate-500 text-sm data-[state=active]:text-slate-950 dark:text-slate-400 dark:data-[state=active]:text-slate-100"
-            value="exceptions"
+            className="h-16 rounded-none px-1 text-slate-500 text-sm data-[state=active]:text-emerald-600 dark:text-slate-400 dark:data-[state=active]:text-emerald-400"
+            value="analysis"
           >
-            异常
+            <ShieldAlert aria-hidden="true" />
+            异常分析
           </TabsTrigger>
           <TabsTrigger
-            className="h-12 rounded-none px-1 text-slate-500 text-sm data-[state=active]:text-slate-950 dark:text-slate-400 dark:data-[state=active]:text-slate-100"
+            className="h-16 rounded-none px-1 text-slate-500 text-sm data-[state=active]:text-emerald-600 dark:text-slate-400 dark:data-[state=active]:text-emerald-400"
             value="downloads"
           >
+            <Download aria-hidden="true" />
             下载文件
           </TabsTrigger>
         </TabsList>
-        <TabsContent className="pt-4" value="statistics">
-          <LocustStatisticsTable rows={statisticsRows(snapshot)} />
+        <TabsContent value="summary">
+          <LocustStatisticsTable rows={statisticsRows(snapshot).slice(0, 5)} />
         </TabsContent>
-        <TabsContent className="pt-4" value="charts">
+        <TabsContent value="charts">
           <LocustChartsPanel samples={samples} />
         </TabsContent>
-        <TabsContent className="pt-4" value="failures">
-          <LocustGenericTable
-            columns={[
-              ["method", "方法"],
-              ["request_name", "名称"],
-              ["reason", "错误信息"],
-              ["count", "次数"],
-            ]}
-            empty="暂无失败请求"
-            rows={snapshot?.failures ?? []}
-          />
+        <TabsContent value="requests">
+          <LocustStatisticsTable rows={statisticsRows(snapshot)} />
         </TabsContent>
-        <TabsContent className="pt-4" value="exceptions">
-          <LocustGenericTable
-            columns={[
-              ["count", "次数"],
-              ["exception_type", "异常类型"],
-              ["message", "异常信息"],
-              ["request_name", "请求名称"],
-            ]}
-            empty="暂无异常记录"
-            rows={snapshot?.exceptions ?? []}
-          />
+        <TabsContent className="space-y-5" value="analysis">
+          <section className="space-y-3">
+            <h3 className="font-semibold text-sm">失败请求</h3>
+            <LocustGenericTable
+              columns={[
+                ["method", "方法"],
+                ["request_name", "名称"],
+                ["reason", "错误信息"],
+                ["count", "次数"],
+              ]}
+              empty="暂无失败请求"
+              rows={snapshot?.failures ?? []}
+            />
+          </section>
+          <section className="space-y-3">
+            <h3 className="font-semibold text-sm">异常记录</h3>
+            <LocustGenericTable
+              columns={[
+                ["count", "次数"],
+                ["exception_type", "异常类型"],
+                ["message", "异常信息"],
+                ["request_name", "请求名称"],
+              ]}
+              empty="暂无异常记录"
+              rows={snapshot?.exceptions ?? []}
+            />
+          </section>
         </TabsContent>
-        <TabsContent className="pt-4" value="downloads">
+        <TabsContent value="downloads">
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
             {(reports?.reports ?? []).map((report) => (
               <button
@@ -474,40 +509,44 @@ export function LocustConsole({ projectId, testId, runId }: { projectId: string;
 function Metric({
   icon: Icon,
   label,
+  secondary,
   tone,
   value,
   suffix = "",
 }: {
   icon: typeof Activity;
   label: string;
-  tone: "slate" | "blue" | "red" | "purple" | "amber";
+  secondary: string;
+  tone: "green" | "blue" | "red" | "purple" | "amber" | "orange";
   value: unknown;
   suffix?: string;
 }) {
   return (
-    <div className="flex min-w-0 items-center gap-3 border-slate-100 border-b px-4 py-4 last:border-r-0 sm:px-5 lg:border-r lg:border-b-0 lg:py-4 dark:border-slate-800">
+    <div className="flex min-h-36 min-w-0 items-center gap-4 rounded-lg border border-slate-200 bg-white px-5 py-6 shadow-[0_10px_24px_-24px_rgba(15,23,42,0.55)] xl:gap-2 xl:px-3 2xl:gap-4 2xl:px-5 dark:border-slate-800 dark:bg-slate-900">
       <span
-        className={`flex size-8 shrink-0 items-center justify-center rounded-lg bg-slate-50 dark:bg-slate-800/80 ${metricToneClass(tone)}`}
+        className={`flex size-12 shrink-0 items-center justify-center rounded-full xl:size-10 2xl:size-12 ${metricToneClass(tone)}`}
       >
-        <Icon aria-hidden="true" className="size-5" strokeWidth={1.8} />
+        <Icon aria-hidden="true" className="size-6 xl:size-5 2xl:size-6" strokeWidth={1.9} />
       </span>
       <div className="min-w-0">
-        <p className="truncate text-[11px] text-slate-500 dark:text-slate-400">{label}</p>
-        <p className="mt-0.5 font-mono font-semibold text-[1.05rem] text-slate-900 tabular-nums dark:text-slate-100">
+        <p className="truncate font-medium text-slate-600 text-sm dark:text-slate-300">{label}</p>
+        <p className="mt-2 whitespace-nowrap font-mono font-semibold text-2xl text-slate-950 tabular-nums xl:text-lg 2xl:text-2xl dark:text-slate-100">
           {value === undefined || value === null ? "-" : `${formatNumber(value)}${suffix}`}
         </p>
+        <p className="mt-2 truncate text-slate-400 text-xs dark:text-slate-500">{secondary}</p>
       </div>
     </div>
   );
 }
 
-function metricToneClass(tone: "slate" | "blue" | "red" | "purple" | "amber") {
+function metricToneClass(tone: "green" | "blue" | "red" | "purple" | "amber" | "orange") {
   return {
-    slate: "text-slate-500",
-    blue: "text-blue-600",
-    red: "text-red-500",
-    purple: "text-violet-500",
-    amber: "text-amber-500",
+    green: "bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400",
+    blue: "bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-400",
+    red: "bg-red-50 text-red-500 dark:bg-red-500/10 dark:text-red-400",
+    purple: "bg-violet-50 text-violet-500 dark:bg-violet-500/10 dark:text-violet-400",
+    amber: "bg-amber-50 text-amber-500 dark:bg-amber-500/10 dark:text-amber-400",
+    orange: "bg-orange-50 text-orange-500 dark:bg-orange-500/10 dark:text-orange-400",
   }[tone];
 }
 
@@ -550,6 +589,17 @@ function formatRunTime(value: string) {
     hour: "2-digit",
     minute: "2-digit",
   }).format(new Date(value));
+}
+
+function formatRunDuration(startedAt?: string | null, finishedAt?: string | null) {
+  if (!startedAt) return "-";
+  const start = new Date(startedAt).getTime();
+  const end = finishedAt ? new Date(finishedAt).getTime() : Date.now();
+  if (Number.isNaN(start) || Number.isNaN(end)) return "-";
+  const seconds = Math.max(0, Math.floor((end - start) / 1000));
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  return `${hours > 0 ? `${String(hours).padStart(2, "0")}:` : ""}${String(minutes).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
 }
 
 function formatNumber(value: unknown) {

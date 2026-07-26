@@ -2,8 +2,9 @@
 
 import { useCallback, useEffect, useState } from "react";
 
-import { Bot, LoaderCircle, RefreshCw, ShieldCheck, WandSparkles } from "lucide-react";
-import { toast } from "@/lib/toast";
+import { useRouter } from "next/navigation";
+
+import { Bot, FileChartColumn, LoaderCircle, RefreshCw, ShieldCheck, WandSparkles } from "lucide-react";
 
 import {
   AlertDialog,
@@ -33,6 +34,7 @@ import {
   listPerformanceRunAnalyses,
   type PerformanceAnalysis,
 } from "@/lib/api-client";
+import { toast } from "@/lib/toast";
 
 import { PerformanceAiAnalysisProgress } from "./performance-ai-analysis-progress";
 import { PerformanceAiConfigDiff } from "./performance-ai-config-diff";
@@ -42,17 +44,20 @@ const ACTIVE_STATUSES = new Set<PerformanceAnalysis["status"]>(["collecting", "a
 
 export function PerformanceAiAnalysisDrawer({
   projectId,
+  testId,
   runId,
   open,
   onOpenChange,
   onRepairApplied,
 }: {
   projectId: string;
+  testId: string;
   runId: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onRepairApplied?: (runId: string) => void;
 }) {
+  const router = useRouter();
   const [analysis, setAnalysis] = useState<PerformanceAnalysis | null>(null);
   const [loading, setLoading] = useState(false);
   const [working, setWorking] = useState(false);
@@ -199,6 +204,18 @@ export function PerformanceAiAnalysisDrawer({
         </div>
 
         <DrawerFooter className="flex-row justify-end border-t">
+          {analysis?.analysis_status === "completed" && analysis.report_snapshot?.verdict ? (
+            <Button
+              onClick={() => {
+                onOpenChange(false);
+                router.push(`/projects/${projectId}/performance-tests/${testId}/runs/${runId}/analysis/${analysis.id}`);
+              }}
+              variant="outline"
+            >
+              <FileChartColumn className="mr-2 size-4" />
+              查看完整报告
+            </Button>
+          ) : null}
           {analysis?.available_actions.includes("apply_and_rerun") ? (
             <Button disabled={repairing || selectedChangeIds.length === 0} onClick={() => setConfirmOpen(true)}>
               <WandSparkles className="mr-2 size-4" />

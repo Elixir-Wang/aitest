@@ -120,10 +120,10 @@ test("performance request configuration is endpoint-only and hides empty section
   assert.match(formSource, /hasBody\(preview\?\.request_config\.body\)/);
 });
 
-test("performance create form preserves preview business success rules", () => {
-  assert.match(formSource, /setSuccessRules\(result\.success_rules\)/);
-  assert.match(formSource, /success_rules: withStatusCodes\(successRules, parseStatusCodes\(successCodes\)\)/);
-  assert.match(formSource, /rules\.filter\(\(rule\) => rule\.kind !== "status_code"\)/);
+test("performance create form leaves success rules to the OpenAPI-backed server default", () => {
+  assert.doesNotMatch(formSource, /成功状态码|successCodes|setSuccessRules|withStatusCodes|parseStatusCodes/);
+  assert.doesNotMatch(formSource, /success_rules:/);
+  assert.match(apiClientSource, /success_rules\?: PerformanceSuccessRule\[\]/);
   assert.match(formSource, /if \(!preview \|\| preview\.endpoint\.id !== endpointId\)/);
 });
 
@@ -225,6 +225,43 @@ test("project-native performance run workspace is present", () => {
   assert.match(locustConsoleSource, /趋势图/);
   assert.match(locustConsoleSource, /失败请求/);
   assert.match(locustConsoleSource, /下载文件/);
+});
+
+test("Locust console presents run metrics without exposing the internal run ID", () => {
+  assert.doesNotMatch(locustConsoleSource, />LOCUST</);
+  assert.match(locustConsoleSource, /\/brand\/locust-mark\.svg/);
+  assert.match(locustConsoleSource, /开始时间/);
+  assert.match(locustConsoleSource, /持续时间/);
+  assert.doesNotMatch(locustConsoleSource, /运行\s*\/\s*\{runId\}/);
+  assert.match(locustConsoleSource, /grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6/);
+  assert.match(locustConsoleSource, /function formatRunDuration/);
+  assert.doesNotMatch(locustConsoleSource, /<LocustOverviewCharts/);
+  assert.match(locustConsoleSource, /统计汇总/);
+  assert.match(locustConsoleSource, /请求统计/);
+  assert.match(locustConsoleSource, /异常分析/);
+});
+
+test("Locust request statistics use the compact success-rate table layout", () => {
+  const statisticsTableSource = readFileSync(
+    new URL("../src/components/ai-testing/performance-testing/locust-statistics-table.tsx", import.meta.url),
+    "utf8",
+  );
+  assert.match(statisticsTableSource, /\["success_rate", "成功率"\]/);
+  assert.doesNotMatch(statisticsTableSource, /\["average_response_time_ms", "平均响应时间"\]/);
+  assert.match(statisticsTableSource, /\["p50_response_time_ms", "P50"\]/);
+  assert.match(statisticsTableSource, /function SuccessRate/);
+  assert.match(statisticsTableSource, /function RequestName/);
+  assert.match(statisticsTableSource, /function methodBadgeClass/);
+  assert.match(
+    statisticsTableSource,
+    /\["success_rate", "成功率"\],\s*\["requests_per_second", "RPS"\],\s*\["p50_response_time_ms", "P50"\]/,
+  );
+  assert.doesNotMatch(statisticsTableSource, /sticky right-0/);
+  assert.match(statisticsTableSource, /min-w-\[1040px\]/);
+  assert.match(statisticsTableSource, /max_response_time_ms: 118/);
+  assert.match(statisticsTableSource, /requests_per_second: 64/);
+  assert.match(statisticsTableSource, /table-fixed/);
+  assert.doesNotMatch(statisticsTableSource, /size-2 rounded-full/);
 });
 
 test("performance AI analysis API supports approved repair and rerun", () => {

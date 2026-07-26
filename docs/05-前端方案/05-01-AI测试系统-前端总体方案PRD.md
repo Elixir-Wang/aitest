@@ -1,292 +1,553 @@
 # 05-01 AI测试系统 - 前端总体方案 PRD
 
-## 1. 这份文档解决什么问题
-
-本文定义 AI 测试系统第一版前端总体方案。前端基于 `next-shadcn-admin-dashboard-main` 改造，落地到 `apps/frontend`，使用分组导航、项目上下文、模块化页面和 shadcn/ui 组件体系。
-
----
-
-## 2. 技术边界
-
-### 2.1 技术栈
-
-| 技术 | 用途 |
-| --- | --- |
-| Next.js | 前端应用框架 |
-| shadcn/ui | 基础组件 |
-| Tailwind CSS | 样式 |
-| Lucide Icons | 图标 |
-| React Hook Form | 表单 |
-| Zod | 表单校验 |
-| TanStack Table | 表格 |
-
-### 2.2 参考项目
-
-- `next-shadcn-admin-dashboard-main` 作为后台壳层参考。
-- `apps/frontend` 作为 AI 测试系统前端落地目录。
-- 组件不足时参考 shadcn skill 和 shadcn/ui 组件。
+> **事实源（2026-07-26）**：
+> - `apps/frontend/package.json`（技术栈与版本）
+> - `apps/frontend/src/app/**/page.tsx`（56 个 `page.tsx`、55 个唯一 URL 模式）
+> - `apps/frontend/src/app/**/layout.tsx`（8 个布局文件）
+> - `apps/frontend/src/components/ai-testing/workspace-shell.tsx`（应用壳）
+> - `apps/frontend/src/components/ai-testing/auth-guard.tsx`（鉴权门禁）
+> - `apps/frontend/src/components/ai-testing/project-switcher.tsx`（项目切换器）
+> - `apps/frontend/src/stores/project-context-store.ts`（项目上下文 store）
+> - `apps/frontend/src/stores/auth-store.ts`（鉴权 store）
+> - `apps/frontend/src/stores/preferences/preferences-store.ts`（偏好 store）
+> - `apps/frontend/src/lib/api-client.ts`（统一 API、错误、SSE、流式下载）
+> - `apps/frontend/src/navigation/sidebar/sidebar-items.ts`（侧栏一级导航）
+> - 领域页面组件：`requirement-upload-page.tsx`、`test-points-panel.tsx`、`exploration-workspace.tsx`、`knowledge-search-settings.tsx`、`performance-testing/locust-console.tsx`、`api-automation/api-run-detail.tsx`、`ui-automation/{ui-automation-asset-detail,ui-automation-run-detail}.tsx`、`reports/page.tsx`
+>
+> 本版本以 2026-07-26 实际依赖与源码为唯一基线，删除以前 PRD 中“所有表单均使用 react-hook-form + Zod”、“业务列表统一使用 TanStack Table”、“报告中心已对接性能报告 API”等过期描述。
 
 ---
 
-## 3. 布局
+## 1. 范围与目标
 
-### 3.1 主布局
+本文档定义 AI 测试系统前端总体方案，覆盖技术栈、应用壳、路由、主布局、页面分类、组件体系、状态管理、API 契约与已知实现边界。前端基于 Next.js App Router，使用 TypeScript、Tailwind CSS 4、shadcn/ui + radix-ui、Biome（lint + format）、Zustand（状态管理）、Recharts（图表）、React Flow（流程图）、simple-mind-map（思维导图）、mermaid（探索路径流程图）、sonner（全局 Toast）、vaul（抽屉）、next-themes（主题）以及 Office/PDF 预览与 Word/PDF 解析等基础能力，支撑 14 个主业务模块：
 
-区域：
-
-- 左侧分组导航。
-- 页面右上角项目切换器。
-- 顶部用户菜单。
-- 主内容区。
-- 页面级面包屑。
-
-### 3.2 项目上下文
-
-项目内页面必须具备当前项目上下文：
-
-- 当前项目名称。
-- 项目状态。
-- 项目切换入口。
-- 当前模块面包屑。
-
-项目上下文不通过左侧项目树表达，而是在页面右上角使用项目切换器表达。项目切换器提供“全部项目”和“指定项目”两类工作分区：
-
-- 控制台、任务中心、报告中心默认支持全部项目，也可以切换到指定项目查看；页面内所有指标、列表、风险和跳转都必须继承当前项目切换器范围。
-- 需求、探索、知识库、测试用例、UI 自动化默认必须选择指定项目，不能在全部项目分区直接新增、生成、编辑、评审或执行。
-
-没有项目上下文时：
-
-- 管理员进入项目列表。
-- 测试工程师进入分配项目列表。
-- 访客进入项目列表只读视图。
+- 控制台（资产健康概览 + 趋势）
+- 任务中心（异步任务聚合）
+- 项目管理（项目级概览、设置、日志）
+- 需求文档（上传、版本、测试点）
+- 站点探索（探索任务、环境、产物）
+- 知识库（对话 + 检索来源设置）
+- 测试用例（生成 + 手动 + 评审）
+- UI 自动化（资产、生成、执行）
+- 接口自动化（端点、脚本、运行、场景）
+- 性能测试（脚本、运行、AI 分析、智能报告）
+- 报告中心（性能报告聚合）
+- 系统设置（模型配置、用户权限、系统日志、系统设置占位）
 
 ---
 
-## 4. 页面类型
+## 2. 技术栈（以 `apps/frontend/package.json` 为唯一基线）
 
-| 页面类型 | 用途 |
-| --- | --- |
-| 列表页 | 项目、文档、任务、用例、运行记录 |
-| 详情页 | 文档详情、探索详情、知识库详情、任务详情 |
-| 编辑页 | Markdown 编辑、项目设置、模型配置 |
-| 评审页 | 需求评审、用例评审、冲突确认 |
-| 报告页 | 控制台、报告中心、Allure 跳转 |
-| 占位页 | 接口自动化 Soon |
-
----
-
-## 5. 通用组件
-
-| 组件 | 用途 |
-| --- | --- |
-| ProjectSwitcher | 页面右上角项目切换，支持全部项目和指定项目分区 |
-| ModuleTabs | 页面内二级导航 |
-| StatusBadge | 状态展示 |
-| TaskTimeline | 任务时间线 |
-| SourceReference | 来源引用 |
-| MarkdownPreview | Markdown 预览 |
-| MarkdownEditor | Markdown 编辑 |
-| VersionDiffViewer | 版本 Diff |
-| ConfirmRiskDialog | 高风险确认 |
-| EmptyState | 空状态 |
-| SoonPage | Soon 占位 |
-
-### 5.1 统一视觉与组件规范
-
-第一版前端必须保持后台工作台风格一致，不能每个页面单独设计一套视觉语言。所有页面优先复用 `next-shadcn-admin-dashboard-main` 壳层、shadcn/ui 基础组件、Tailwind token 和统一领域组件。
-
-统一规则：
-
-- 页面标题、面包屑、项目切换器、主操作按钮、筛选区、表格、Tabs、详情区和右侧信息区必须使用统一结构。
-- 不允许每个模块自行定义状态颜色、按钮样式、卡片圆角、表格密度、空状态样式和弹窗布局。
-- 所有状态必须使用统一 `StatusBadge`，中文展示，不直接显示后端英文枚举。
-- 所有表格必须使用统一 `DataTable` 模式，包含列配置、筛选、分页、批量操作、空状态和加载状态。
-- 所有高风险操作必须使用统一 `ConfirmRiskDialog`，展示当前项目、对象名称、影响范围和不可逆风险。
-- 所有异步任务入口必须使用统一 `TaskActionButton` 或等价组件，展示创建中、运行中、成功、失败、等待人工状态。
-- 所有来源引用必须使用统一 `SourceReference`，支持跳转到需求段落、探索页面、截图、trace 或版本记录。
-- 所有 Markdown 预览、编辑和 diff 必须复用 `MarkdownPreview`、`MarkdownEditor`、`VersionDiffViewer`。
-- 图标统一使用 Lucide Icons，不在页面内手写风格不一致的 SVG。
-- 页面不使用营销式大卡片和装饰性背景，保持后台工作台风格，信息密度适中、层级清楚、便于扫描。
-
-组件分层建议：
-
-| 层级 | 示例 | 复用范围 |
+| 技术 | 版本 | 用途 |
 | --- | --- | --- |
-| 基础组件 | Button、Input、Select、Tabs、Dialog、Badge、Table、Skeleton | 来自 shadcn/ui |
-| 布局组件 | PageHeader、PageToolbar、PageTabs、SplitPane、SidePanel、DetailShell | 全系统复用 |
-| 状态组件 | StatusBadge、TaskStatusBadge、RiskBadge、CoverageBadge | 全系统复用 |
-| 数据组件 | DataTable、FilterBar、Pagination、BulkActionBar | 列表页复用 |
-| 领域组件 | ProjectSwitcher、SourceReference、TaskTimeline、VersionDiffViewer、MarkdownPreview | 多模块复用 |
-| 模块组件 | RequirementReviewPanel、KnowledgeBlockerList、AutomationSuitePanel | 模块内复用 |
+| **Next.js** | 16.2.6 | 前端框架（App Router，原生支持 `(main)`/`(auth)`/`(external)` 路由组） |
+| **React** | 19.2.6 | UI 库 |
+| **React DOM** | 19.2.6 | 渲染 |
+| **TypeScript** | 5.9.3 | 类型系统 |
+| **Tailwind CSS** | 4.1.5 | 样式（CSS-first 配置） |
+| **@tailwindcss/postcss** | 4.3.0 | PostCSS 插件 |
+| **postcss** | 8.5.14 | 构建管线 |
+| **tw-animate-css** | 1.4.0 | Tailwind 动画工具 |
+| **shadcn** | 4.7.0 | 组件脚手架（`shadcn` CLI，而非运行时库） |
+| **radix-ui** | 1.4.3 | 无头 UI 组件库（`components/ui/*.tsx` 全部基于 radix-ui） |
+| **Biome** | 2.4.15 | Linter + Formatter（替代 ESLint/Prettier，`scripts`：`lint` / `format` / `check`） |
+| **husky** | 9.1.7 | Git hook |
+| **lint-staged** | 16.4.0 | staged 区检查 |
+| **Zustand** | 5.0.13 | 轻量状态管理（`auth-store` / `project-context-store` / `preferences-store`） |
+| **Recharts** | 3.8.0 | 图表（控制台趋势、性能测试图表、模板仪表板图表） |
+| **@xyflow/react** | 12.11.2 | React Flow（接口自动化场景编辑器） |
+| **@dagrejs/dagre** | 3.0.0 | 图形布局算法（配合 React Flow） |
+| **Lucide React** | 1.14.0 | 图标库（侧栏、按钮、状态徽标统一图标集） |
+| **react-hook-form** | 7.75.0 | 表单管理（登录表单） |
+| **@hookform/resolvers** | 5.2.2 | 表单校验（配合 Zod） |
+| **Zod** | 4.4.3 | Schema 校验（登录表单 Zod schema） |
+| **@tanstack/react-table** | 8.21.3 | 高级表格（**仅 Dashboard 模板页使用**：`dashboard/default`、`dashboard/ecommerce`、`dashboard/crm`） |
+| **react-markdown** | 10.1.0 + **remark-gfm** | Markdown 渲染（`markdown-preview.tsx`） |
+| **date-fns** | 4.1.0 | 日期格式化（`formatDateTime` 等） |
+| **docx-preview** | 0.3.7 | Word 文档预览 |
+| **pdfjs-dist** | 5.7.284 | PDF 预览（`pdf-canvas-preview.tsx`） |
+| **sonner** | 2.0.7 | Toast 通知（`app/layout.tsx` `<Toaster />`） |
+| **motion** | 12.39.0 | 动画（Framer Motion） |
+| **@fontsource/noto-sans-sc** | 5.2.9 | 中文字体 |
+| **vaul** | 1.1.2 | 抽屉组件（`components/ui/drawer.tsx`） |
+| **shiki** | 4.3.1 | 代码高亮 |
+| **mermaid** | 11.15.0 | 流程图/时序图渲染 |
+| **simple-mind-map** | 0.14.0-fix.3 | 思维导图（`test-point-mind-map.tsx` / `test-case-mind-map.tsx`） |
+| **@ark-ui/react** | 5.36.2 | Ark UI 组件（按需使用） |
+| **next-themes** | 0.4.6 | 主题切换（与 `preferences-store` 协同） |
+| **class-variance-authority** | 0.7.1 | 变体管理 |
+| **clsx** | 2.1.1 | 条件类名工具 |
+| **tailwind-merge** | 3.6.0 | 条件类名合并 |
+| **simple-icons** | 16.19.0 | 品牌图标库 |
+| **react-day-picker** | 9.14.0 | 日历选择（与 `calendar.tsx` 配套） |
+| **react-use-measure** | 2.1.7 | DOM 尺寸测量 |
 
-### 5.2 页面统一布局模板
-
-#### 5.2.1 列表页模板
-
-适用于项目、文档、任务、用例、运行记录等列表页。
-
-```text
-PageShell
-  PageHeader: 标题、说明、面包屑、项目切换器、主操作按钮
-  PageToolbar: 筛选、搜索、状态筛选、批量操作
-  DataTable: 统一表格、分页、列设置、行操作
-  EmptyState / ErrorState / LoadingSkeleton
-```
-
-规则：
-
-- 主操作按钮固定在 PageHeader 右侧，例如“上传需求”“开始探索”“生成用例”。
-- 筛选项放在 PageToolbar，不散落在表格上方多个区域。
-- 行操作统一放在表格最右侧，使用菜单或图标按钮。
-- 批量操作统一使用 BulkActionBar，不在表格行内重复放大量按钮。
-
-#### 5.2.2 详情页模板
-
-适用于需求详情、探索详情、知识库详情、用例详情、自动化套件、任务详情、失败诊断详情。
-
-```text
-DetailShell
-  PageHeader: 对象名称、状态、版本、主操作
-  SummaryStrip: 关键状态、来源、更新时间、负责人
-  PageTabs: 概览 / 内容 / 版本 / 任务 / 日志
-  MainContent: 当前 Tab 主内容
-  SidePanel: 来源引用、可用操作、风险提示、关联任务
-```
-
-规则：
-
-- 详情页必须展示对象状态和 `available_actions` 对应按钮。
-- 右侧 SidePanel 统一展示来源、版本、关联任务、阻塞项和风险提示。
-- 版本、日志、证据类内容通过 Tabs 展示，不在一个页面无限下拉。
-
-#### 5.2.3 编辑与评审页模板
-
-适用于 Markdown 编辑、需求模块评审、澄清写回、用例评审、自愈补丁审核。
-
-```text
-ReviewShell
-  PageHeader
-  LeftPane: 原文 / 当前版本 / 待评审内容
-  RightPane: 建议修改 / 表单 / diff / 来源
-  BottomActionBar: 保存草稿、预览 diff、确认应用、取消
-```
-
-规则：
-
-- 所有 AI 修改必须先进入 diff 或结构化补丁预览。
-- 确认按钮固定在 BottomActionBar，避免滚动到底部找不到操作。
-- 评审类页面必须显示来源引用和影响范围。
-
-#### 5.2.4 任务与运行页模板
-
-适用于任务详情、探索运行、UI 自动化生成、自动化执行、失败诊断过程。
-
-```text
-RunShell
-  PageHeader
-  StatusSummary: 当前状态、耗时、进度、等待人工数、失败数
-  TaskTimeline: 阶段事件
-  OutputPanel: 产物、日志、报告、失败项
-  ActionPanel: 取消、重试、去处理、查看结果
-```
-
-规则：
-
-- 批量任务必须展示总数、成功数、等待人工数、失败数。
-- 等待人工项必须可跳转到处理入口。
-- 日志默认展示摘要，完整日志通过文件或日志面板查看。
+**验收规则**：`package.json` 中未列的依赖（旧 PRD 中的 React Query / SWR / React Router / Redux / Apollo / Ant Design 等）不得在 PRD 中描述为已使用。
 
 ---
 
-## 6. 交互规则
+## 3. 应用壳（WorkspaceShell）
 
-- 左侧导航只放高频一级入口。
-- 二级功能使用页面内 Tabs 或卡片入口。
-- 项目内页面必须显示项目上下文。
-- 项目上下文通过右上角项目切换器、页面标题和面包屑展示，左侧不展开项目层级。
-- 项目强绑定写操作必须基于指定项目，不能在全部项目分区直接执行。
-- 高风险操作必须二次确认。
-- 任务型操作必须生成任务记录并跳转任务中心或展示任务状态。
-- 保存类操作必须有明确成功/失败反馈。
-- 访客看到写操作按钮时应禁用并提示只读权限。
+应用壳由 `apps/frontend/src/components/ai-testing/workspace-shell.tsx` 内的 `WorkspaceShell` 组件统一注入：
 
-### 6.1 前端实现分层
+```
+SidebarProvider（受 cookie `sidebar_state` 与 `sidebar_variant` 偏好控制）
+└── AppSidebar（左侧导航，分组：工作台 / 项目工作区 / 测试资产 / 系统管理）
+    └── injected by SidebarProvider
+SidebarInset（max-w-screen-2xl，自带 backdrop blur，圆角）
+└── Header（sticky top-0, h-12, overflow-hidden, backdrop-blur）
+    ├── SidebarTrigger（折叠/展开）
+    ├── WorkspaceBreadcrumbs（顶部面包屑）
+    ├── TaskRunningIndicator（后台任务全局运行指示器）
+    ├── ProjectSwitcher（scope="project"，全局项目切换）
+    ├── LayoutControls（侧栏/主题布局偏好）
+    ├── ThemeSwitcher（next-themes 主题切换）
+    └── AccountSwitcher（账号菜单）
+└── Content p-4 md:p-6
+    └── AuthGuard（未登录跳转 /auth/v1/login?next=...）
+        └── {children}
+```
 
-第一版前端建议按“页面容器 + 领域组件 + 通用组件 + API 适配层”组织，避免所有页面逻辑散落在单个大组件中。
+**关键事实**
 
-| 层级 | 职责 | 说明 |
+- **AuthGuard**：基于 `useAuthStore` 的 `hasHydrated` 与 `token` 判断；未登录时 `router.replace('/auth/v1/login?next={pathname}')`，渲染期间显示 `正在检查登录状态` 骨架。
+- **ProjectSwitcher**：基于 `useProjectContextStore`（`scope` / `currentProjectId`），写 `localStorage`：`ai-testing.project.scope`、`ai-testing.project.current`；打开时拉取 `/projects`，过滤状态非 `archived` 的项目，又称"项目上下文切换"。
+- **TaskRunningIndicator**：全局 `ai-testing` run 计数指示器，列表页创建资源后通过 `notifyAiTaskStarted()` 触发。
+- **Sidebar**：数据源为 `navigation/sidebar/sidebar-items.ts`，分组与项目上下文（`projectScoped`）受限规则参考 `05-02-AI测试系统-导航与页面映射清单.md`。
+
+---
+
+## 4. 路由清单与主布局
+
+### 4.1 路由组（来自 `app/**/layout.tsx`）
+
+| 路由组 | 布局 | 用途 |
 | --- | --- | --- |
-| Page 容器 | 路由入口、数据获取、页面级状态组装 | 负责把项目上下文、列表状态和操作入口拼起来 |
-| Domain 组件 | 需求、探索、知识库、用例、自动化、任务等模块组件 | 封装模块内列表、详情、编辑、评审、时间线 |
-| Shared 组件 | StatusBadge、TaskTimeline、VersionDiffViewer 等通用能力 | 在多个模块复用 |
-| API 适配层 | 请求、响应、错误码、类型转换 | 屏蔽后端字段差异和 loading/error 状态 |
-| State 层 | 项目上下文、用户偏好、列表筛选条件 | 处理跨页面共享状态 |
+| `app/layout.tsx` | RootLayout | 全局 HTML 容器、`<TooltipProvider>`、`<PreferencesStoreProvider>`、`<Toaster />`、`<ThemeBootScript />` |
+| `app/(auth)/layout.tsx` | AuthLayout | `min-h-dvh` 居中布局，无侧栏 |
+| `app/(main)/layout.tsx` | MainLayout | 直接渲染 `WorkspaceShell`（所有需登录页面） |
+| `app/(main)/dashboard/layout.tsx` | DashboardLayout | 仪表板区块内的统一布局（多余层级，目前被 `MainLayout` 覆盖） |
+| `app/(main)/projects/layout.tsx` | ProjectsLayout | 项目工作区下的统一容器（目前等价 `MainLayout`） |
+| `app/(main)/tasks/layout.tsx` | TasksLayout | 任务中心布局 |
+| `app/(main)/reports/layout.tsx` | ReportsLayout | 报告中心布局 |
+| `app/(main)/settings/layout.tsx` | SettingsLayout | 系统管理布局 |
 
-### 6.2 前端页面实现模式
+### 4.2 页面文件与唯一 URL 模式
 
-- 列表页采用“筛选区 + 主表格 + 右侧操作面板或抽屉”的结构。
-- 详情页采用“标题区 + 状态区 + Tabs + 主内容区 + 操作区”的结构。
-- 编辑页采用“左主编辑、右侧预览或版本对照”的结构，避免单列超长表单。
-- 任务页和运行页必须有时间线和状态分段展示，不能只靠表格一行文字。
-- 需要高风险确认的操作必须弹确认弹窗，弹窗里必须带当前项目名称和对象名称。
-- 空状态必须提供明确下一步动作，不只显示没有数据。
+> 当前共 **56 个 `app/**/page.tsx`**，去重后映射到 **55 个 URL 模式**（`/dashboard/[...not-found]` 中，`[...not-found]` 本身不计入 URL 模式）。
 
-### 6.3 组件约定
+| # | 路由模式 | 页面文件 | 主布局 | 备注 |
+| --- | --- | --- | --- | --- |
+| 1 | `/auth/v1/login` | `app/(auth)/auth/v1/login/page.tsx` | (auth) | 登录 |
+| 2 | `/auth/v1/register` | `app/(auth)/auth/v1/register/page.tsx` | (auth) | 用户注册 |
+| 3 | `/dashboard` | `app/(main)/dashboard/page.tsx` | (main) | 全局控制台 |
+| 4 | `/dashboard/default` | `app/(main)/dashboard/default/page.tsx` | (main) | 模板仪表板 |
+| 5 | `/dashboard/analytics` | `app/(main)/dashboard/analytics/page.tsx` | (main) | 模板仪表板 |
+| 6 | `/dashboard/ecommerce` | `app/(main)/dashboard/ecommerce/page.tsx` | (main) | 模板仪表板 |
+| 7 | `/dashboard/finance` | `app/(main)/dashboard/finance/page.tsx` | (main) | 模板仪表板 |
+| 8 | `/dashboard/productivity` | `app/(main)/dashboard/productivity/page.tsx` | (main) | 模板仪表板 |
+| 9 | `/dashboard/crm` | `app/(main)/dashboard/crm/page.tsx` | (main) | 模板仪表板 |
+| 10 | `/dashboard/academy` | `app/(main)/dashboard/academy/page.tsx` | (main) | 模板仪表板 |
+| 11 | `/dashboard/coming-soon` | `app/(main)/dashboard/coming-soon/page.tsx` | (main) | 占位页 |
+| 12 | `/dashboard/[...not-found]` | `app/(main)/dashboard/[...not-found]/page.tsx` | (main) | 兜底 404 |
+| 13 | `/tasks` | `app/(main)/tasks/page.tsx` | (main) | 任务中心 |
+| 14 | `/reports` | `app/(main)/reports/page.tsx` | (main) | 报告中心 |
+| 15 | `/requirements` | `app/(main)/requirements/page.tsx` | (main) | 需求主入口 |
+| 16 | `/requirements/upload` | `app/(main)/requirements/upload/page.tsx` | (main) | 需求上传 |
+| 17 | `/exploration` | `app/(main)/exploration/page.tsx` | (main) | 探索主入口 |
+| 18 | `/exploration/new` | `app/(main)/exploration/new/page.tsx` | (main) | 探索新建 |
+| 19 | `/knowledge` | `app/(main)/knowledge/page.tsx` | (main) | 知识库 |
+| 20 | `/test-cases` | `app/(main)/test-cases/page.tsx` | (main) | 测试用例 |
+| 21 | `/test-cases/manual/{caseId}` | `app/(main)/test-cases/manual/[caseId]/page.tsx` | (main) | 手动用例详情 |
+| 22 | `/test-cases/{setId}/review` | `app/(main)/test-cases/[setId]/review/page.tsx` | (main) | 用例集评审 |
+| 23 | `/automation/ui` | `app/(main)/automation/ui/page.tsx` | (main) | UI 自动化主入口 |
+| 24 | `/automation/api` | `app/(main)/automation/api/page.tsx` | (main) | 接口自动化主入口 |
+| 25 | `/performance-tests` | `app/(main)/performance-tests/page.tsx` | (main) | 性能测试主入口 |
+| 26 | `/performance-tests/new` | `app/(main)/performance-tests/new/page.tsx` | (main) | 性能测试新建 |
+| 27 | `/projects` | `app/(main)/projects/page.tsx` | (main) | 项目列表 |
+| 28 | `/projects/{projectId}` | `app/(main)/projects/[projectId]/page.tsx` | (main) | 项目概览 |
+| 29 | `/projects/{projectId}/settings` | `app/(main)/projects/[projectId]/settings/page.tsx` | (main) | 项目设置 |
+| 30 | `/projects/{projectId}/logs` | `app/(main)/projects/[projectId]/logs/page.tsx` | (main) | 项目日志 |
+| 31 | `/projects/{projectId}/requirements/{documentId}` | `app/(main)/projects/[projectId]/requirements/[documentId]/page.tsx` | (main) | 需求文档详情 |
+| 32 | `/projects/{projectId}/requirements/{documentId}/versions` | `app/(main)/projects/[projectId]/requirements/[documentId]/versions/page.tsx` | (main) | 需求版本列表 |
+| 33 | `/projects/{projectId}/requirements/{documentId}/versions/{versionId}` | `app/(main)/projects/[projectId]/requirements/[documentId]/versions/[versionId]/page.tsx` | (main) | 需求版本详情 |
+| 34 | `/projects/{projectId}/exploration/{runId}` | `app/(main)/projects/[projectId]/exploration/[runId]/page.tsx` | (main) | 探索详情（SSE） |
+| 35 | `/projects/{projectId}/exploration/{runId}/edit` | `app/(main)/projects/[projectId]/exploration/[runId]/edit/page.tsx` | (main) | 探索编辑 |
+| 36 | `/projects/{projectId}/exploration/new` | `app/(main)/projects/[projectId]/exploration/new/page.tsx` | (main) | 探索新建 |
+| 37 | `/projects/{projectId}/automation/ui/assets/{assetId}` | `app/(main)/projects/[projectId]/automation/ui/assets/[assetId]/page.tsx` | (main) | UI 资产详情 |
+| 38 | `/projects/{projectId}/automation/ui/assets/{assetId}/runs/{runId}` | `app/(main)/projects/[projectId]/automation/ui/assets/[assetId]/runs/[runId]/page.tsx` | (main) | UI 运行详情 |
+| 39 | `/projects/{projectId}/automation/api` | `app/(main)/projects/[projectId]/automation/api/page.tsx` | (main) | 项目级接口自动化 |
+| 40 | `/projects/{projectId}/automation/api/cases/{caseId}` | `app/(main)/projects/[projectId]/automation/api/cases/[caseId]/page.tsx` | (main) | 接口用例详情 |
+| 41 | `/projects/{projectId}/automation/api/runs/{runId}` | `app/(main)/projects/[projectId]/automation/api/runs/[runId]/page.tsx` | (main) | 接口运行详情 |
+| 42 | `/projects/{projectId}/automation/api/scenarios/{scenarioId}` | `app/(main)/projects/[projectId]/automation/api/scenarios/[scenarioId]/page.tsx` | (main) | 接口场景（React Flow） |
+| 43 | `/projects/{projectId}/automation/api/scenarios/new` | `app/(main)/projects/[projectId]/automation/api/scenarios/new/page.tsx` | (main) | 接口场景新建 |
+| 44 | `/projects/{projectId}/performance-tests` | `app/(main)/projects/[projectId]/performance-tests/page.tsx` | (main) | 项目级性能测试 |
+| 45 | `/projects/{projectId}/performance-tests/new` | `app/(main)/projects/[projectId]/performance-tests/new/page.tsx` | (main) | 性能测试新建 |
+| 46 | `/projects/{projectId}/performance-tests/{testId}/runs/{runId}` | `app/(main)/projects/[projectId]/performance-tests/[testId]/runs/[runId]/page.tsx` | (main) | 性能运行详情（SSE） |
+| 47 | `/projects/{projectId}/performance-tests/{testId}/scripts/{scriptId}` | `app/(main)/projects/[projectId]/performance-tests/[testId]/scripts/[scriptId]/page.tsx` | (main) | 性能脚本 |
+| 48 | `/settings/models` | `app/(main)/settings/models/page.tsx` | (main) | 模型配置 |
+| 49 | `/settings/models/assignments` | `app/(main)/settings/models/assignments/page.tsx` | (main) | 模型能力分配 |
+| 50 | `/settings/users` | `app/(main)/settings/users/page.tsx` | (main) | 用户与权限 |
+| 51 | `/settings/logs` | `app/(main)/settings/logs/page.tsx` | (main) | 系统日志 |
+| 52 | `/settings/logs/{logId}` | `app/(main)/settings/logs/[logId]/page.tsx` | (main) | 日志详情 |
+| 53 | `/settings/system` | `app/(main)/settings/system/page.tsx` | (main) | 系统设置（占位） |
+| 54 | `/unauthorized` | `app/(main)/unauthorized/page.tsx` | (main) | 无权限提示 |
+| 55 | `/` | `app/(external)/page.tsx` | (external) | 无侧栏登录引导 |
+| 56 | `/` | `app/page.tsx` | (root) | 重定向到 `/dashboard` 或 `/auth/v1/login` |
 
-| 组件 | 使用场景 | 约束 |
-| --- | --- | --- |
-| ProjectSwitcher | 右上角项目切换 | 影响页面数据范围，不只是筛选器 |
-| StatusBadge | 所有状态展示 | 中文展示，颜色与状态一致 |
-| VersionDiffViewer | 版本对照、澄清写回、补丁预览 | 必须支持行级变化和摘要变化 |
-| TaskTimeline | 任务详情、自动化运行、诊断过程 | 时间顺序明确，支持状态节点 |
-| EmptyState | 空列表、无项目、无权限、无结果 | 必须带下一步动作 |
-| ConfirmRiskDialog | 知识库发布、批量生成、补丁应用 | 必须展示风险和作用范围 |
-| SoonPage | 接口自动化占位 | 只读，不可创建任务 |
+**根路径冲突**：`app/page.tsx` 与 `app/(external)/page.tsx` 同时映射 `/`。Next.js 路由匹配下，`app/(external)/page.tsx` 只在没有其他精确匹配的页面时命中；在生产构建中 `app/page.tsx` 优先匹配（取决于框架行为）。详见 8.2 节。
 
-### 6.4 页面状态处理
+---
 
-- 页面加载中必须显示骨架屏或局部 loading，不允许白屏等待。
-- 失败状态必须区分“无权限”“无数据”“接口失败”“任务失败”。
-- 切换项目后必须重新拉取数据并重置与项目绑定的列表状态。
-- 进入详情页时如果对象已废弃或已过期，应明确展示历史态，不要直接 404。
-- 访客权限不足时，按钮禁用并说明原因，但列表和详情仍应尽量可读。
+## 5. 页面分类
 
-### 6.5 第一版页面字段与操作
+### 5.1 大页面（SSE / 长连接 / 实时）
 
-| 页面 | 核心字段 | 主要操作 | 状态展示 |
+| 页面 | 实时技术 | 关键组件 | 降级策略 |
 | --- | --- | --- | --- |
-| 控制台 | 项目数、用例资产数、采纳率、UI 自动化覆盖率、失败数、待处理事项、最近任务 | 切换项目范围、跳转待办、查看任务 | 指标趋势、任务状态、风险等级 |
-| 项目列表 | 项目名称、项目编码、状态、成员数、最近更新时间、资产摘要 | 新建项目、进入详情、归档项目 | active、archived |
-| 项目详情 | 项目基础信息、成员、环境配置、资产健康度、待处理事项 | 编辑项目、管理成员、进入需求/探索/知识库 | 项目状态、资产状态 |
-| 需求文档列表 | 文档名称、版本、状态、上传人、更新时间、分析状态 | 上传文档、查看详情、发起分析 | 文档版本状态、分析任务状态 |
-| 需求文档详情 | Markdown 预览、版本列表、覆盖矩阵、澄清问题、模块评审 | 编辑工作稿、AI 修改、回答澄清、应用澄清、完成评审 | 待澄清、待评审、可进入知识库、阻塞 |
-| 站点探索 | 站点配置、探索任务、模块覆盖、页面事实、阻塞项 | 开始探索、继续等待人工、查看探索文档、确认结果 | 排队中、探索中、等待人工、部分完成、可作为来源 |
-| 知识库 | 当前发布版本、来源材料、Wiki 页面、lint 问题、更新预览 | 生成知识库、更新知识库、发布版本、查看来源 | 阻塞、草稿、待发布、已发布、已过期 |
-| 测试用例 | 用例编号、模块、优先级、状态、来源知识库、自动化适配性 | 生成用例、评审、采纳、不采纳、编辑、复核 | 待评审、已采纳、待复核、可生成自动化 |
-| UI 自动化 | 套件、关联用例、代码文件、最近运行、通过率、失败数 | 生成代码、查看代码、执行、查看报告、进入诊断 | 代码生成中、可执行、执行中、通过、失败待诊断 |
-| 任务中心 | 任务名称、项目、类型、状态、发起人、耗时、最近日志 | 查看详情、取消、重试、去处理、查看结果 | 排队中、运行中、等待人工、成功、失败、已取消 |
-| 报告中心 | 运行编号、项目、套件、通过率、失败数、Allure 链接、诊断入口 | 查看报告、跳转 Allure、查看失败、标记 Bug | 通过、失败待诊断、执行异常 |
-| 失败诊断 | 失败摘要、证据、分类、关联用例、知识库、补丁状态 | 启用诊断、生成补丁、应用补丁、回滚、关闭诊断 | 待处理、诊断中、代码问题、产品 Bug、已关闭 |
-| 模型配置 | 模型提供商、模型、Base URL、更新时间；API Key 只在新建和编辑表单中维护，列表不展示 | 新增模型、编辑模型、删除模型 | 不在列表展示状态 |
-| 用户与权限 | 用户名、角色、状态、项目分配、最近登录 | 创建用户、重置密码、分配项目、禁用账号 | 启用、禁用 |
-| 系统设置 | 文件根目录、Runner、Python、Playwright、Allure、Agent 安全目录 | 保存设置、执行连通性检查 | 可用、不可用、检查中 |
+| `/projects/{projectId}/performance-tests/{testId}/runs/{runId}` | `streamPerformanceRun`（`text/event-stream`） | `locust-console.tsx` | SSE 失败 → 1s 间隔轮询 stats + charts |
+| `/projects/{projectId}/exploration/{runId}` | 自定义 SSE（`fetch` + `ReadableStream`） | `exploration-workspace.tsx` | 自动重连（1.5s）并在 `done` 后 `loadRun({silent:true})` |
+| `/projects/{projectId}/automation/ui/assets/{assetId}/runs/{runId}` | 1.5s 轮询 live-view + 2s 轮询运行详情 | `ui-automation-run-detail.tsx` | — |
 
-### 6.6 页面级操作规则
+### 5.2 业务详情页（Tab + 周期轮询）
 
-- 所有“生成、执行、诊断、自愈、连通性检查”操作必须创建任务，并在按钮旁显示任务状态或跳转任务中心。
-- 所有“发布、采纳、应用补丁、回滚、废弃、归档”操作必须二次确认，并展示影响范围。
-- 所有详情页必须展示 `available_actions` 控制的按钮集合，前端不自行推断权限。
-- 所有列表页必须支持按项目上下文过滤；项目强绑定页面不允许在全部项目分区执行写操作。
-- 所有来源引用、报告附件、trace、截图、代码文件都应通过后端授权接口读取，前端不直接拼接本地文件路径。
+| 页面 | 关键轮询策略 |
+| --- | --- |
+| `/projects/{projectId}/requirements/{documentId}` | 测试点任务状态在 `queued`/`running` 时 2.5s 静默轮询 |
+| `/projects/{projectId}/automation/api/runs/{runId}` | `queued`/`running` 时 3s 轮询 |
+| `/projects/{projectId}/automation/api` | `awaiting_approval` 等状态 2s 轮询 |
+| `/projects/{projectId}/automation/ui/assets/{assetId}` | 无轮询，按需 `loadDetail` |
+| `/performance-tests`、`/projects/{projectId}/performance-tests` | 列表刷新按需，AI 分析任务状态拉取 |
+| `/knowledge` | 会话列表 + 检索设置（无轮询） |
+| `/reports` | 仅在切换到"性能"Tab 时调用 `listReportCenterItems()` |
+
+### 5.3 列表页
+
+| 模式 | 来源 | 备注 |
+| --- | --- | --- |
+| `PageHeader` + `ListToolbar` + `Table/TableRow` | `components/ai-testing/page-shell.tsx` | **不使用** 业务级 TanStack Table，模板仪表板（`dashboard/{default,ecommerce,crm}`）才使用 `useReactTable` |
+| 批量操作 | `useLocalTableSelection`（行内 Checkbox） | 用于 `/projects`、`/settings/users` 等 |
+| 搜索 | `useState` + `filter`/`useMemo` | 受 `ListToolbar.onSearch` |
+| 加载态 | `TableLoadingRow` 替换列；空态用 `IllustratedEmptyState` | — |
+
+### 5.4 模板页（Dashboard，仅英文演示）
+
+| 页面 | 内容 |
+| --- | --- |
+| `/dashboard/default` | `MetricCards` + `PerformanceOverview` + `SubscriberOverview`（来自 shadcn 模板） |
+| `/dashboard/analytics` | Recharts：访问者、渠道、流量质量 |
+| `/dashboard/ecommerce` | TanStack Table + Recharts：商品、订单、库存 |
+| `/dashboard/finance` | Recharts：余额、交易、退款 |
+| `/dashboard/productivity` | 演示用生产力指标 |
+| `/dashboard/crm` | TanStack Table：商机、管道 |
+| `/dashboard/academy` | 课程、作业、成绩 |
+| `/dashboard/coming-soon` | 占位文案 |
+| `/dashboard/[...not-found]` | 兜底英文文案 |
+
+**注意**：以上 Dashboard 模板页（4-10、12）**不属于 AI 测试主业务**，仅作为侧栏后续扩展占位。当前侧栏并未挂载这些模板（`sidebar-items.ts` 没有对应项）。
+
+### 5.5 核心页面清单（与 05-02 对齐）
+
+| 页面 | 路由 | 业务备注 |
+| --- | --- | --- |
+| 登录 | `/auth/v1/login` | RHF + Zod 登录；`useAuthStore.login()` 写 `localStorage`/`sessionStorage` |
+| 注册 | `/auth/v1/register` | 管理员可禁用 |
+| 控制台 | `/dashboard` | 范围切换（全部/项目）+ 30 天趋势 |
+| 任务中心 | `/tasks` | 各模块异步任务聚合 |
+| 项目列表 | `/projects` | 列表 + 新建/编辑/删除 |
+| 项目概览 | `/projects/{projectId}` | 资产、采纳率、趋势 |
+| 项目设置 | `/projects/{projectId}/settings` | **写按钮未连接 API**（只读展示） |
+| 项目日志 | `/projects/{projectId}/logs` | 项目操作日志 |
+| 需求上传 | `/requirements/upload` | 同时支持新建 / 追加至已有需求 |
+| 需求文档 | `/projects/{projectId}/requirements/{documentId}` | 版本列表 + 测试点面板 |
+| 需求版本 | `/projects/{projectId}/requirements/{documentId}/versions/{versionId}` | Markdown 内容 + Diff |
+| 探索 | `/exploration` | 探索主入口 |
+| 探索新建 | `/exploration/new` | 表单 |
+| 探索详情 | `/projects/{projectId}/exploration/{runId}` | SSE 实时 + 报告 |
+| 探索编辑 | `/projects/{projectId}/exploration/{runId}/edit` | JSON/YAML 工作台 |
+| 知识库 | `/knowledge` | 对话 + 检索设置 |
+| 测试用例 | `/test-cases` | 用例集列表 + 项目下钻 |
+| 手动用例 | `/test-cases/manual/{caseId}` | 详情 |
+| 用例评审 | `/test-cases/{setId}/review` | 评审面板 |
+| UI 自动化 | `/automation/ui` | 项目聚合 |
+| UI 资产 | `/projects/{projectId}/automation/ui/assets/{assetId}` | 概览 + 执行 Tab |
+| UI 运行 | `/projects/{projectId}/automation/ui/assets/{assetId}/runs/{runId}` | 实时浏览器回放 |
+| 接口自动化 | `/automation/api` | 全局入口 |
+| 接口项目 | `/projects/{projectId}/automation/api` | 端点 + 脚本 + 运行 + 场景 |
+| 接口用例 | `/projects/{projectId}/automation/api/cases/{caseId}` | 详情 |
+| 接口运行 | `/projects/{projectId}/automation/api/runs/{runId}` | 详情 + 修复 |
+| 接口场景 | `/projects/{projectId}/automation/api/scenarios/{scenarioId}` | React Flow 编辑 |
+| 接口场景新建 | `/projects/{projectId}/automation/api/scenarios/new` | 表单 |
+| 性能测试 | `/performance-tests` | 全部项目聚合 |
+| 性能测试（项目） | `/projects/{projectId}/performance-tests` | 项目级 |
+| 性能测试新建 | `/projects/{projectId}/performance-tests/new` | 表单 |
+| 性能运行 | `/projects/{projectId}/performance-tests/{testId}/runs/{runId}` | Locust 控制台 |
+| 性能脚本 | `/projects/{projectId}/performance-tests/{testId}/scripts/{scriptId}` | 脚本编辑 |
+| 报告中心 | `/reports` | **当前只有"性能"Tab 接通** |
+| 模型配置 | `/settings/models` | Provider 列表 |
+| 模型分配 | `/settings/models/assignments` | 能力分配 |
+| 用户与权限 | `/settings/users` | 用户管理 |
+| 系统日志 | `/settings/logs` | 列表 |
+| 日志详情 | `/settings/logs/{logId}` | 详情 |
+| 系统设置 | `/settings/system` | **占位 SoonPage，未开放** |
+| 未授权 | `/unauthorized` | 403 提示 |
 
 ---
 
-## 7. 验收标准
+## 6. 组件体系
 
-- 前端能复用 `next-shadcn-admin-dashboard-main` 的布局基础。
-- 左侧导航符合 `05-02` 导航方案。
-- 项目内页面能显示项目上下文。
-- 需求、探索、知识库、用例、自动化、报告页面具备统一列表和详情体验。
-- 接口自动化页面为 Soon，不可操作。
-- 前端页面按容器、领域组件、通用组件和 API 适配层分层实现。
-- 页面空态、失败态、权限态和加载态有统一处理。
+### 6.1 基础组件（`components/ui/*.tsx`）
+
+基于 shadcn/ui + radix-ui：
+
+- 表单：`Button`、`Input`、`Textarea`、`Checkbox`、`RadioGroup`、`Select`（含 `Select`、`NativeSelect`、`AnimatedSelect`）、`Slider`、`Switch`、`Calendar`、`Field`（含 `FieldGroup`、`FieldLabel`、`FieldError`）
+- 容器：`Card`、`Sheet`、`Dialog`、`Drawer`（vaul）、`Popover`、`HoverCard`、`Tooltip`、`Collapsible`、`Empty`
+- 数据展示：`Table`、`Badge`、`Avatar`、`Separator`、`Chart`（Recharts 包装）、`StatusBadge`、`SlidingNumber`
+- 反馈：`Sonner`（`Toaster`）、`AlertDialog`、`Pagination`、`Progress`、`Spinner`、`Loader`、`Skeleton`
+- AI：`knowledge-chat-input`、`ai-input`、`agent-plan`、`dynamic-island-toc`、`pulsating-loader`
+- 其他：`animated-characters-login-page`、`file-upload-1`、`one-clipboard`
+
+### 6.2 状态组件（`components/ai-testing/*` + `components/ui/status-badge.tsx`）
+
+- `StatusBadge` + `chineseCompletionTone`（统一状态展示，中文映射）
+- `TaskStatusBadge`（任务中心）
+- `RiskBadge` / `CoverageBadge`（按需在测试点/测试用例领域使用）
+
+### 6.3 数据组件
+
+- `DataTable`（基于 `@tanstack/react-table`）—— 仅出现在 Dashboard 模板页（`dashboard/{default,ecommerce,crm}`），**主业务列表未使用**
+- 列表基线组件：`PageShell` + `ListToolbar` + `Table/TableBody` + `RowActions` + `TableLoadingRow` + `ProcessingState`
+- 空白态：`IllustratedEmptyState`（`/illustrations/api-cases-empty-right.svg`）
+
+### 6.4 领域组件
+
+- `ProjectSwitcher`、`TaskRunningIndicator`、`WorkspaceBreadcrumbs`
+- `SourceReference`、`TaskTimeline`、`VersionDiffViewer`
+- `MarkdownPreview`（`react-markdown` + `remark-gfm`）、`StandardMarkdownEditor`
+- `PdfCanvasPreview`（`pdfjs-dist`）、`OriginalFilePreview`（`docx-preview`）
+- `ConfirmRiskDialog`、`EmptyState`
+
+### 6.5 性能测试专用组件
+
+- `LocustConsole`（SSE 控制台 + 指标卡 + 5 个 Tab）
+- `LocustChartsPanel`（Recharts 趋势）
+- `LocustStatisticsTable` / `LocustGenericTable`（实时统计）
+- `PerformanceTestForm` / `PerformanceTestList` / `AllPerformanceTestList`
+- `PerformanceAiAnalysisDrawer` / `PerformanceAiAnalysisProgress`
+- `PerformanceAiEvidenceList` / `PerformanceAiConfigDiff`
+- `PerformanceAnalysisReport`（展示报告快照）
+- `PerformanceRunDetail` / `PerformanceTestParamsDialog`
+- `LoadStageEditor` / `PerformanceDataEditor`
+- `ScriptReview`（Locust 脚本审查）
+
+### 6.6 接口自动化专用组件
+
+- `ApiScenarioEditor` / `ApiScenarioCanvas`（React Flow + Dagre）
+- `ApiScenarioStepConfig` / `ApiScenarioVersionPanel` / `ApiScenarioAssetPicker`
+- `ApiScenarioRunDrawer` / `ApiScenarioList`
+- `ApiRunDetail` / `ApiRepairDrawer` / `ApiRepairProgress` / `ApiRepairDiffDialog`
+
+### 6.7 探索 / 测试点 / 知识库 / UI 自动化专用组件
+
+- 探索：`ExplorationWorkspace`、`ExplorationRunsTable`、`ExplorationEnvironmentsTable`、`ExplorationProjectPagesTree`、`ExplorationTaskInfoPanel`、`ExplorationEnvironmentUtils`
+- 测试点：`TestPointsPanel`、`TestPointsList`、`TestPointMindMap`、`TestPointCoverageSummary`、`TestCaseMindMap`、`TestCaseCollectionCard`
+- 知识库：`KnowledgeSearchSettings`（全局/项目两级，5 类检索源）
+- UI 自动化：`UiAutomationAssetDetail`、`UiAutomationRunDetail`（含 live-view / 浏览器回放 Dialog）
+- 需求：`RequirementUploadPage` / `RequirementsPage` / `RequirementVersionDetailContent` / `RequirementFileSwitcher`
+
+### 6.8 操作日志
+
+- `OperationLogView`（列表/详情宏组件）
+- `OperationLogDetailContent`
+
+---
+
+## 7. 状态管理
+
+### 7.1 Zustand Store
+
+| Store | 文件 | 作用 |
+| --- | --- | --- |
+| `useAuthStore` | `stores/auth-store.ts` | 登录 token + 当前用户；`localStorage`/`sessionStorage` 二选一 |
+| `useProjectContextStore` | `stores/project-context-store.ts` | 项目范围（`all` / `project`）+ `currentProjectId`，影响项目类 API 请求 |
+| `usePreferencesStore` | `stores/preferences/preferences-store.ts` | `themeMode` / `themeScheme` / `sidebarVariant`；通过 `PreferencesStoreProvider` 注入 server 初始值 |
+
+### 7.2 表单
+
+- 仅 **登录表单** 使用 `react-hook-form` + Zod（`app/(main)/auth/_components/login-form.tsx`）。
+- 其他业务表单（探索、需求、设置、性能测试）以受控 `useState` + `Field`/`Input`/`Select` 自行校验与上报，**未引入 Zod schema**。
+
+### 7.3 URL 参数与 `useParams`
+
+- `useParams` 取动态段（项目 ID、文档 ID、运行 ID、脚本 ID 等）。
+- `useSearchParams` 用于表单预设（`?mode=append&documentId=...`、`?tab=runs`、`?create=exploration`）。
+- `router.replace(...?tab=...)` 用于更新当前 Tab（如 `ui-automation-asset-detail`）。
+
+### 7.4 `useEffect` + `apiRequest`
+
+- 业务列表 / 详情页通过 `useEffect` + `useCallback` 调度 `apiRequest`，由 `useState` 维护 `loading` / `error` / `data`。
+- **没有引入 SWR / React Query / TanStack Query**。
+
+### 7.5 表选择
+
+- `useLocalTableSelection`（行级 Checkbox + 批量删除）。
+- 模板仪表板：`useReactTable`（TanStack Table）。
+
+### 7.6 偏好持久化
+
+- `localStorage` 键：`ai-testing.auth.token`、`ai-testing.auth.user`、`ai-testing.project.scope`、`ai-testing.project.current`、`sidebar_state`（cookie）、`sidebar_variant`（cookie）。
+- `sessionStorage` 备份 token/user（当 `remember=false`）。
+
+---
+
+## 8. API 响应与错误处理
+
+### 8.1 统一响应（`lib/api-client.ts`）
+
+- 类型：`ApiEnvelope<T> = { data: T; trace_id: string }`。
+- 错误：`{ detail: { code, message, trace_id } }`，类 `ApiRequestError` 暴露 `code` / `status` / `traceId` / `detail`。
+- `API_BASE_URL` 来自 `process.env.NEXT_PUBLIC_API_BASE_URL`，默认 `http://localhost:8000/api/v1`。
+
+### 8.2 鉴权失效
+
+- 401 + `code === "AUTH_REQUIRED"` → `redirectToLoginAfterAuthExpired()`：调用 `useAuthStore.logout()` 并跳转 `/auth/v1/login?next={pathname+search}`。
+- 跳转前检测 `pathname.startsWith('/auth/')` 避免死循环。
+
+### 8.3 错误上报
+
+- `lib/error-feedback.ts`：`reportError(error, options)`：
+  - 脱敏 `token` / `key` / `secret` / `password` / `authorization` / `cookie` / `captcha` / `verification` 等关键字。
+  - 异步提交 `/operation-logs/client-errors`（POST），写入系统日志。
+  - 使用 `sonner` 弹 `toast.error(title, { description: '追踪 ID：...' })`。
+- `persistDisplayedError`：兜底显示错误并上报。
+
+### 8.4 SSE 流（`apiRequest` 之外的两类实现）
+
+| 场景 | 实现 | 错误回退 |
+| --- | --- | --- |
+| 性能测试运行 | `streamPerformanceRun`（`fetch` + `ReadableStream` + `AbortController`） | 1s 间隔轮询 `getPerformanceRunStats` / `getPerformanceRunCharts` |
+| 探索运行 | `apps/frontend/src/app/.../exploration/[runId]/page.tsx` 内置 SSE 解析（`event:` / `data:` 解析，1.5s 重连） | 自动重连；流结束后 `loadRun({silent:true})` |
+
+### 8.5 加载状态
+
+- 表格：`TableLoadingRow`（`components/ai-testing/table-loading-row.tsx`）。
+- 详情：`Spinner` / `Loader` + `Loader2` 旋转图标。
+- 卡片：`Skeleton`（`components/ui/skeleton.tsx`）。
+
+### 8.6 空状态
+
+- `IllustratedEmptyState`（`/illustrations/api-cases-empty-right.svg`）+ `EmptyState`（`components/ui/empty.tsx`）。
+- 报告中心空态：内置文案"暂无性能报告 / 接口/UI 报告尚未接入"。
+
+---
+
+## 9. 已知实现边界
+
+### 9.1 报告中心 `/reports` 是静态空壳（历史口径）
+
+- **历史描述**：将 `reports` 数组硬编码为 `[]`。
+- **2026-07-26 现状**：已经接入后端 `/reports` 接口（`listReportCenterItems(projectId, reportType)`），调用 `ReportCenterItem[]`，按"接口 / 性能 / UI"三 Tab 切换。当前仅"性能"Tab 真正拉取数据；其他 Tab 占据 Tab 位但提示"接口/UI 报告尚未接入"。
+- 说明此前的"reports 硬编码为 `[]`"已不再准确，但**接口 / UI 报告 Tab 仍为占位**，需在文档中显式标注。
+
+### 9.2 根路径 `/` 路由冲突
+
+- 实际文件：`app/page.tsx`（`router.replace('/dashboard')` 占位返回）和 `app/(external)/page.tsx`（`redirect('/dashboard')`）。
+- `app/page.tsx` 是 client component，根据 `useAuthStore` 决定跳到 `/dashboard` 或 `/auth/v1/login`；`app/(external)/page.tsx` 是 server component，直接 `redirect('/dashboard')`。
+- Next.js 路由匹配下，`app/page.tsx` 会优先匹配（`/` 是显式路径），应视源为当前生效实现。
+
+### 9.3 隐藏 Dashboard 模板页
+
+- `/dashboard/{default,analytics,finance,productivity,ecommerce,crm,academy}`、`/dashboard/coming-soon`、`/dashboard/[...not-found]` 全部为 shadcn 英文演示模板，**不属于 AI 测试主业务**。
+- 侧栏未挂载这些页面（`sidebar-items.ts` 无对应项）；只在用户手工输入 URL 时可访问。
+- PRD 中显式标注"非主业务"，避免被误当作正式控制台。
+
+### 9.4 `/settings/system` 占位
+
+- `app/(main)/settings/system/page.tsx` 仅渲染 `<SoonPage description="系统设置将在接入真实存储、Runner、Allure 和安全策略后开放。" />`。
+- 侧栏未暴露入口（在 `sidebar-items.ts` 的"系统管理"分组中无 `systemSettings`）；仅允许通过 URL 直接访问。
+
+### 9.5 项目设置页 `/projects/{projectId}/settings` 写按钮未连接 API
+
+- 当前 UI 仅展示 `Project` 概览（项目名 / ID / 状态 / 描述）。
+- "保存设置" / "配置成员权限" / "配置环境变量" / "归档项目" 按钮均为 `<Button>` 无 `onClick`，**未连接任何 patch / post / delete 接口**。
+
+### 9.6 模板页与主业务混用组件
+
+- `dashboard/{default,analytics,ecommerce,finance,productivity,crm,academy}` 引用 `PageShell` / `ShellSection` / `StatusBadge` 等共享组件，但内容为英文示例，**不应作为正式控制台功能的来源**。
+
+### 9.7 mermaid / simple-mind-map 输出
+
+- `simple-mind-map` 用于 `test-point-mind-map.tsx` / `test-case-mind-map.tsx` 渲染脑图。
+- `mermaid` 在各领域页面中由 `react-markdown` 内的 mermaid 插件按需渲染。
+- `package.json` 中 `mermaid` 版本 **11.15.0**；若启用需配合 `useMeasure` 等执行环境。
+
+### 9.8 AI 任务反馈链路
+
+- 业务页面发起 AI 任务后调用 `notifyAiTaskStarted()` 广播事件，触发：
+  - `TaskRunningIndicator` 全局指示器 +1；
+  - 上跳 `/tasks` 中心列表可见。
+- 任务中心页本身无逐项"取消"按钮，依赖各领域页的轮询返回"已生成/失败"。
+
+### 9.9 浏览器侧实时视频流
+
+- UI 自动化运行详情页通过 `getUiAutomationLiveView` 拉取 MJPEG `stream_path`，与认证 `Authorization` 头不兼容，因此直接拼接在 `API_BASE_URL`，使用 `<img>` 渲染（被 `biome-ignore lint/performance/noImgElement` 显式忽略）。
+
+### 9.10 即将转 PRD 评审（性能智能分析报告）
+
+- 工作树中存在 `apps/frontend/src/app/(main)/projects/[projectId]/performance-tests/[testId]/runs/[runId]/analysis/[analysisId]/page.tsx`（**未跟踪**），用于渲染 AI 分析报告。
+- 该页面不在 56 个已跟踪 `page.tsx` 计数中，但已经前端存在；如正式版纳入，需要更新 4.2 路由清单与 5.x 页面分类。
+
+---
+
+## 10. AppShell 树形图
+
+```mermaid
+flowchart TD
+  RootHtml["app/layout.tsx<br/>RootLayout<br/>PreferencesStoreProvider + TooltipProvider + Toaster"]
+  RootHtml --> AuthGroup["(auth) 路由组<br/>AuthLayout<br/>min-h-dvh 居中布局"]
+  RootHtml --> MainGroup["(main) 路由组<br/>MainLayout -> WorkspaceShell"]
+  RootHtml --> ExternalGroup["(external) 路由组<br/>直接渲染 page.tsx<br/>redirect('/dashboard')"]
+  RootHtml --> RootPage["app/page.tsx (client)<br/>useAuthStore 决定 next"]
+
+  AuthGroup --> LoginPage["/auth/v1/login<br/>LoginForm (RHF + Zod)"]
+  AuthGroup --> RegisterPage["/auth/v1/register"]
+
+  MainGroup --> Shell["WorkspaceShell"]
+  Shell --> Sidebar["AppSidebar (NavGroup 4 组)"]
+  Shell --> Header["Header<br/>SidebarTrigger + Breadcrumbs<br/>TaskRunningIndicator + ProjectSwitcher<br/>LayoutControls + ThemeSwitcher + AccountSwitcher"]
+  Shell --> AuthGuard["AuthGuard<br/>未登录 -> /auth/v1/login?next=..."]
+  AuthGuard --> MainPages["(main) 56 个页面<br/>详见 4.2 路由清单"]
+
+  ExternalGroup --> ExternalRedirect["/ 视图<br/>redirect('/dashboard')"]
+  RootPage --> RootRedirect["/ 客户端重定向"]
+```
+
+---
+
+## 11. 验收 / 核对规则
+
+| 规则 | 依据路径 |
+| --- | --- |
+| 技术栈与 `package.json` 依赖一致 | `apps/frontend/package.json` |
+| 路由与 `app/**/page.tsx` 文件对应（56 个 `page.tsx`、55 个唯一 URL 模式） | `apps/frontend/src/app/`（`git ls-files` 计数） |
+| 应用壳由 `WorkspaceShell` 统一注入 | `apps/frontend/src/components/ai-testing/workspace-shell.tsx` |
+| 项目上下文通过 `useProjectContextStore` 管理 | `apps/frontend/src/stores/project-context-store.ts` |
+| 鉴权状态通过 `useAuthStore` 管理；401 + `AUTH_REQUIRED` 跳登录 | `apps/frontend/src/stores/auth-store.ts` + `api-client.ts` 中 `redirectToLoginAfterAuthExpired` |
+| 统一响应 `{ data, trace_id }`、错误 `ApiRequestError` | `apps/frontend/src/lib/api-client.ts:5-44, 706-738` |
+| 仅登录表单使用 RHF + Zod；其他业务表单使用受控 `useState` | `apps/frontend/src/app/(main)/auth/_components/login-form.tsx` |
+| 业务列表通过 `useEffect` + `apiRequest` 管理加载态；模板仪表板使用 TanStack Table | `apps/frontend/src/app/(main)/**/page.tsx` + `apps/frontend/src/app/(main)/dashboard/{default,ecommerce,crm}/_components/**` |
+| SSE 流用于性能测试运行与探索运行 | `apps/frontend/src/lib/api-client.ts:1756-1787` + `apps/frontend/src/app/(main)/projects/[projectId]/exploration/[runId]/page.tsx` |
+| React Flow 用于接口自动化场景编辑 | `apps/frontend/src/components/ai-testing/api-automation/api-scenario-canvas.tsx` |
+| Recharts 用于控制台、模板仪表板与性能测试图表 | `apps/frontend/src/app/(main)/dashboard/_components/asset-trend-chart.tsx` + `components/ai-testing/performance-testing/locust-charts-panel.tsx` |
+| next-themes 配合 `usePreferencesStore` 实现主题切换 | `apps/frontend/src/stores/preferences/preferences-store.ts` + `app/layout.tsx` `<ThemeBootScript />` |
+| vaul 抽屉基础组件、Demo 抽屉基于 shadcn | `apps/frontend/src/components/ui/drawer.tsx` |
+| 报告中心 `/reports` 仅"性能"Tab 接通 API，"接口"/"UI" Tab 仍为占位 | `apps/frontend/src/app/(main)/reports/page.tsx:14-19, 23-45` |
+| 根路径 `/` 存在 `app/page.tsx` 与 `app/(external)/page.tsx` 两处映射 | `apps/frontend/src/app/page.tsx` + `apps/frontend/src/app/(external)/page.tsx` |
+| Dashboard 模板页（`/dashboard/{default,analytics,...}`）是英文演示，不属于 AI 测试主业务 | `apps/frontend/src/app/(main)/dashboard/{default,analytics,finance,productivity,ecommerce,crm,academy}/page.tsx` |
+| `/settings/system` 渲染 `SoonPage`，未开放 | `apps/frontend/src/app/(main)/settings/system/page.tsx` |
+| `/projects/{projectId}/settings` 写按钮未连接 API | `apps/frontend/src/app/(main)/projects/[projectId]/settings/page.tsx:88-98` |
+| 客户端错误上报通过 `/operation-logs/client-errors` 后写入系统日志 | `apps/frontend/src/lib/error-feedback.ts:75-95` |
+| Sonner 全局 Toaster 注入位置 | `apps/frontend/src/app/layout.tsx:37` |
+| 安全字段（token/key/secret/...）在错误上报时会脱敏 | `apps/frontend/src/lib/error-feedback.ts:28, 106-124` |
+| `simple-mind-map` 用于测试点/测试用例脑图 | `apps/frontend/src/components/ai-testing/test-point-mind-map.tsx` + `apps/frontend/src/components/ai-testing/test-case-mind-map.tsx` |

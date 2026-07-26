@@ -2,9 +2,24 @@
 
 import { useEffect, useState } from "react";
 
+import type { LucideIcon } from "lucide-react";
+import {
+  AlertCircle,
+  Braces,
+  Building2,
+  CheckCircle2,
+  Compass,
+  FileCheck2,
+  ListChecks,
+  Loader2,
+  RotateCcw,
+  Save,
+} from "lucide-react";
+
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
+import { Switch } from "@/components/ui/switch";
 import { apiRequest } from "@/lib/api-client";
+import { cn } from "@/lib/utils";
 
 type SourceType = "final_requirements" | "explorations" | "test_cases" | "api_information" | "company_knowledge";
 
@@ -20,12 +35,42 @@ type SettingsResponse = {
   }>;
 };
 
-const sourceDefinitions: Array<{ sourceType: SourceType; label: string; description: string }> = [
-  { sourceType: "final_requirements", label: "最终需求", description: "检索当前最终需求 Markdown，不读取工作稿。" },
-  { sourceType: "explorations", label: "探索产物", description: "检索项目已生成的 Markdown、JSON、YAML 等探索产物。" },
-  { sourceType: "test_cases", label: "已采纳测试用例", description: "只检索评审状态为已采纳的测试用例。" },
-  { sourceType: "api_information", label: "接口信息", description: "检索接口资产和接口场景。" },
-  { sourceType: "company_knowledge", label: "公司知识库", description: "检索公司级规范、模板和通用知识。" },
+const sourceDefinitions: Array<{
+  sourceType: SourceType;
+  label: string;
+  description: string;
+  icon: LucideIcon;
+}> = [
+  {
+    sourceType: "final_requirements",
+    label: "最终需求",
+    description: "检索当前最终需求 Markdown，不读取工作稿。",
+    icon: FileCheck2,
+  },
+  {
+    sourceType: "explorations",
+    label: "探索产物",
+    description: "检索项目已生成的页面 YAML 探索产物。",
+    icon: Compass,
+  },
+  {
+    sourceType: "test_cases",
+    label: "已采纳测试用例",
+    description: "只检索评审状态为已采纳的测试用例。",
+    icon: ListChecks,
+  },
+  {
+    sourceType: "api_information",
+    label: "接口信息",
+    description: "检索接口资产和接口场景。",
+    icon: Braces,
+  },
+  {
+    sourceType: "company_knowledge",
+    label: "公司知识库",
+    description: "检索公司级规范、模板和通用知识。",
+    icon: Building2,
+  },
 ];
 
 export function KnowledgeSearchSettings({
@@ -48,6 +93,7 @@ export function KnowledgeSearchSettings({
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [feedback, setFeedback] = useState("");
 
   const path = scope === "all" ? "/knowledge/search-settings" : `/projects/${projectId}/knowledge/search-settings`;
 
@@ -59,6 +105,7 @@ export function KnowledgeSearchSettings({
     let cancelled = false;
     setLoading(true);
     setError("");
+    setFeedback("");
     void apiRequest<SettingsResponse>(path)
       .then((result) => {
         if (cancelled) return;
@@ -88,6 +135,7 @@ export function KnowledgeSearchSettings({
     }
     setSaving(true);
     setError("");
+    setFeedback("");
     try {
       const result = await apiRequest<SettingsResponse>(path, {
         method: "PUT",
@@ -99,6 +147,7 @@ export function KnowledgeSearchSettings({
         }),
       });
       setSettings(result);
+      setFeedback("设置已保存");
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : "保存检索设置失败。");
     } finally {
@@ -109,6 +158,7 @@ export function KnowledgeSearchSettings({
   async function restore() {
     setSaving(true);
     setError("");
+    setFeedback("");
     try {
       const result = await apiRequest<SettingsResponse>(`/projects/${projectId}/knowledge/search-settings`, {
         method: "DELETE",
@@ -120,6 +170,7 @@ export function KnowledgeSearchSettings({
           boolean
         >,
       );
+      setFeedback("已恢复全局设置");
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : "恢复全局设置失败。");
     } finally {
@@ -131,48 +182,104 @@ export function KnowledgeSearchSettings({
     return <div className="rounded-lg border p-6 text-muted-foreground text-sm">请选择具体项目后配置检索来源。</div>;
   }
 
+  const hasChanges = settings
+    ? sourceDefinitions.some(({ sourceType }) => {
+        const savedValue = settings.sources.find((item) => item.source_type === sourceType)?.enabled;
+        return savedValue !== values[sourceType];
+      })
+    : false;
+
+  function updateSource(sourceType: SourceType, checked: boolean) {
+    setValues((current) => ({ ...current, [sourceType]: checked }));
+    setFeedback("");
+    setError("");
+  }
+
   return (
-    <div className="space-y-5 rounded-lg border bg-background p-6">
-      <div>
-        <h2 className="font-semibold text-lg">
-          {scope === "all" ? "全局项目检索设置" : `项目检索设置 · ${projectName ?? "当前项目"}`}
+    <section
+      aria-busy={loading || saving}
+      aria-labelledby="knowledge-search-settings-title"
+      className="w-full overflow-hidden rounded-md border bg-card shadow-xs"
+    >
+      <header className="border-b px-5 py-4 sm:px-6">
+        <div className="mb-2 text-muted-foreground text-xs">
+          {scope === "all" ? "全局设置 · 应用于全部项目" : `项目设置 · ${projectName ?? "当前项目"}`}
+        </div>
+        <h2 className="font-semibold text-lg leading-7" id="knowledge-search-settings-title">
+          检索内容范围
         </h2>
-        <p className="mt-1 text-muted-foreground text-sm">控制知识库问答会注册哪些来源目录供智能体检索。</p>
-      </div>
-      <div className="divide-y rounded-lg border">
-        {sourceDefinitions.map(({ description, label, sourceType }) => {
+      </header>
+
+      <fieldset disabled={loading || saving}>
+        <legend className="sr-only">可检索的知识来源</legend>
+        {sourceDefinitions.map(({ description, icon: Icon, label, sourceType }) => {
           const source = settings?.sources.find((item) => item.source_type === sourceType);
-          const checkboxId = `knowledge-search-source-${sourceType}`;
+          const switchId = `knowledge-search-source-${sourceType}`;
+          const enabled = values[sourceType];
           return (
-            <div className="flex items-start gap-3 p-4" key={sourceType}>
-              <Checkbox
-                checked={values[sourceType]}
-                disabled={loading || saving}
-                id={checkboxId}
-                onCheckedChange={(checked) => setValues((current) => ({ ...current, [sourceType]: Boolean(checked) }))}
-              />
-              <label className="min-w-0 flex-1 cursor-pointer" htmlFor={checkboxId}>
-                <span className="flex items-center gap-2 font-medium">
+            <label
+              className={cn(
+                "group flex min-h-[4.75rem] cursor-pointer items-center gap-4 border-b px-5 py-3.5 transition-colors last:border-b-0 sm:px-6",
+                "focus-within:bg-muted/25 hover:bg-muted/25",
+                (loading || saving) && "cursor-wait opacity-65",
+              )}
+              htmlFor={switchId}
+              key={sourceType}
+            >
+              <span className="flex w-6 shrink-0 justify-center">
+                <Icon
+                  className={cn("size-[18px] transition-colors", enabled ? "text-primary" : "text-muted-foreground")}
+                />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="flex flex-wrap items-center gap-2 font-medium text-sm">
                   {label}
-                  {source?.inherited ? <span className="text-muted-foreground text-xs">继承全局</span> : null}
+                  {source?.inherited ? (
+                    <span className="font-normal text-muted-foreground text-xs">沿用全局</span>
+                  ) : null}
                 </span>
-                <span className="mt-1 block text-muted-foreground text-sm">{description}</span>
-              </label>
-            </div>
+                <span className="mt-1 block text-muted-foreground text-sm leading-5">{description}</span>
+              </span>
+              <Switch
+                aria-label={`${label}检索`}
+                checked={enabled}
+                id={switchId}
+                onCheckedChange={(checked) => updateSource(sourceType, checked)}
+              />
+            </label>
           );
         })}
-      </div>
-      {error ? <p className="text-destructive text-sm">{error}</p> : null}
-      <div className="flex justify-end gap-2">
-        {scope === "project" ? (
-          <Button disabled={loading || saving} onClick={() => void restore()} type="button" variant="outline">
-            恢复全局设置
+      </fieldset>
+
+      <footer className="flex flex-col gap-3 border-t bg-muted/20 px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+        <div aria-live="polite" className="min-h-5 text-sm" role="status">
+          {error ? (
+            <span className="flex items-center gap-1.5 text-destructive">
+              <AlertCircle className="size-4" />
+              {error}
+            </span>
+          ) : feedback ? (
+            <span className="flex items-center gap-1.5 text-primary">
+              <CheckCircle2 className="size-4" />
+              {feedback}
+            </span>
+          ) : hasChanges ? (
+            <span className="text-muted-foreground">有未保存的更改</span>
+          ) : null}
+        </div>
+        <div className="flex shrink-0 items-center justify-end gap-2">
+          {scope === "project" ? (
+            <Button disabled={loading || saving} onClick={() => void restore()} type="button" variant="ghost">
+              <RotateCcw className="size-4" />
+              恢复全局设置
+            </Button>
+          ) : null}
+          <Button disabled={loading || saving || !hasChanges} onClick={() => void save()} type="button">
+            {saving ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
+            {saving ? "正在保存" : "保存更改"}
           </Button>
-        ) : null}
-        <Button disabled={loading || saving} onClick={() => void save()} type="button">
-          {saving ? "正在保存" : "保存设置"}
-        </Button>
-      </div>
-    </div>
+        </div>
+      </footer>
+    </section>
   );
 }

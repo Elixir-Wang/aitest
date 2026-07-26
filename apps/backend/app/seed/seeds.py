@@ -245,6 +245,9 @@ def _ensure_performance_analysis_columns(db: sqlite3.Connection) -> None:
         return
     columns = {str(column["name"]) for column in db.execute("PRAGMA table_info(performance_analysis_sessions)")}
     additions = {
+        "analysis_status": "ALTER TABLE performance_analysis_sessions ADD COLUMN analysis_status TEXT NOT NULL DEFAULT 'collecting'",
+        "analysis_stage": "ALTER TABLE performance_analysis_sessions ADD COLUMN analysis_stage TEXT NOT NULL DEFAULT 'evidence_collection'",
+        "repair_status": "ALTER TABLE performance_analysis_sessions ADD COLUMN repair_status TEXT NOT NULL DEFAULT 'not_applicable'",
         "application_status": "ALTER TABLE performance_analysis_sessions ADD COLUMN application_status TEXT NOT NULL DEFAULT 'not_requested'",
         "selected_change_ids_json": "ALTER TABLE performance_analysis_sessions ADD COLUMN selected_change_ids_json TEXT NOT NULL DEFAULT '[]'",
         "preflight_json": "ALTER TABLE performance_analysis_sessions ADD COLUMN preflight_json TEXT NOT NULL DEFAULT '{}'",
@@ -252,10 +255,41 @@ def _ensure_performance_analysis_columns(db: sqlite3.Connection) -> None:
         "applied_run_id": "ALTER TABLE performance_analysis_sessions ADD COLUMN applied_run_id TEXT NOT NULL DEFAULT ''",
         "applied_by": "ALTER TABLE performance_analysis_sessions ADD COLUMN applied_by TEXT NOT NULL DEFAULT ''",
         "applied_at": "ALTER TABLE performance_analysis_sessions ADD COLUMN applied_at TEXT",
+        "metric_snapshot_json": "ALTER TABLE performance_analysis_sessions ADD COLUMN metric_snapshot_json TEXT NOT NULL DEFAULT '{}'",
+        "report_snapshot_json": "ALTER TABLE performance_analysis_sessions ADD COLUMN report_snapshot_json TEXT NOT NULL DEFAULT '{}'",
+        "calculator_version": "ALTER TABLE performance_analysis_sessions ADD COLUMN calculator_version TEXT NOT NULL DEFAULT ''",
+        "prompt_version": "ALTER TABLE performance_analysis_sessions ADD COLUMN prompt_version TEXT NOT NULL DEFAULT ''",
+        "source_fingerprint": "ALTER TABLE performance_analysis_sessions ADD COLUMN source_fingerprint TEXT NOT NULL DEFAULT ''",
+        "audience": "ALTER TABLE performance_analysis_sessions ADD COLUMN audience TEXT NOT NULL DEFAULT 'engineer'",
     }
+    added = set()
     for column, statement in additions.items():
         if column not in columns:
             db.execute(statement)
+            added.add(column)
+    if "analysis_status" in added:
+        db.execute(
+            """
+            UPDATE performance_analysis_sessions
+            SET analysis_status = CASE status
+              WHEN 'collecting' THEN 'collecting'
+              WHEN 'analyzing' THEN 'analyzing'
+              WHEN 'failed' THEN 'failed'
+              ELSE 'completed'
+            END
+            """
+        )
+    if "repair_status" in added:
+        db.execute(
+            """
+            UPDATE performance_analysis_sessions
+            SET repair_status = CASE status
+              WHEN 'waiting_approval' THEN 'available'
+              WHEN 'rejected' THEN 'rejected'
+              ELSE 'not_applicable'
+            END
+            """
+        )
 
 
 def _ensure_api_automation_run_columns(db: sqlite3.Connection) -> None:

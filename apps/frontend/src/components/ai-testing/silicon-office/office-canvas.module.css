@@ -1,0 +1,109 @@
+.scene {
+  background-color: #eceeef;
+  background-image: url("/assets/office/ai-workforce-office.webp");
+  background-position: top center;
+  background-repeat: no-repeat;
+  background-size: cover;
+}
+
+.floorWash {
+  background:
+    linear-gradient(to bottom, rgb(238 241 244 / 0%) 34%, rgb(231 233 235 / 10%) 58%, rgb(218 221 224 / 54%) 100%),
+    radial-gradient(ellipse at 50% 72%, rgb(255 255 255 / 30%), transparent 58%);
+}
+
+.headMotion {
+  animation: head-alive 11s ease-in-out infinite;
+  transform-box: fill-box;
+  transform-origin: 50% 82%;
+  will-change: transform;
+}
+
+.blinkEyes {
+  animation: eye-blink 6.2s linear infinite;
+  transform-box: fill-box;
+  transform-origin: center;
+  will-change: transform;
+}
+
+.bodyBreath {
+  animation: body-breathe 4.8s ease-in-out infinite;
+  transform-box: fill-box;
+  transform-origin: center bottom;
+  will-change: transform;
+}
+
+.screenGlow {
+  animation: screen-pulse 3.8s ease-in-out infinite;
+}
+
+.statusDot {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--status-color), transparent 86%);
+}
+
+@keyframes eye-blink {
+  0%,
+  91%,
+  94%,
+  100% {
+    transform: scaleY(1);
+  }
+  92%,
+  93% {
+    transform: scaleY(0.08);
+  }
+}
+
+@keyframes head-alive {
+  0%,
+  18%,
+  52%,
+  74%,
+  100% {
+    transform: rotate(0deg) translateY(0);
+  }
+  25% {
+    transform: rotate(-1.4deg) translateY(-0.4px);
+  }
+  62% {
+    transform: rotate(1.2deg) translateY(0.5px);
+  }
+  82% {
+    transform: rotate(-0.6deg) translateY(-0.3px);
+  }
+}
+
+@keyframes body-breathe {
+  0%,
+  100% {
+    transform: translateY(0) scaleY(1);
+  }
+  50% {
+    transform: translateY(-0.8px) scaleY(1.006);
+  }
+}
+
+@keyframes screen-pulse {
+  0%,
+  100% {
+    opacity: 0.42;
+  }
+  50% {
+    opacity: 0.72;
+  }
+}
+
+@media (max-width: 639px) {
+  .scene {
+    background-size: auto 780px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .headMotion,
+  .blinkEyes,
+  .bodyBreath,
+  .screenGlow {
+    animation: none;
+  }
+}

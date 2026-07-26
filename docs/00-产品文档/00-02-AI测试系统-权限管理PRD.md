@@ -1,201 +1,501 @@
 # 00-02 AI测试系统 - 权限管理 PRD
 
-## 1. 这份文档解决什么问题
-
-本文只细化 AI 测试系统第一版的用户、登录、账号创建和权限管理。
-
-第一版权限只保留三类：
-
-- 管理员
-- 测试工程师
-- 访客
-
-项目管理和控制台分别见：
-
-- `00-06-AI测试系统-项目管理PRD.md`
-- `00-07-AI测试系统-控制台PRD.md`
+> **基线日期**：2026-07-26
+>
+> **事实源**（源码为唯一事实源）：
+>
+> - 后端路由：`apps/backend/app/api/v1/auth.py`（`/auth/login`、`/auth/logout`、`/auth/me`）
+> - 后端路由：`apps/backend/app/api/v1/users.py`（列表 / 创建 / 更新 / 删除；创建/更新/删除仅管理员）
+> - 后端服务：`apps/backend/app/services/auth_service.py`（login / logout / me；失败/成功均经 `operation_log_service.record_*` 落审计）
+> - 后端服务：`apps/backend/app/services/user_service.py`（CRUD + 审计）
+> - 后端依赖：`apps/backend/app/dependencies/auth.py`（`current_user` / `require_admin` / `get_token`）
+> - 数据库：`apps/backend/app/seed/schema.py`（`users` / `sessions` 表定义）
+> - 项目过滤：`apps/backend/app/repositories/project_repo.py`（`SYSTEM_RESERVED_PROJECT_IDS = ("__all_projects__",)`；`list_visible`）
+> - 项目服务：`apps/backend/app/services/project_service.py`（`list_projects` 按角色过滤 + 屏蔽保留项目）
+> - 前端路由过滤：`apps/frontend/src/app/(main)/dashboard/_components/sidebar/nav-main.tsx:33-46,219-223`（`hasRequiredRole` + `visibleItems` 过滤）
+> - 侧边栏定义：`apps/frontend/src/navigation/sidebar/sidebar-items.ts`（`requiredRole` 字段）
+> - 前端状态：`apps/frontend/src/stores/auth-store.ts`
+>
+> **状态标签**：`已实现`（登录、登出、账号 CRUD、角色权限矩阵、项目可见性、审计）；`部分实现`（细粒度按钮级权限）
 
 ---
 
-## 2. 角色定义
+## 1. 范围与目标
 
-| 角色 | 权限边界 | 说明 |
+本文细化 AI 测试系统的用户、登录、账号管理和权限体系。
+
+**角色体系**（与 `00-01` 第 1.3 节对齐）：
+
+| 角色 | 英文标识 | 说明 |
 | --- | --- | --- |
-| 管理员 | 全部项目、全部配置、全部用户、全部任务、全部报告可读写 | 合并系统管理员和项目管理员 |
-| 测试工程师 | 只能查看和操作分配给自己的项目 | 负责具体项目测试资产建设 |
-| 访客 | 管理员能看的都能看，但全局只读 | 可查看项目、文档、知识库、用例、自动化代码、Allure 报告、trace、截图、失败证据、诊断结果和系统配置脱敏信息，不能新增、编辑、删除、执行或确认 |
+| 管理员 | `admin` | 拥有系统和所有项目的完整管理权限 |
+| 测试工程师 | `tester` | 只能查看和操作分配给自己的项目 |
+| 访客 | `guest` | 全局只读，不能触发任何写操作 |
+
+**关联文档**：
+
+- 项目管理：`00-06-AI测试系统-项目管理PRD.md`
+- 控制台：`00-07-AI测试系统-控制台PRD.md`
+- 系统日志：`00-15-AI测试系统-系统设置PRD.md`
 
 ---
 
-## 3. 权限矩阵
+## 2. 三种角色权限矩阵
 
-| 功能 | 管理员 | 测试工程师 | 访客 |
+权限矩阵与 `00-01` 第 1.3 节保持一致，并细化当前实现状态。
+
+| 功能 | 管理员 | 测试工程师 | 访客 | 说明 |
+| --- | --- | --- | --- | --- |
+| 查看全部项目列表 | ✅ | ❌（仅分配项目） | ✅ | admin/guest 调用 `project_repo.list_all`；tester 调用 `project_repo.list_visible`，按 `project_scope` 精确匹配项目名称 |
+| 创建项目 | ✅ | ❌ | ❌ | |
+| 编辑项目配置 | ✅ | ❌ | ❌ | |
+| 归档/恢复项目 | ✅ | ❌ | ❌ | |
+| 配置模型供应商 | ✅ | ❌ | ❌ | |
+| 操作用户账号（增/删/改） | ✅ | ❌ | ❌ | |
+| 查看用户列表 | ✅ | ✅ | ✅ | 后端 `GET /users` 当前仅要求登录（**缺口**，见第 7.2 节） |
+| 上传需求文档 | ✅ | 仅分配项目 | ❌ | |
+| 发起需求分析 | ✅ | 仅分配项目 | ❌ | |
+| 发起站点探索 | ✅ | 仅分配项目 | ❌ | |
+| 生成/更新知识库 | ✅ | 仅分配项目 | ❌ | |
+| 生成/编辑测试用例 | ✅ | 仅分配项目 | ❌ | |
+| 生成/执行 UI 自动化 | ✅ | 仅分配项目 | ❌ | |
+| 查看接口自动化 | ✅ | 仅分配项目 | ✅ | 访客只读 |
+| 确认自愈补丁 | ✅ | 仅分配项目 | ❌ | |
+| 查看报告与缺陷诊断 | ✅ | 仅分配项目 | ✅ | 访客只读 |
+| 查看系统日志 | ✅ | ❌ | ❌ | |
+
+> **注**：tester 和 guest 对分配/授权范围外的项目没有任何访问权限，包括列表级可见性。项目可见性由后端 `project_service.list_projects` 强制过滤，不依赖前端隐藏。
+
+---
+
+## 3. 认证流程
+
+### 3.1 技术方案
+
+采用 **JWT Bearer Token** 方案（实际实现为服务端会话 token，非严格 JWT 规范）：
+
+- 前端存储在 `localStorage`（记住登录）或 `sessionStorage`（会话）
+- 每次请求通过 `Authorization: Bearer <token>` Header 传递
+- Token 格式：`secrets.token_urlsafe(32)`（48 字符 URL-safe 随机串）
+- 会话有效期：7 天（`datetime.now() + timedelta(days=7)`）
+- 存储介质：SQLite `sessions` 表
+
+### 3.2 登录流程
+
+```
+用户 → POST /auth/login {username, password}
+  ├─ 用户不存在或密码错误 → record_failure → 401 "LOGIN_FAILED"
+  ├─ 用户状态为 disabled  → record_failure → 401 "LOGIN_FAILED"
+  └─ 验证通过
+       ├─ 生成 token → 写入 sessions 表
+       ├─ 更新 users.last_login_at
+       ├─ record_success → 返回 {access_token, current_user}
+       └─ 前端写入 localStorage/sessionStorage
+```
+
+### 3.3 登出流程
+
+```
+用户 → POST /auth/logout (Authorization: Bearer <token>)
+  ├─ 通过 get_token 解析 Header
+  ├─ 从 sessions 表查到 user
+  ├─ 删除 sessions 表中该 token
+  └─ record_success(logout) → 前端清除 localStorage/sessionStorage
+```
+
+### 3.4 当前用户接口
+
+```
+GET /auth/me (current_user 依赖注入)
+  返回：
+  {
+    "user": { id, username, email, nickname, role, status, project_scope, ... },
+    "roles": [role],
+    "project_permissions": {
+      "<project_scope文本>": ["read", "write"]
+    }
+  }
+```
+
+- `role == "admin"`：`actions = ["read", "write"]`（全局）
+- `role == "tester"`：`actions = ["read", "write"]`（限 project_scope）
+- `role == "guest"`：`actions = ["read"]`（全局只读）
+
+> `project_permissions` 字段的 key 为 `users.project_scope` 的文本值（如 "全部项目" 或具体项目名称），这同时作为前端和后端判断授权边界的依据。
+
+### 3.5 审计日志
+
+所有认证动作均落入 `operation_logs` 表：
+
+| 动作 | 触发条件 | 审计类型 | result |
 | --- | --- | --- | --- |
-| 查看全部项目 | 是 | 否，仅分配项目 | 是 |
-| 创建项目 | 是 | 否 | 否 |
-| 编辑项目配置 | 是 | 否 | 否 |
-| 归档/恢复项目 | 是 | 否 | 否 |
-| 分配项目成员 | 是 | 否 | 否 |
-| 配置模型 | 是 | 否 | 否 |
-| 上传需求文档 | 是 | 仅分配项目 | 否 |
-| 编辑需求文档 | 是 | 仅分配项目 | 否 |
-| 发起需求分析 | 是 | 仅分配项目 | 否 |
-| 发起站点探索 | 是 | 仅分配项目 | 否 |
-| 生成/更新知识库 | 是 | 仅分配项目 | 否 |
-| 生成/编辑测试用例 | 是 | 仅分配项目 | 否 |
-| 生成 UI 自动化代码 | 是 | 仅分配项目 | 否 |
-| 执行 UI 自动化测试 | 是 | 仅分配项目 | 否 |
-| 查看接口自动化 Soon 入口 | 是 | 仅分配项目 | 是 |
-| 确认自愈补丁 | 是 | 仅分配项目 | 否 |
-| 查看报告与缺陷诊断 | 是 | 仅分配项目 | 是 |
+| login（失败） | 用户名/密码错误 或 账号禁用 | audit | failed |
+| login（成功） | 登录验证通过 | audit | success |
+| logout | 登出请求 | audit | success |
+
+审计字段：
+
+- `module="auth"`, `action="login"` 或 `"logout"`
+- `object_type="user"`, `object_id`, `object_name`
+- `actor_id`, `actor_name`
+- `source="web"`
+- `failure_reason`（仅失败时）
 
 ---
 
-## 4. 权限规则
+## 4. 会话管理
 
-- 管理员不受项目分配限制。
-- 测试工程师进入系统后，只能看到被分配的项目。
-- 访客能看到全部项目和管理员可见内容，但所有新增、编辑、删除、执行、确认按钮不可用。
-- 访客可以查看报告、Allure、trace、截图、失败证据和诊断结论；敏感密钥、密码、token、验证码仍必须脱敏或不展示明文。
-- 后端必须做权限校验，前端隐藏按钮不能作为权限控制。
-- 项目归档后，测试工程师不能再发起新任务；管理员可以查看、恢复归档项目。
-- 第一版不做细粒度按钮权限配置，不做自定义角色。
+### 4.1 sessions 表
 
----
-
-## 5. 用户登录与账号管理
-
-### 5.1 用户故事
-
-1. 作为管理员，我希望创建账号并分配角色，以便控制系统成员来源。
-2. 作为用户，我希望能登录和退出，以便安全访问系统。
-3. 作为管理员，我希望能启用、禁用或重置账号，以便处理离职、访客和权限变化。
-4. 作为用户，我希望能修改个人资料和密码，以便维护账号信息。
-5. 作为管理员，我希望能禁用用户，以便阻止离职或无权限人员访问系统。
-
-### 5.2 用户字段
-
-| 字段 | 必填 | 说明 |
+| 字段 | 类型 | 说明 |
 | --- | --- | --- |
-| 用户名 | 是 | 登录名，系统内唯一 |
-| 邮箱 | 是 | 通知和找回密码预留 |
-| 密码 | 是 | 加密存储 |
-| 昵称 | 否 | 页面展示 |
-| 角色 | 是 | 管理员、测试工程师、访客 |
-| 状态 | 是 | 启用、禁用 |
-| 项目范围 | 是 | 当前实现为文本值，支持“全部项目”或项目名称 |
-| 描述 | 否 | 用户备注 |
-| 创建时间 | 是 | 系统生成 |
-| 更新时间 | 是 | 系统生成 |
-| 最近登录时间 | 否 | 登录成功后更新 |
+| token | TEXT PRIMARY KEY | 48 字符随机串 |
+| user_id | TEXT FK → users(id) ON DELETE CASCADE | 所属用户 |
+| created_at | TEXT DEFAULT CURRENT_TIMESTAMP | 创建时间 |
+| expires_at | TEXT NOT NULL | 过期时间（UTC ISO 字符串） |
 
-账号状态第一版只允许 `启用` 和 `禁用` 两类，不设置 `只读`、`停用` 等账号状态。只读能力由 `访客` 角色表达，不能用账号状态表达。
+### 4.2 会话生命周期
 
-### 5.3 登录规则
+- **创建**：登录成功后写入，token 由 `secrets.token_urlsafe(32)` 生成，有效期 7 天
+- **验证**：`session_repo.get_user_by_active_token` 查询 token 对应的有效会话；若 token 不存在或会话已过期（`expires_at` < 当前时间），返回 401
+- **删除**：登出时 `session_repo.delete(token)`；用户删除时通过 `ON DELETE CASCADE` 自动清理
+- **过期清理**：当前实现依赖请求时惰性检查（查询时过滤过期记录），无独立后台清理任务
 
-- 第一版不提供公开注册页，也不允许未登录用户自助申请账号。
-- 账号只能由管理员在用户管理页创建。
-- 未登录访问后台页面跳转登录页。
-- 登录成功后进入控制台。
-- 退出后清除登录态。
-- 状态为 `禁用` 的用户不能登录；登录校验必须在写入会话前拦截禁用账号。
-- 密码不能明文存储。
-- 登录失败提示不能泄露账号是否存在。
+### 4.3 账号禁用与会话
+
+禁用用户（`status = "disabled"`）**不会**自动删除其活跃会话。被禁用户下次请求时，`_current_user_for_token` 在第 31 行拦截：
+
+```python
+if row["status"] != "enabled":
+    raise HTTPException(status_code=403, detail={"code": "PERMISSION_DENIED", "message": "账号已禁用。"})
+```
+
+> 缺口：禁用会话中的已有 token 理论上仍存在于 sessions 表，被禁用户若无新请求则会话不会主动失效。如需强制下线，需扩展清理逻辑。
 
 ---
 
-## 6. 页面
+## 5. 项目可见性
 
-### 6.1 登录页
+### 5.1 实现机制
 
-字段：
+通过 `users.project_scope` 文本字段控制：
 
-- 用户名或邮箱
-- 密码
+- `"全部项目"`：可查看所有非归档、非保留项目（`status != 'archived'`）
+- 具体项目名称：仅能查看该名称的项目
 
-操作：
+### 5.2 list_projects 过滤逻辑
 
-- 登录
-- 忘记密码或联系管理员提示，第一版可由管理员重置密码
+```python
+# project_service.list_projects
+if actor["role"] == "admin":
+    rows = project_repo.list_all(db)          # admin: 全量（排除归档和保留项目）
+else:
+    rows = project_repo.list_visible(db, actor)  # tester/guest: 按 project_scope 过滤
 
-### 6.2 用户管理页
+# 统一过滤：排除 __all_projects__ 保留项目
+return [row for row in rows if row["id"] not in SYSTEM_RESERVED_PROJECT_IDS]
+```
 
-仅管理员可写。
+```python
+# project_repo.list_visible
+if actor["role"] in {"admin", "guest"} or actor["project_scope"] == "全部项目":
+    # admin 和 guest 看到所有非归档项目；tester 若 project_scope=="全部项目" 也如此
+    return db.execute("SELECT * FROM projects WHERE status != 'archived' ...").fetchall()
+return db.execute(
+    "SELECT * FROM projects WHERE status != 'archived' AND name = ?",
+    (actor["project_scope"],)
+)
+```
 
-能力：
+### 5.3 关键特性
 
-- 查看用户列表
-- 创建用户
-- 修改角色
-- 启用/禁用用户
-- 删除用户
-- 编辑用户时可填写新密码，作为管理员重置密码的当前实现方式；第一版可先不做邮件找回
-
-创建用户字段：
-
-- 用户名
-- 邮箱
-- 初始密码
-- 昵称
-- 角色
-- 项目范围
-- 状态
-- 描述
-
-规则：
-
-- 用户名和邮箱在系统内唯一。
-- 初始密码创建后必须加密存储。
-- 管理员可以创建管理员、测试工程师、访客三类账号。
-- 测试工程师账号创建后，还需要分配项目才能看到项目数据。
-- 访客账号默认可查看全部项目信息，但不能执行任何写操作。
-- 访客账号默认可查看自动化证据和报告附件，但不能触发任务、诊断、自愈、发布、采纳或配置修改。
-- 管理员不能删除当前自己登录的账号；如需删除，须先以其他管理员账号登录后操作。
-
-当前实现说明：
-
-- 用户管理页路径为 `/settings/users`，页面标题为“用户与权限”。
-- 用户列表展示列：用户名、角色、项目范围、状态、最近登录时间；邮箱不在列表中展示，仅在新增/编辑弹窗内可见和编辑。
-- 前端支持用户列表、新增、编辑、批量删除、搜索用户名/角色/项目范围/状态/更新时间。
-- 用户项目分配当前不是独立成员关系表，而是用户表上的 `project_scope` 文本字段；下拉选项来自项目列表名称。
-- 后端 `POST /users`、`PATCH /users/{user_id}`、`DELETE /users/{user_id}` 已限制管理员。
-- 后端 `GET /users` 目前只要求登录，未限制为管理员；这与“仅管理员可写”不冲突，但与“用户管理页仅管理员可完整访问”的目标仍有差距。
-- 前端使用当前用户角色判断写按钮是否可用，暂未完整消费后端返回的 `available_actions`。
-- `GET /auth/me` 返回的 `project_permissions` 字段当前格式为 `{project_scope文本: [操作列表]}`，例如 `{"全部项目": ["read", "write"]}` 或 `{"知了平台": ["read", "write"]}`。逻辑规则：管理员和测试工程师均返回 `["read", "write"]`，权限范围由 key（即 `project_scope`）表达——管理员的 key 固定为"全部项目"，测试工程师的 key 为管理员分配的项目名（可以是"全部项目"或具体项目名）；访客始终为 `["read"]`。该字段用于向前端传达当前用户的权限范围，但前端目前尚未消费此字段（权限判断直接用角色）。若后续需要基于此字段做真实的项目级权限控制，需将 key 改为项目 ID、支持多项目列表，并由前端和后端中间件统一消费。
+- **tester 的 project_scope 可以是"全部项目"**，此时与 guest 行为一致（全量只读）
+- **tester 和 guest 在 project_scope 文本匹配上的行为相同**：`project_scope != "全部项目"` 时，两者都只能看到对应名称的项目
+- `project_scope` 值来源于 `projects.name`，而非 `projects.id`——这是当前设计的简化代价，不支持项目重命名后的联动更新
 
 ---
 
-## 7. SQLite 存储策略
+## 6. 系统保留项目
 
-SQLite 保存：
+### 6.1 保留标识
 
-- 用户表
-- 角色字段
-- 登录态或 session 元数据
-- 用户状态
-- 项目范围文本
+```python
+SYSTEM_RESERVED_PROJECT_IDS = ("__all_projects__",)
+```
 
-第一版不做复杂 RBAC 表，不做菜单权限表。角色可以先作为用户字段或简单角色表存在。当前项目可见性通过用户 `project_scope` 与项目名称匹配实现，尚未落地项目成员关系表。
+`__all_projects__` 是数据库中用于聚合统计的虚拟项目 ID，不是真实项目。
+
+### 6.2 屏蔽规则
+
+| 操作 | 规则 |
+| --- | --- |
+| `project_service.list_projects` | 最终返回前统一过滤：`row["id"] not in SYSTEM_RESERVED_PROJECT_IDS` |
+| `project_service.update_project` | 若 project_id 在保留列表，抛 `PROJECT_SYSTEM_RESERVED` |
+| `project_service.delete_project` | 若 project_id 在保留列表，抛 `PROJECT_SYSTEM_RESERVED` |
+
+所有用户（包括 admin）都无法通过列表接口看到 `__all_projects__`，也无法编辑或删除它。
 
 ---
 
-## 8. 验收标准
+## 7. 前端权限门禁
 
-当前已实现：
+### 7.1 侧边栏 requiredRole 过滤
 
-- 系统存在管理员、测试工程师、访客三类角色。
-- 系统不提供公开注册能力，账号只能由管理员创建。
-- 管理员能访问全部项目和全部配置。
-- 测试工程师只能看到分配项目。
-- 访客能查看全部项目，但不能触发任何写操作。
-- 未登录访问业务页面会跳转登录页。
-- 禁用用户不能登录。
-- 用户管理新增、编辑、删除接口已做管理员校验。
+`sidebar-items.ts` 中每个导航项可声明 `requiredRole`：
 
-尚未实现：
+```typescript
+// apps/frontend/src/navigation/sidebar/sidebar-items.ts
+{
+  title: "模型配置",
+  url: "/settings/models",
+  icon: Bot,
+  requiredRole: "admin",    // admin 专属
+},
+{
+  title: "性能测试",
+  url: "/projects/:projectId/performance-tests",
+  icon: Gauge,
+  projectScoped: true,
+  // 无 requiredRole：所有角色可见（具体是否可写由后端判断）
+},
+```
 
-- `GET /users` 管理员限制。
-- 独立用户详情接口。
-- 项目成员关系表和按项目 ID 的成员分配。
-- 侧边栏 `requiredRole` 的统一过滤。
-- 后端接口全面基于 `available_actions` 或统一权限矩阵返回按钮级能力。
+`nav-main.tsx` 第 219-223 行在渲染前过滤：
+
+```typescript
+const visibleItems = group.items.filter(
+  (item) => hasRequiredRole(user?.role, item.requiredRole)
+);
+```
+
+### 7.2 hasRequiredRole 逻辑
+
+```typescript
+// ROLE_RANK: admin(3) > tester(2) > guest(1)
+const ROLE_RANK = { admin: 3, tester: 2, guest: 1 };
+
+function hasRequiredRole(userRole, requiredRole): boolean {
+  if (!requiredRole) return true;   // 无要求：所有角色可见
+  if (!userRole) return false;
+  return ROLE_RANK[userRole] >= ROLE_RANK[requiredRole];
+}
+```
+
+> 效果：`requiredRole: "tester"` 时，admin 和 tester 可见，guest 不可见。
+
+### 7.3 available_actions 字段
+
+`GET /auth/me` 返回的 `project_permissions` 即为 `available_actions` 的实现：
+
+```json
+{
+  "project_permissions": {
+    "全部项目": ["read", "write"]    // admin/tester
+    // 或
+    "全部项目": ["read"]             // guest
+    // 或
+    "电商后台项目": ["read", "write"] // tester（限 project_scope）
+  }
+}
+```
+
+前端以此判断当前用户在当前项目上下文中是否可写。若 `actions` 不含 `"write"`，隐藏所有新增/编辑/删除/执行/确认按钮。
+
+> 当前实现仅以 `project_scope` 为 key，不支持细粒度到每个功能模块的 action 列表。
+
+---
+
+## 8. 后端权限校验
+
+### 8.1 FastAPI 依赖注入
+
+| 依赖函数 | 文件 | 用途 |
+| --- | --- | --- |
+| `get_token` | `app/dependencies/auth.py` | 从 `Authorization: Bearer <token>` Header 解析 token；无 token 或格式错误返回 401 |
+| `current_user` | `app/dependencies/auth.py` | 调用 `get_token`，再从 sessions 表查用户；未找到会话返回 401；status != "enabled" 返回 403 |
+| `require_admin` | `app/dependencies/auth.py` | 在 `current_user` 基础上校验 `role == "admin"`；否则返回 403 |
+| `get_token_or_locust_cookie` | `app/dependencies/auth.py` | 兼容 Locust UI session cookie 的 token 解析 |
+
+### 8.2 路由级权限声明
+
+| 接口 | 权限依赖 | 说明 |
+| --- | --- | --- |
+| `POST /auth/login` | 无（公开） | 登录 |
+| `POST /auth/logout` | `get_token` | 登出 |
+| `GET /auth/me` | `current_user` | 当前用户信息 |
+| `GET /users` | `current_user` | 用户列表（**缺口**：仅要求登录，见 7.2 节） |
+| `POST /users` | `require_admin` | 创建用户 |
+| `PATCH /users/{user_id}` | `require_admin` | 更新用户 |
+| `DELETE /users/{user_id}` | `require_admin` | 删除用户 |
+| `POST /projects` | `require_admin` | 创建项目 |
+| `PATCH /projects/{project_id}` | `require_admin` | 更新项目 |
+| `DELETE /projects/{project_id}` | `require_admin` | 删除项目 |
+| `POST /models/providers` | `require_admin` | 创建模型供应商 |
+| `PATCH /models/providers/{id}` | `require_admin` | 更新模型供应商 |
+| `DELETE /models/providers/{id}` | `require_admin` | 删除模型供应商 |
+| `POST /environments` | `require_admin` | 创建环境 |
+| `PATCH /environments/{id}` | `require_admin` | 更新环境 |
+| `DELETE /environments/{id}` | `require_admin` | 删除环境 |
+| `GET /operation-logs` | `require_admin` | 查看操作日志 |
+
+> 更多写操作接口的 `require_admin` 校验详见 `apps/backend/app/api/v1/` 各路由文件。
+
+### 8.3 禁止自删除
+
+`user_service.delete_user` 第 102-103 行：
+
+```python
+if user_id == actor["id"]:
+    raise api_error(400, "SELF_DELETE_DENIED", "不能删除当前登录账号。")
+```
+
+---
+
+## 9. 审计
+
+### 9.1 所有登录/登出/用户管理动作均落审计
+
+| 模块 | 动作 | 触发入口 | record_* 调用 |
+| --- | --- | --- | --- |
+| auth | login（失败） | `auth_service.login` | `record_failure` |
+| auth | login（成功） | `auth_service.login` | `record_success` |
+| auth | logout | `auth_service.logout` | `record_success` |
+| user | create | `user_service.create_user` | `record_change`（含 after） |
+| user | update | `user_service.update_user` | `record_change`（含 before + after） |
+| user | delete | `user_service.delete_user` | `record_change`（含 before） |
+
+### 9.2 审计字段
+
+所有审计日志写入 `operation_logs` 表，关键字段：
+
+- `log_type = "audit"`（固定）
+- `module`：auth / user
+- `action`：login / logout / create / update / delete
+- `object_type = "user"`
+- `object_id` / `object_name`
+- `actor_id` / `actor_name`
+- `source = "web"`
+- `result`：`success` / `failed`
+- `failure_reason`：仅失败时填写
+- `summary`：中文摘要
+- `before_json` / `after_json`：变更前后快照（仅 change 类型）
+
+---
+
+## 10. 数据模型
+
+### 10.1 users 表
+
+```sql
+CREATE TABLE IF NOT EXISTS users (
+  id TEXT PRIMARY KEY,
+  username TEXT NOT NULL UNIQUE,
+  email TEXT NOT NULL UNIQUE,
+  nickname TEXT,
+  password_hash TEXT NOT NULL,
+  role TEXT NOT NULL CHECK(role IN ('admin', 'tester', 'guest')),
+  status TEXT NOT NULL CHECK(status IN ('enabled', 'disabled')),
+  project_scope TEXT NOT NULL DEFAULT '全部项目',
+  description TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  last_login_at TEXT
+);
+```
+
+| 字段 | CHECK 约束 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| role | `IN ('admin', 'tester', 'guest')` | — | 不可为空 |
+| status | `IN ('enabled', 'disabled')` | — | 不可为空；disabled 账号不能登录 |
+| project_scope | 无额外约束 | `'全部项目'` | 文本值；精确匹配项目名称 |
+| password_hash | — | — | bcrypt 加密存储 |
+| last_login_at | — | NULL | 登录成功后由 `user_repo.update_login_time` 更新 |
+
+### 10.2 sessions 表
+
+```sql
+CREATE TABLE IF NOT EXISTS sessions (
+  token TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  expires_at TEXT NOT NULL,
+  FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+```
+
+| 字段 | 说明 |
+| --- | --- |
+| token | 48 字符 URL-safe 随机串 |
+| expires_at | UTC ISO 字符串；请求时惰性检查是否过期 |
+| ON DELETE CASCADE | 用户删除时自动清理其所有会话 |
+
+---
+
+## 11. API 路由清单
+
+### 11.1 认证模块（`/auth/*`）
+
+| 方法 | 路径 | 权限 | 说明 |
+| --- | --- | --- | --- |
+| POST | `/auth/login` | 公开 | 登录；body: `{username, password}` |
+| POST | `/auth/logout` | Bearer Token | 登出；Header: `Authorization: Bearer <token>` |
+| GET | `/auth/me` | 登录用户 | 当前用户信息 + `project_permissions` |
+
+### 11.2 用户管理模块（`/users`）
+
+| 方法 | 路径 | 权限 | 说明 |
+| --- | --- | --- | --- |
+| GET | `/users` | 登录用户 | 用户列表（**缺口**：未限制为管理员） |
+| POST | `/users` | require_admin | 创建用户 |
+| PATCH | `/users/{user_id}` | require_admin | 更新用户 |
+| DELETE | `/users/{user_id}` | require_admin | 删除用户；禁止自删除 |
+
+---
+
+## 12. 前端组件清单
+
+| 组件路径 | 说明 | 权限关联 |
+| --- | --- | --- |
+| `src/navigation/sidebar/sidebar-items.ts` | 导航项定义，含 `requiredRole` | `requiredRole: "admin"` 用于系统管理类菜单 |
+| `src/app/(main)/dashboard/_components/sidebar/nav-main.tsx` | 侧边栏渲染，含 `hasRequiredRole` 过滤逻辑 | 第 219-223 行过滤不可见菜单组 |
+| `src/stores/auth-store.ts` | 认证状态管理（token / user 存储） | `login`/`logout` 方法对应 `/auth/login`/`/auth/logout` |
+| `src/app/(main)/settings/users/page.tsx` | 用户管理页面 | 仅管理员可写（`canWrite = role === "admin"`） |
+
+> 所有新增/编辑/删除按钮的可见性由 `GET /auth/me` 返回的 `project_permissions` 中 `actions` 是否含 `"write"` 控制。按钮层面的细粒度 action（如 "confirm_patch"）尚未实现。
+
+---
+
+## 13. 验收规则
+
+### 13.1 已实现
+
+- [ ] 系统存在 admin / tester / guest 三类角色，`users.role` CHECK 约束强制执行
+- [ ] `users.status` 支持 `enabled` / `disabled`，禁用账号不能登录（`_current_user_for_token` 拦截）
+- [ ] 账号只能由管理员创建，系统不提供公开注册
+- [ ] 登录成功写入 `sessions` 表，token 有效期 7 天；登出删除会话
+- [ ] 登录失败/成功/登出均写入 `operation_logs`（log_type="audit"）
+- [ ] `POST /users`、`PATCH /users/{user_id}`、`DELETE /users/{user_id}` 均通过 `require_admin` 校验
+- [ ] `GET /auth/me` 返回 `project_permissions` 字段，格式为 `{project_scope文本: ["read"] 或 ["read","write"]}`
+- [ ] 管理员调用 `list_projects` 看到全部非归档项目；tester/guest 按 `project_scope` 精确匹配
+- [ ] `__all_projects__` 保留项目在 `list_projects` 最终结果中被过滤，admin 也看不到
+- [ ] 侧边栏通过 `requiredRole` + `hasRequiredRole` 过滤 admin 专属菜单项（tester+可见 admin 项目，guest 不可见）
+- [ ] 前端根据 `project_permissions` 中 actions 是否含 `"write"` 控制按钮显隐
+- [ ] `project_service.update_project` / `delete_project` 对保留项目抛出 `PROJECT_SYSTEM_RESERVED`
+- [ ] `user_service.delete_user` 禁止删除当前登录账号（`SELF_DELETE_DENIED`）
+- [ ] 用户创建/更新/删除均写入 `operation_logs`（含 before/after 快照）
+
+### 13.2 尚未实现（缺口）
+
+- [ ] `GET /users` 尚未限制为管理员（当前只要求 `current_user` 登录态）
+- [ ] 无独立 `GET /users/{user_id}` 详情接口
+- [ ] `project_scope` 为文本字段，不支持一个用户分配到多个项目（无 `user_project_members` 关系表）
+- [ ] `project_scope` 值关联 `projects.name` 而非 `projects.id`，项目重命名后需同步
+- [ ] 禁用用户后其已有 token 不会主动失效（依赖下次请求时拦截，无主动下线）
+- [ ] sessions 表无独立过期清理后台任务（依赖惰性检查）
+- [ ] 后端尚未返回细粒度按钮级 `available_actions`（如 confirm_patch、regenerate 等独立 action）
+- [ ] 用户无自服务个人资料/密码修改页面
+- [ ] 超级管理员强制下线（禁用用户时清理其全部会话 token）
+
+---
+
+*文档版本：2026-07-26 基于源码更新。旧版本见 Git 历史。*

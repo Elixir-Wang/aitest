@@ -1,115 +1,180 @@
 # 03-01 AI测试系统 - 后端架构 PRD
 
-## 1. 这份文档解决什么问题
+> **实现基线**: `apps/backend/pyproject.toml`、`apps/backend/app/`（含 `agents/`、`services/`、`api/`、`repositories/`）
+> **事实源更新日期**: 2026-07-26
+> **本版本为源码对齐版，删除了旧 PRD 中未实现的 OpenAI Agents SDK、Allure 等口径，并按 2026-07-26 实际实现补齐任务运行架构、SSE/流、启动恢复、清理与日志、API 路由总览、AI 能力枚举、文件系统布局等章节。**
 
-本文定义 AI 测试系统第一版后端架构。后端使用 Python + FastAPI + SQLite + 本地文件系统，支撑文档管理、任务运行、Agent 编排、站点探索、知识库生成、测试用例生成、UI 自动化执行和报告索引。
+---
+
+## 1. 范围与目标
+
+本文档以 2026-07-26 代码仓库为唯一事实源，描述 AI 测试系统后端架构。后端使用 Python 3.12 + FastAPI 0.124.2 + SQLite + 本地文件系统，支撑：项目管理、需求文档处理、站点探索、知识库对话、测试用例生成（手动/AI）、UI 自动化（pytest + Playwright）、接口自动化（pytest + requests）、性能测试（Locust）、失败自愈诊断、任务中心、操作日志、报告中心、模型配置。
 
 ---
 
 ## 2. 技术栈
 
-| 技术 | 用途 |
-| --- | --- |
-| Python | 后端语言 |
-| FastAPI | HTTP API |
-| SQLite | 第一版数据库 |
-| SQLAlchemy 或 SQLModel | ORM |
-| Pydantic | 请求响应模型 |
-| BackgroundTasks/任务队列封装 | 异步任务调度，第一版本地进程 |
-| OpenAI Agents SDK | Agent 编排 |
-| Playwright CLI | 站点探索 |
-| pytest + Playwright | UI 自动化执行 |
-| Allure | 自动化报告 |
-| 本地文件系统 | 文件、Markdown、知识库、代码、报告 |
+| 技术 | 版本/包 | 用途 |
+| --- | --- | --- |
+| Python | >= 3.12 | 后端语言（`pyproject.toml`: `requires-python = ">=3.12"`） |
+| FastAPI | 0.124.2 | HTTP API 框架 |
+| Uvicorn | 0.50.2 | ASGI 服务器 |
+| SQLAlchemy | 2.x | 通过 `sqlite3` 原生模块 + 仓库层（`app/repositories/`）访问，SQLAlchemy 2.x 兼容 SQL |
+| Pydantic | 2.12.5 | 请求/响应模型、配置校验 |
+| LangChain | >= 1.3.13 | Agent 编排基础（`langchain-core`、`langchain-openai`、`langchain-deepseek`） |
+| deepagents | >= 0.6.7 | **实际使用的 Agent 框架**（替代 OpenAI Agents SDK） |
+| pytest | >= 9.0.1 | 测试与执行框架（UI/API 自动化、性能脚本运行） |
+| pytest-playwright | >= 0.7.0 | UI 自动化浏览器驱动 |
+| pytest-json-report | >= 1.5.0 | JSON 报告输出 |
+| requests | 2.34.2 | 接口自动化 HTTP 客户端 |
+| locust | 2.45.0 | 性能测试负载生成（子进程 headless 模式） |
+| Loguru | 0.7.3 | 日志（含敏感字段掩码） |
+| httpx | 0.28.1 | 异步 HTTP 客户端 |
+| python-multipart | 0.0.20 | 文件上传 |
+| pymupdf | 1.26.7 | PDF 解析 |
+| python-docx | 1.2.0 | Word 文档解析 |
+| ddddocr | >= 1.6.1 | 验证码识别 |
+
+**验收规则**: `pyproject.toml` 中未列的依赖（如 Allure CLI、OpenAI Agents SDK）不得在 PRD 中描述为已实现。
 
 ---
 
-## 3. 模块边界
+## 3. 核心模块边界
 
-| 模块 | 职责 |
-| --- | --- |
-| auth | 登录、会话、当前用户 |
-| users | 用户、角色、项目分配 |
-| projects | 项目管理 |
-| documents | 源文档、版本、Markdown |
-| requirements | 需求分析、评审、澄清写回、候选需求 |
-| exploration | 站点配置、探索任务、探索文档、页面事实 |
-| knowledge | llm-wiki 生成、更新、来源引用 |
-| test_cases | 测试用例生成、评审、覆盖矩阵 |
-| automation | UI 自动化代码、套件、本地执行 |
-| reports | Allure 报告索引、运行摘要、内部 Bug |
-| diagnosis | 失败诊断、自愈建议、补丁确认 |
-| models | Provider、模型配置、模型用途 |
-| agents | Agent Runtime、Skill 调用、安全策略 |
-| tasks | 统一任务中心、任务事件、日志 |
-| settings | 系统设置 |
+| 模块 | 源码路径 | 职责 |
+| --- | --- | --- |
+| auth | `app/api/v1/auth.py` | 登录、会话（SQLite `sessions` 表）、JWT token |
+| users | `app/api/v1/users.py`、`app/repositories/` | 用户、角色（admin / tester / guest）、项目分配 |
+| projects | `app/api/v1/projects.py` | 项目管理、项目成员 |
+| documents | `app/api/v1/documents.py`、`app/services/document/` | 源文档上传、格式转换（PDF/Word → Markdown）、版本管理 |
+| requirements | `app/api/v1/requirements/`、`app/agents/requirement_analysis/` | 需求分析、澄清问答、模块评审、候选需求 |
+| knowledge | `app/api/v1/knowledge.py`、`app/api/v1/global_knowledge.py`、`app/agents/knowledge/` | llm-wiki 知识库生成与更新、全局知识库、项目知识库对话（含流式问答） |
+| test_cases | `app/api/v1/test_cases.py`、`app/agents/test_case_generation/` | 用例生成、用例评审（采纳/拒绝）、覆盖矩阵 |
+| manual_test_cases | `app/api/v1/test_cases.py`（manual router） | 手动用例 CRUD |
+| exploration | `app/api/v1/page_exploration.py`、`app/services/page_exploration/`（`runner.py`、`event_bus.py`）、`app/agents/page_exploration/` | Playwright 站点探索、页面快照、模块覆盖、冲突项、抗卡死熔断 |
+| ui_automation | `app/api/v1/ui_automation.py`、`app/services/ui_automation/`、`app/agents/ui_automation/` | UI 自动化代码生成（pytest + Playwright）、套件管理、执行 |
+| api_automation | `app/api/v1/api_automation.py`、`app/services/api_automation/`、`app/agents/api_automation/`、`app/services/api_automation/self_healing.py` | 接口自动化：端点导入、测试用例生成（pytest + requests）、场景编排、自愈修复状态机 |
+| performance_testing | `app/api/v1/performance_tests.py`、`app/api/v1/performance_runs.py`（含 SSE）、`app/api/v1/performance_scenarios.py`、`app/services/performance_testing/`（`headless_worker.py`、`run_repo`）、`app/agents/performance_testing/` | 性能测试：Locust 脚本生成、子进程 headless 运行、SSE 状态流、质量门控、智能分析（deepagents） |
+| reports | `app/api/v1/reports.py` | 报告中心 API |
+| diagnosis | `app/services/api_automation/self_healing.py` | 失败诊断、自愈修复（repair session + attempt 状态机） |
+| models | `app/api/v1/models.py` | 模型 Provider、模型分配（capability → model mapping） |
+| agents | `app/agents/`、`app/api/v1/agents.py` | Agent Runtime（LangChain / deepagents）、Skill 调用 |
+| tasks | `app/api/v1/tasks.py`、`app/services/task_service.py` | 统一任务中心、任务事件 |
+| operation_logs | `app/api/v1/operation_logs/`（`query.py` / `retention.py` / `client_errors.py` / `project_query.py`）、`app/services/operation_log_service.py` | 操作审计日志、保留策略、客户端错误上报 |
+| settings | `app/core/settings.py` | 文件存储路径、Playwright 配置、性能测试参数 |
 
 ---
 
-## 4. API 设计原则
+## 4. 任务运行架构
 
-- REST 风格。
-- 所有项目内资源必须带 project_id。
-- 长耗时操作返回 task_id。
-- 文件上传先生成 SourceDocument，再异步转换。
-- 知识库生成、自动化执行、自愈诊断必须异步。
-- API 返回必须包含权限判断后的可操作动作。
-- 错误响应包含 code、message、detail、trace_id。
+### 4.1 异步机制
 
-### 4.1 后端详细设计统一规范
+后端使用两种异步机制：
 
-后端实现必须保持统一设计风格，不能每个模块各自定义不同的返回结构、状态流转、任务模式、文件路径和错误码。
+1. **FastAPI `BackgroundTasks`**：适用于短时后台任务（文件转换、日志写入、监控启动），在请求生命周期内完成。
+2. **子进程（`subprocess`） + SQLite 任务表**：适用于长时间运行任务：
+   - **UI 自动化**：`app/services/ui_automation/service.py` + `runners/playwright/`
+   - **性能测试**：`app/services/performance_testing/headless_worker.py`（`python -m locust -f locustfile.py --headless …`）
+   - **站点探索**：`app/services/page_exploration/runner.py` 启动 deepagents 后台协程
 
-统一规范：
+子进程状态通过 SQLite 任务表持久化（`performance_test_runs`、`ui_automation_execution_runs`、`exploration_runs` 等）。
 
-- 所有接口统一使用 `/api/v1` 前缀。
-- 所有响应必须包含 `trace_id`。
-- 列表接口统一返回 `items`、`pagination`、`filters` 可选项。
-- 详情接口统一返回业务对象、来源引用、关联任务、`available_actions`。
-- 写操作必须在 Service 层完成权限校验、状态门禁和事务控制。
-- 异步操作必须创建 `TaskRun`，不能在 HTTP 请求中直接长时间执行。
-- 文件产物必须通过 Storage 层读写，禁止业务模块直接拼接本地路径。
-- 状态枚举后端可使用英文，前端展示必须通过映射转中文。
-- 所有高风险动作必须写审计日志，包括发布知识库、采纳用例、批量生成、执行自动化、应用补丁、回滚、归档和废弃。
+**关键管理结构**（`headless_worker.py:21-24`）：
 
-### 4.2 统一 API 响应规范
+```python
+_PROCESSES: dict[str, subprocess.Popen] = {}
+_STOP_REQUESTED: set[str] = set()
+_MONITOR_FINISHED: dict[str, threading.Event] = {}
+_PROCESS_LOCK = threading.Lock()
+```
+
+**Locust 启动命令**（`headless_worker.py:31-51`）：
+
+```
+python -m locust -f locustfile.py --headless --users <N> --spawn-rate <R> --run-time <S>s \
+  --csv <prefix> --csv-full-history --html <result.html>
+```
+
+**验收规则**：UI 自动化 / 性能测试 / 站点探索三类的长时任务必须在子进程或后台协程中执行，禁止在 HTTP 请求线程中阻塞等待。
+
+### 4.2 SSE / 流
+
+| 流 | 路径 | 事件 | 实现 |
+| --- | --- | --- | --- |
+| 性能测试运行 | `GET /projects/{project_id}/performance-test-runs/{run_id}/stream` | `status` / `stats` / `summary` / `error` | `app/api/v1/performance_runs.py:245-287` `stream_performance_run`（`text/event-stream`） |
+| 站点探索 | `app/services/page_exploration/event_bus.py`（内存 EventBus）+ `runner.py` `publish()` | 实时 exploration 事件 | `_ExplorationProgressGuard` 抗卡死熔断 |
+| 知识库流式问答 | `POST /projects/{project_id}/knowledge/query/stream`、`POST /global-knowledge/query/stream` | 流式问答 | `app/api/v1/knowledge.py:55-78`（`StreamingResponse`） |
+
+### 4.3 Runner 技术栈边界
+
+| Runner | 技术栈 | 入口 |
+| --- | --- | --- |
+| UI 自动化 | `pytest` + `pytest-playwright`（Browser） | `app/services/ui_automation/runner.py`、`runners/playwright/` |
+| 接口自动化 | `pytest` + `requests` | `app/services/api_automation/runner.py` |
+| 性能测试 | `locust`（子进程 headless） | `app/services/performance_testing/headless_worker.py`、`app/services/performance_testing/locust_runtime.py` |
+| 站点探索 | Playwright（Python sync API，deepagents 工具）| `app/services/page_exploration/runner.py`、`app/agents/page_exploration/` |
+
+**验收规则**：UI 自动化不导出 Allure 报告（`pyproject.toml` 无 Allure 依赖），性能测试报告由 Locust HTML 报告承载。
+
+---
+
+## 5. 启动、恢复、清理与日志
+
+### 5.1 启动
+
+`app/main.py` 入口：`uvicorn app.main:app` 启动；`main.py:22` `FastAPI(title="AI Testing System API", version="0.1.0")`。
+
+CORS 默认仅允许本机前端（`http://localhost:3000` / `http://127.0.0.1:3000` / `http://172.16.187.149:3000`），通过环境变量 `CORS_ALLOW_ORIGINS` 追加。
+
+中间件顺序：`ApiUnhandledExceptionMiddleware` → `CORSMiddleware` → `ApiResponseMiddleware`。
+
+### 5.2 启动恢复（`main.py:50-65` `startup()`）
+
+`on_event("startup")` 顺序调用：
+
+| # | 入口 | 含义 |
+| --- | --- | --- |
+| 1 | `setup_logging()` | 初始化 Loguru |
+| 2 | `init_db()` | 执行 `CREATE_SCHEMA_SQL` + `seed_system_defaults` + `seed_admin_user` |
+| 3 | `run_repo.recover_stale_runs(db)` | 恢复卡死的性能测试运行 |
+| 4 | `page_exploration_service.recover_interrupted_exploration_runs()` | 恢复中断的探索任务 |
+| 5 | `task_service.recover_interrupted_requirement_analysis_runs()` | 恢复需求分析任务 |
+| 6 | `test_case_service.recover_interrupted_test_case_generation_runs()` | 恢复用例生成任务 |
+| 7 | `test_point_service.recover_interrupted_generation_runs()` | 恢复测试点生成任务 |
+| 8 | `api_automation_service.recover_interrupted_api_automation_tasks()` | 恢复接口自动化任务 |
+| 9 | `ui_automation_service.recover_interrupted_ui_automation_tasks()` | 恢复 UI 自动化任务 |
+| 10 | `ui_automation_service.prepare_background_tasks()` | 准备 UI 自动化后台任务 |
+| 11 | `retention_cleanup_service.schedule_cleanup()` | 启动周期清理任务 |
+
+### 5.3 清理（`app/services/retention_cleanup_service.py`）
+
+- **任务名**：`system-log-retention`
+- **调度**：`threading.Timer`，启动后 **`DEFAULT_STARTUP_DELAY_SECONDS = 30.0` 秒** 首次执行；之后每 `ELIGIBILITY_CHECK_INTERVAL_SECONDS = 1 小时` 复查一次。清理条件：本地时区（`Asia/Shanghai`）当日尚未成功执行。
+- **保留策略**：`MAX_RETENTION_DAYS = 10`（即便策略配置更高也按 10 天封顶）。`retention_days` 最小 1。删除数据库日志与 `LOGS_DIR/{app,error,access,agent}` 四个子目录下的过期文件。
+- **批量删除**：`DELETE_BATCH_SIZE = 1000`。
+- **重试**：失败可重试 (`MAX_ATTEMPTS = 3`，重试间隔 `RETRY_DELAY_SECONDS = 60.0` 秒)。
+- **shutdown**：`shutdown_cleanup()` 取消定时器；`on_event("shutdown")` 同时调用 `event_bus.close_all()`、`ui_automation_service.shutdown_background_tasks()`、兜底 `subprocess.run` 杀掉残留的 `browser-session.mjs` Node 进程。
+
+**不清理**：已发布的知识库、已采纳的用例、已确认的探索结果。
+
+### 5.4 日志（`app/core/logging.py`）
+
+- **库**：Loguru（`loguru==0.7.3`）。
+- **位置**：`LOGS_DIR`（`apps/backend/logs/`，可由 `AI_TESTING_LOGS_DIR` 覆盖）。
+- **子目录**：`app` / `error` / `access` / `agent`（`LOG_SUBDIRECTORIES`）。
+- **敏感字段掩码**（`app/services/operation_log_service.py`）：通过 `SENSITIVE_KEYS` + `SENSITIVE_PATTERN` 对 `password` / `token` / `api_key` / `secret` / `authorization` / `cookie` / `captcha` / `verification_code` / `access_key` 等键名与 `key=value` 模式进行打码（`******`），写入日志前由 `_mask_sensitive()` 统一处理。
+
+---
+
+## 6. API 设计原则（与实现一致）
+
+### 6.1 统一响应格式
 
 成功响应：
 
 ```json
 {
-  "data": {},
-  "trace_id": "trace_xxx"
-}
-```
-
-列表响应：
-
-```json
-{
-  "data": {
-    "items": [],
-    "pagination": {
-      "page": 1,
-      "page_size": 20,
-      "total": 0
-    },
-    "filters": {}
-  },
-  "trace_id": "trace_xxx"
-}
-```
-
-详情响应建议：
-
-```json
-{
-  "data": {
-    "item": {},
-    "source_refs": [],
-    "related_tasks": [],
-    "available_actions": []
-  },
+  "data": { ... },
   "trace_id": "trace_xxx"
 }
 ```
@@ -118,368 +183,145 @@
 
 ```json
 {
-  "error": {
-    "code": "KNOWLEDGE_BUILD_BLOCKED",
-    "message": "知识库存在阻塞项，不能发布",
-    "detail": {},
+  "detail": {
+    "code": "AUTH_REQUIRED",
+    "message": "请先登录",
     "trace_id": "trace_xxx"
   }
 }
 ```
 
-长任务创建响应：
+- **统一中间件**：`ApiResponseMiddleware`（成功响应包装）、`ApiUnhandledExceptionMiddleware`（异常统一包装）。
+- **trace_id**：`app/core/logging.py:get_trace_id()` 贯穿日志与响应。
 
-```json
-{
-  "data": {
-    "task_id": "task_xxx",
-    "status": "queued",
-    "result_url": "/tasks/task_xxx"
-  },
-  "trace_id": "trace_xxx"
-}
-```
+### 6.2 API 路由总览（`app/api/v1/__init__.py` 30 个 `include_router`）
 
-### 4.3 available_actions 规范
-
-后端必须返回当前用户、当前项目、当前对象状态下允许执行的动作，前端只负责展示，不自行推断核心权限。
-
-`available_actions` 字段建议：
-
-| 字段 | 说明 |
-| --- | --- |
-| key | 操作标识，如 generate_knowledge、adopt_case、run_automation |
-| label | 中文操作名称 |
-| enabled | 是否可点击 |
-| disabled_reason | 禁用原因 |
-| risk_level | normal、warning、danger |
-| confirm_required | 是否需要二次确认 |
-| target_url | 可选跳转地址 |
-
-规则：
-
-- 访客写操作必须返回 `enabled = false` 和禁用原因。
-- 项目上下文不满足时，写操作必须禁用。
-- 状态门禁不满足时，必须返回明确原因，如“知识库未发布”“用例未采纳”“locator 未补齐”。
-
-### 4.4 错误码规范
-
-错误码使用大写下划线，按业务域分组。
-
-| 错误域 | 示例 | 说明 |
+| 路由 | Source File | 备注 |
 | --- | --- | --- |
-| AUTH | AUTH_REQUIRED、PERMISSION_DENIED | 登录和权限 |
-| PROJECT | PROJECT_NOT_FOUND、PROJECT_CONTEXT_REQUIRED | 项目上下文 |
-| DOCUMENT | DOCUMENT_VERSION_DEPRECATED、DOCUMENT_CONVERSION_FAILED | 文档和版本 |
-| REQUIREMENT | REQUIREMENT_REVIEW_BLOCKED、CLARIFICATION_NOT_APPLIED | 需求评审和澄清 |
-| EXPLORATION | EXPLORATION_WAITING_HUMAN、LOCATOR_NOT_FOUND | 探索和定位 |
-| KNOWLEDGE | KNOWLEDGE_BUILD_BLOCKED、KNOWLEDGE_NOT_PUBLISHED | 知识库 |
-| TEST_CASE | TEST_CASE_NOT_ADOPTED、CASE_GENERATION_BLOCKED | 测试用例 |
-| AUTOMATION | AUTOMATION_LOCATOR_BLOCKED、AUTOMATION_RUN_FAILED | UI 自动化 |
-| DIAGNOSIS | DIAGNOSIS_EVIDENCE_MISSING、PATCH_REVIEW_REQUIRED | 失败诊断和自愈 |
-| TASK | TASK_NOT_RETRYABLE、TASK_ALREADY_RUNNING | 任务中心 |
+| `/auth/*` | `api/v1/auth.py` | 认证 |
+| `/dashboard/*` | `api/v1/dashboard.py` | 控制台 |
+| `/reports/*` | `api/v1/reports.py` | 报告中心 |
+| `/users/*` | `api/v1/users.py` | 用户管理 |
+| `/ai/*` | `api/v1/ai.py` | AI 能力枚举 |
+| `/ai/model-assignments/*` | `ai.model_assignment_router` | 模型分配 |
+| `/models/*` | `api/v1/models.py` | 模型 Provider |
+| `/projects/*` | `api/v1/projects.py` | 项目 |
+| `/operation-logs/*` | `api/v1/operation_logs/query.py`（+ `retention.py` + `client_errors.py`） | 系统级日志 |
+| `/projects/{project_id}/operation-logs/*` | `api/v1/operation_logs/project_query.py` | 项目级日志 |
+| `/environments/*` | `api/v1/environments.py` | 环境配置 |
+| `/knowledge/global/*` | `knowledge.global_router` | 全局知识库 |
+| `/projects/{project_id}/knowledge/*` | `api/v1/knowledge.py` | 项目知识库（含 `/query/stream`） |
+| `/global-knowledge/*` | `api/v1/global_knowledge.py` | 全局知识库（含 `/query/stream`） |
+| `/requirements/global/*` | `requirements.global_router` | 全局需求 |
+| `/projects/{project_id}/requirements/*` | `api/v1/requirements.py` | 项目需求 |
+| `/projects/{project_id}/requirement-files/*` | `api/v1/requirement_files.py` | 需求文件上传 |
+| `/projects/{project_id}/test-cases/*` | `api/v1/test_cases.py` | 用例 |
+| `/projects/{project_id}/manual-test-cases/*` | `test_cases.manual_router` | 手动用例 |
+| `/projects/{project_id}/api-.../*` | `api/v1/api_automation.py` | 接口自动化（端点 / 环境 / 文档 / 用例 / 脚本 / 运行 / 场景 / 修复 / 测试集） |
+| `/projects/{project_id}/ui-automation/*` | `api/v1/ui_automation.py` | UI 自动化 |
+| `/projects/{project_id}/performance-tests/*` | `api/v1/performance_tests.py` | 性能测试定义 |
+| `/projects/{project_id}/performance-tests/{test_id}/runs/*` | `performance_runs.test_router` | 性能测试运行 |
+| `/projects/{project_id}/performance-test-runs/*` | `performance_runs.run_router` | 性能测试运行（含 `/{run_id}/stream` SSE、`/{run_id}/ai-analysis/*` 智能分析） |
+| `/projects/{project_id}/performance-test-runs/{run_id}/analysis/*` | `performance_runs.analysis_router` | 智能分析 |
+| `/projects/{project_id}/performance-scenarios/*` | `api/v1/performance_scenarios.py` | 性能场景 |
+| `/projects/{project_id}/performance-scenarios/{id}/runs/*` | `performance_scenarios.run_router` | 性能场景运行 |
+| `/tasks/*` | `api/v1/tasks.py` | 任务中心 |
+| `/projects/{project_id}/documents/*` | `api/v1/documents.py` | 文档管理 |
+| `/agents/*` | `api/v1/agents.py` | Agent 运行时 |
+| `/projects/{project_id}/page-exploration/*`（`/exploration/*`） | `api/v1/page_exploration.py` | 站点探索（基于 `event_bus` SSE） |
 
-规则：
+### 6.3 AI 能力枚举（`app/agents/capabilities.py:11-72` 12 项）
 
-- 错误 `message` 面向用户，必须是中文。
-- `detail` 面向前端和排查，可包含字段错误、阻塞项 ID、处理入口。
-- 后端日志必须记录完整异常，前端响应不能暴露 API Key、密码、token、验证码明文和本地敏感路径。
-
-### 4.5 状态流转与事务规范
-
-- 所有核心对象状态变更必须通过 Service 层方法完成。
-- 状态变更必须校验来源版本是否有效、当前状态是否允许跳转、当前用户是否有权限。
-- 状态变更必须写入业务对象状态字段、TaskEvent 或审计日志。
-- 任务状态和业务对象状态不能互相替代；任务成功不等于业务对象可发布，业务对象发布也不等于任务仍存在。
-- 已发布、已采纳、已应用、已归档等状态不可原地覆盖，只能通过新版本、新任务或补充记录继续演进。
-- 批量任务允许部分成功、部分等待人工，TaskRun 保存汇总，单条结果保存在业务明细对象中。
-
-### 4.6 任务执行规范
-
-- 所有长耗时操作必须走 `TaskRun -> TaskEvent -> Worker -> Service 回写`。
-- Worker 可以调用 Agent、CLI、Storage、Repository，但业务状态最终必须由 Service 层确认。
-- TaskEvent 只记录阶段摘要，高频日志写入日志文件。
-- 任务失败必须记录错误码、错误摘要、日志路径和建议动作。
-- 重试任务必须创建新 TaskRun，并记录 `retry_from_task_id`。
-- 取消任务不能删除已经生成的业务产物，必须把产物标记为草稿、失败或已取消。
-- 等待人工任务必须有处理入口、等待原因和可继续动作。
-
-### 4.7 文件与产物访问规范
-
-- 文件系统路径必须限制在系统配置的存储根目录内。
-- 所有文件读取必须通过授权接口，前端不能直接拼接本地文件路径。
-- Markdown、截图、trace、video、Allure、自动化代码、补丁 diff 必须按项目和对象归档。
-- 文件产物必须记录对象 ID、版本号或运行 ID，保证可追溯。
-- 删除只允许清理临时产物，不删除历史版本、审计证据和已发布知识库。
-
-### 4.8 数据访问与事务规范
-
-- Repository 层只负责 SQLite 读写，不做业务判断。
-- Service 层负责事务边界，跨表状态更新必须在同一事务或可补偿流程中完成。
-- 任何下游引用必须保存具体来源版本 ID，不能只引用项目最新版本。
-- 列表查询必须带项目范围过滤，测试工程师只能查询分配项目，访客只读。
-- 大文本和大文件优先存文件系统，SQLite 保存路径、索引、摘要和状态。
-
----
-
-## 5. 任务运行架构
-
-第一版使用本地任务运行：
-
-```mermaid
-flowchart LR
-    API["FastAPI API"] --> Task["TaskRun"]
-    Task --> Worker["本地任务执行器"]
-    Worker --> Agent["Agent Runtime"]
-    Worker --> CLI["Playwright / pytest / Allure CLI"]
-    Worker --> FS["本地文件系统"]
-    Worker --> DB["SQLite"]
-```
-
-规则：
-
-- 创建任务后立即写入 TaskRun。
-- 任务执行过程写 TaskEvent。
-- 日志写本地文件，数据库保存路径和摘要。
-- 失败必须保存错误信息。
-- 可重试任务必须记录重试来源。
-
-### 5.1 后端分层实现
-
-第一版后端建议按以下层次实现，避免路由、业务和文件操作耦合在一起：
-
-| 层级 | 职责 | 说明 |
+| capability_id | 名称 | 描述 |
 | --- | --- | --- |
-| API 层 | 路由、参数校验、权限判断、返回值包装 | 只处理 HTTP 交互，不写业务规则 |
-| Service 层 | 业务编排、状态流转、跨模块校验 | 负责“能不能做、做完更新什么状态” |
-| Domain 层 | 核心实体、状态枚举、领域规则 | 负责状态门禁、版本约束、引用有效性 |
-| Worker 层 | 异步任务执行、Agent 调用、CLI 调用 | 负责实际运行分析、探索、执行和诊断 |
-| Repository 层 | SQLite 读写 | 只做数据访问，不混入业务判断 |
-| Storage 层 | 文件系统读写 | 负责 Markdown、代码、报告、截图、trace、video |
+| `document_editor` | 文档修改 | 根据用户指令修改 Markdown 文档，返回修改后的文档、修改摘要和风险提示 |
+| `requirement_standardization` | 需求标准化 | 将上传的 PDF / Word / TXT / Markdown 需求文件标准化为结构稳定的标准 Markdown |
+| `requirement_analysis` | 需求分析 | 基于主需求 Markdown 工作稿生成模块分析、澄清问题、可测试性检查和质量门禁结果 |
+| `knowledge_query` | 项目知识库查询 | 基于最终需求文档执行 agentic 检索，返回带来源引用的项目知识库答案 |
+| `test_case_generation` | 测试用例生成 | 根据最终需求文档生成完整、系统、可执行的测试用例集 |
+| `test_point_generation` | 测试点生成 | 根据指定最终需求版本生成结构化、可追溯、可评审的业务测试点 |
+| `api_test_generation` | 接口自动化用例生成 | 根据 OpenAPI 接口定义、接口环境摘要和测试重点生成结构化接口自动化用例 |
+| `api_scenario_orchestration` | 接口自动化场景编排 | 根据业务目标和当前项目接口资产生成可审阅的接口自动化场景计划 |
+| `ui_test_generation` | UI 自动化代码生成 | 根据已采纳测试用例和站点探索证据生成受控 pytest + Playwright UI 自动化代码 |
+| `page_exploration` | 站点探索 | 自动化探索 Web 应用，包括页面分析、元素识别、登录表单分析和验证码识别等多模态任务 |
+| `performance_script_generation` | 性能测试脚本计划生成 | 根据脱敏后的单接口配置生成受控 `LocustScriptPlan` |
+| `performance_report_analysis` | 性能测试报告分析 | 根据脱敏后的 Locust 统计事实生成性能问题、证据和优化建议 |
 
-### 5.2 推荐实现模式
+### 6.4 available_actions 规范
 
-- 路由按模块拆分，保持 `documents`、`exploration`、`knowledge`、`test_cases`、`automation`、`diagnosis`、`tasks`、`settings` 独立。
-- 异步任务统一走 `TaskRun` 创建 -> Worker 执行 -> 结果回写 -> 事件记录。
-- 业务对象状态更新必须通过 Service 层，不能在 Worker 里直接改表。
-- 所有文件路径由统一的 storage helper 生成，禁止在各模块中手写散落路径。
-- 所有模型调用和外部 CLI 调用必须包裹为可审计的 adapter，便于替换和测试。
+- 每个详情接口返回 `available_actions`，前端只负责渲染。
+- 字段结构：`{ key, label, enabled, disabled_reason, risk_level, confirm_required }`。
+- 自愈状态机示意（`app/services/api_automation/self_healing.py`：attempt 状态演变）：`queued → collecting_context → diagnosing → waiting_approval / proposal_ready → candidate_generating → candidate_validating → ready_to_apply → rerunning / completed / failed / superseded / proposal_rejected`；session 终止状态：`active / passed / closed / failed`。
 
-### 5.3 典型接口分组
+---
 
-| 模块 | 典型接口 |
+## 7. 文件系统布局
+
+```
+apps/backend/
+├── app/                    # FastAPI、Services、Agents、Repositories
+├── data/                   # DATA_DIR（默认，由 AI_TESTING_DATA_DIR 覆盖）
+│   ├── ai_testing.db       # SQLite（DB_PATH）
+│   └── projects/           # PROJECT_FILE_STORAGE_ROOT
+│       └── project-{id}/
+│           ├── requirements/        # 需求文档原始文件、Markdown 版本
+│           ├── exploration/         # 探索产物（screenshot / trace / snapshot）
+│           ├── knowledge/           # llm-wiki 产物
+│           ├── ui-automation/       # pytest + Playwright 代码、结果
+│           ├── api-automation/      # pytest + requests 脚本、结果、repairs
+│           └── performance-testing/
+│               └── runs/{perfrun-*}/
+│                   ├── locustfile.py
+│                   ├── generated_locustfile.py
+│                   ├── runtime.json
+│                   ├── result.html
+│                   ├── result_stats.csv / result_stats_history.csv
+│                   ├── result_failures.csv / result_exceptions.csv
+│                   └── stdout.log / stderr.log / locust-events.jsonl
+└── logs/                   # LOGS_DIR（默认，由 AI_TESTING_LOGS_DIR 覆盖）
+    ├── app/                # 应用日志
+    ├── error/              # 错误日志
+    ├── access/             # 访问日志
+    └── agent/              # Agent 日志
+```
+
+**SQLite 与文件系统边界**：
+
+- **SQLite 保存**：结构化元数据、状态、索引、外键关系（用户、模型、项目、需求、用例、运行、修复会话、知识库、日志、清理状态等，见 `app/seed/schema.py`）。
+- **文件系统保存**：Markdown 正文、自动化脚本、Locust 报告、截图、trace、screenshot、video、运行时变量（`runtime.json`）。
+
+---
+
+## 8. 安全边界
+
+- JWT Bearer Token 认证（`Authorization: Bearer <token>`）。
+- 角色：`admin` / `tester` / `guest`。
+- 项目隔离：所有项目资源 API 必须带 `project_id` 并校验用户项目分配；`guest` 默认可访问全部项目，`tester` 仅可访问其 `project_scope` 命名的项目。
+- 密码加密存储：`app/core/security.py` 中 `hash_secret()`（bcrypt / scrypt 兼容）。
+- 敏感配置（API Key）加密存储：`app/core/environment_credentials.py`。
+- 操作日志敏感字段掩码：`app/services/operation_log_service.py:_mask_sensitive()`。
+
+---
+
+## 9. 验收 / 核对规则
+
+| 规则 | 依据路径 |
 | --- | --- |
-| projects | 项目列表、项目创建、项目详情、成员分配、项目设置 |
-| documents | 上传、转换、预览、版本、diff、AI 对话修改 |
-| requirements | 发起分析、生成澄清、应用澄清、模块评审、覆盖矩阵 |
-| exploration | 站点配置、开始探索、探索结果、模块覆盖、冲突项 |
-| knowledge | 生成知识库、更新知识库、预览、历史版本、来源引用 |
-| test_cases | 生成用例、评审、采纳、不采纳、复核、覆盖矩阵 |
-| automation | 生成代码、查看代码、执行套件、运行记录、报告跳转 |
-| reports | 报告列表、报告详情、失败记录、内部 Bug |
-| diagnosis | 启用诊断、生成补丁、应用补丁、回滚、再验证 |
-| tasks | 任务列表、任务详情、重试、取消、等待人工处理 |
-| settings | 文件存储、Runner、Playwright、Allure、Agent 安全策略 |
-
-### 5.4 第一版 API 清单
-
-接口路径以 `/api/v1` 为前缀。表中只列核心接口，导出、批量操作和高级筛选可后续扩展。
-
-| 模块 | 方法 | 路径 | 用途 | 返回重点 |
-| --- | --- | --- | --- | --- |
-| auth | POST | `/auth/login` | 登录 | access_token、current_user |
-| auth | POST | `/auth/logout` | 退出登录 | success |
-| auth | GET | `/auth/me` | 当前用户和权限 | user、roles、project_permissions |
-| projects | GET | `/projects` | 项目列表 | items、pagination、available_actions |
-| projects | POST | `/projects` | 创建项目 | project |
-| projects | GET | `/projects/{project_id}` | 项目详情 | project、stats、available_actions |
-| projects | PATCH | `/projects/{project_id}` | 更新项目 | project |
-| projects | GET | `/projects/{project_id}/members` | 项目成员 | members |
-| projects | PUT | `/projects/{project_id}/members` | 保存项目成员 | members |
-| documents | POST | `/projects/{project_id}/documents` | 上传需求文档 | document、conversion_task_id |
-| documents | GET | `/projects/{project_id}/documents` | 文档列表 | items |
-| documents | GET | `/projects/{project_id}/documents/{document_id}` | 文档详情 | document、versions |
-| documents | GET | `/projects/{project_id}/documents/{document_id}/versions/{version_id}` | 文档版本内容 | markdown、metadata、available_actions |
-| documents | POST | `/projects/{project_id}/documents/{document_id}/chat-edits` | 发起 AI 对话修改 | edit_session、task_id |
-| documents | POST | `/projects/{project_id}/documents/{document_id}/chat-edits/{session_id}/apply` | 应用文档补丁 | new_version |
-| requirements | POST | `/projects/{project_id}/requirements/analyze` | 发起需求分析 | task_id |
-| requirements | GET | `/projects/{project_id}/requirements/analysis/{analysis_id}` | 分析结果 | modules、coverage、clarifications |
-| requirements | GET | `/projects/{project_id}/requirements/review-modules` | 模块评审列表 | items |
-| requirements | PATCH | `/projects/{project_id}/requirements/review-modules/{module_id}` | 更新模块评审 | module |
-| requirements | GET | `/projects/{project_id}/requirements/clarifications` | 澄清问题列表 | items |
-| requirements | POST | `/projects/{project_id}/requirements/clarifications/{question_id}/answer` | 回答澄清问题 | question |
-| requirements | POST | `/projects/{project_id}/requirements/clarifications/apply` | 应用澄清写回 | task_id |
-| exploration | GET | `/projects/{project_id}/exploration/runs` | 探索任务列表 | items |
-| exploration | POST | `/projects/{project_id}/exploration/runs` | 创建探索任务 | task_id、exploration_run |
-| exploration | GET | `/projects/{project_id}/exploration/runs/{run_id}` | 探索详情 | run、coverage、pages、blockers |
-| exploration | POST | `/projects/{project_id}/exploration/runs/{run_id}/continue` | 处理等待人工后继续 | task_id |
-| exploration | GET | `/projects/{project_id}/exploration/conflicts` | 来源冲突项 | items |
-| exploration | PATCH | `/projects/{project_id}/exploration/conflicts/{conflict_id}` | 确认冲突处理结论 | conflict |
-| knowledge | GET | `/projects/{project_id}/knowledge/builds` | 知识库版本列表 | items |
-| knowledge | POST | `/projects/{project_id}/knowledge/builds` | 生成知识库 | task_id、build |
-| knowledge | POST | `/projects/{project_id}/knowledge/builds/{build_id}/update` | 更新知识库 | task_id、build |
-| knowledge | GET | `/projects/{project_id}/knowledge/builds/{build_id}` | 知识库详情 | build、pages、lint |
-| knowledge | POST | `/projects/{project_id}/knowledge/builds/{build_id}/publish` | 发布知识库 | build |
-| knowledge | GET | `/projects/{project_id}/knowledge/builds/{build_id}/pages/{page_id}` | Wiki 页面 | markdown、source_refs |
-| test_cases | GET | `/projects/{project_id}/test-cases` | 用例列表 | items、coverage_summary |
-| test_cases | POST | `/projects/{project_id}/test-cases/generate` | 生成测试用例 | task_id |
-| test_cases | GET | `/projects/{project_id}/test-cases/{case_id}` | 用例详情 | case、versions、source_refs |
-| test_cases | PATCH | `/projects/{project_id}/test-cases/{case_id}` | 编辑用例 | case_version |
-| test_cases | POST | `/projects/{project_id}/test-cases/{case_id}/adopt` | 采纳用例 | case |
-| test_cases | POST | `/projects/{project_id}/test-cases/{case_id}/reject` | 不采纳用例 | case |
-| automation | GET | `/projects/{project_id}/automation/ui/suites` | UI 自动化套件 | items |
-| automation | POST | `/projects/{project_id}/automation/ui/generate` | 生成 UI 自动化代码 | task_id |
-| automation | GET | `/projects/{project_id}/automation/ui/suites/{suite_id}` | 套件详情 | suite、cases、files |
-| automation | GET | `/projects/{project_id}/automation/ui/files/{file_id}` | 代码文件内容 | file、content |
-| automation | POST | `/projects/{project_id}/automation/ui/suites/{suite_id}/runs` | 执行套件 | task_id、run |
-| automation | GET | `/projects/{project_id}/automation/ui/runs/{run_id}` | 执行详情 | run、cases、report、failures |
-| reports | GET | `/reports/runs` | 运行报告列表 | items |
-| reports | GET | `/reports/runs/{run_id}` | 运行报告详情 | run、summary、links |
-| reports | GET | `/reports/bugs` | 内部 Bug 列表 | items |
-| reports | PATCH | `/reports/bugs/{bug_id}` | 更新内部 Bug 状态 | bug |
-| diagnosis | POST | `/projects/{project_id}/diagnosis/failures/{failure_id}/diagnose` | 启用失败诊断 | task_id |
-| diagnosis | GET | `/projects/{project_id}/diagnosis/{diagnosis_id}` | 诊断详情 | diagnosis、evidence、actions |
-| diagnosis | POST | `/projects/{project_id}/diagnosis/{diagnosis_id}/patches` | 生成自愈补丁 | task_id |
-| diagnosis | POST | `/projects/{project_id}/diagnosis/patches/{patch_id}/apply` | 应用补丁 | task_id |
-| diagnosis | POST | `/projects/{project_id}/diagnosis/patches/{patch_id}/rollback` | 回滚补丁 | task_id |
-| tasks | GET | `/tasks` | 任务列表 | items、filters |
-| tasks | GET | `/tasks/{task_id}` | 任务详情 | task、events、logs、outputs |
-| tasks | POST | `/tasks/{task_id}/retry` | 重试任务 | new_task_id |
-| tasks | POST | `/tasks/{task_id}/cancel` | 取消任务 | task |
-| settings | GET | `/settings/system` | 系统设置 | settings、checks |
-| settings | PATCH | `/settings/system` | 更新系统设置 | settings |
-| settings | POST | `/settings/system/check` | 连通性检查 | check_result、task_id |
-
-### 5.5 API 返回结构
-
-普通成功响应：
-
-```json
-{
-  "data": {},
-  "trace_id": "trace_xxx"
-}
-```
-
-列表响应：
-
-```json
-{
-  "data": {
-    "items": [],
-    "pagination": {
-      "page": 1,
-      "page_size": 20,
-      "total": 0
-    }
-  },
-  "trace_id": "trace_xxx"
-}
-```
-
-错误响应：
-
-```json
-{
-  "error": {
-    "code": "KNOWLEDGE_BUILD_BLOCKED",
-    "message": "知识库存在阻塞项，不能发布",
-    "detail": {},
-    "trace_id": "trace_xxx"
-  }
-}
-```
-
-长任务创建响应：
-
-```json
-{
-  "data": {
-    "task_id": "task_xxx",
-    "status": "queued",
-    "result_url": "/tasks/task_xxx"
-  },
-  "trace_id": "trace_xxx"
-}
-```
-
----
-
-## 6. 文件系统布局
-
-建议：
-
-```text
-data/
-  uploads/
-  markdown/
-  exploration/
-  knowledge/
-  automation/
-    ui/
-    api-soon/
-  allure/
-    results/
-    reports/
-  logs/
-  traces/
-  screenshots/
-```
-
-实现规则：
-
-- 每个项目单独保存业务产物子目录，避免混淆。
-- 原始输入、转换结果、可执行代码、报告和诊断证据必须分开存放。
-- 文件名应包含项目、对象类型、版本号或 run id，便于人工检索。
-- 删除动作只删除明确标记为可清理的临时产物，不删除历史版本和审计证据。
-
-### 6.1 建议目录映射
-
-| 目录 | 内容 |
-| --- | --- |
-| uploads | 原始上传文件 |
-| markdown | 需求、探索、候选需求的 Markdown 工作稿 |
-| exploration | 探索文档、页面快照、模块证据 |
-| knowledge | llm-wiki 产物、发布版本、检索索引 |
-| automation/ui | pytest + Playwright UI 自动化代码 |
-| automation/api-soon | 接口自动化占位目录 |
-| allure/results | pytest 输出结果 |
-| allure/reports | Allure 静态报告 |
-| logs | 后端、任务、模型、CLI 运行日志 |
-| traces | Playwright trace |
-| screenshots | 失败截图 |
-| snapshots | 自愈补丁应用前快照 |
-
----
-
-## 7. 安全边界
-
-- 登录后才能访问系统。
-- 不开放注册，账号由管理员创建。
-- 所有 API 根据角色和项目分配鉴权。
-- 文件路径必须限制在系统配置的根目录内。
-- Agent 只能读取和写入允许目录。
-- 密码、token、验证码不写明文日志。
-- 自愈补丁必须人工确认后才能应用。
-
-### 7.1 接口安全约束
-
-- 读取接口必须根据项目分配和角色做行级过滤。
-- 写入接口必须再次校验项目上下文，不能只依赖前端传参。
-- 下载类接口必须先校验权限，再返回临时访问路径或流式响应。
-- 任务查询接口必须只暴露当前用户可见的任务和产物。
-- 所有高风险操作都必须写审计日志，包括发布、应用补丁、废弃版本、回滚和取消运行。
-
----
-
-## 8. 验收标准
-
-- FastAPI 能提供核心模块 API。
-- SQLite 能保存核心元数据和索引。
-- 长耗时任务能进入任务中心。
-- 文件产物能按项目和模块保存。
-- UI 自动化能通过本地 Runner 执行。
-- Allure 报告能被报告中心索引。
-- API 能按管理员、测试工程师、访客控制权限。
-- 后端模块按分层实现，路由不直接操作文件和状态机。
-- 所有异步任务都通过统一 TaskRun 流转。
+| 技术栈与 `pyproject.toml` 一致 | `apps/backend/pyproject.toml` |
+| Agent 框架为 LangChain / deepagents（非 OpenAI Agents SDK） | `pyproject.toml`、`app/agents/` |
+| 12 个 AI capability_id 与 `agents/capabilities.py` 一致 | `app/agents/capabilities.py` |
+| Locust 用于性能测试，子进程 headless 运行 | `app/services/performance_testing/headless_worker.py:31-51` |
+| `_PROCESSES` 子进程池结构 | `app/services/performance_testing/headless_worker.py:21-24` |
+| 性能测试 SSE 流路径 | `app/api/v1/performance_runs.py:245-287` |
+| 站点探索抗卡死熔断 | `app/services/page_exploration/runner.py:45-150` |
+| 站点探索事件总线 | `app/services/page_exploration/event_bus.py` |
+| 启动恢复链路（7 个 `recover_interrupted_*` + `prepare_background_tasks`） | `app/main.py:50-65` |
+| 周期清理策略（10 天 / 1 小时 / Asia/Shanghai / 4 个日志子目录） | `app/services/retention_cleanup_service.py` |
+| 启动恢复 + 清理调度 + 兜底杀 Node 进程 | `app/main.py:50-92` |
+| 30 个 `include_router` 注册 | `app/api/v1/__init__.py` |
+| 4 个操作日志子路由（query / retention / client_errors / project_query） | `app/api/v1/operation_logs/*.py` |
+| 敏感字段掩码 | `app/services/operation_log_service.py` |
+| API 统一响应 / 错误格式 | `app/core/response.py`、`app/api/v1/__init__.py` |
+| 文件系统布局与 `app/core/settings.py` 路径一致 | `app/core/settings.py` |
+| 数据库初始化走 `seed_system_defaults` + 数据迁移 | `app/seed/init_db.py`、`app/seed/seeds.py:1-30`、`app/seed/schema.py` |
+| 启动初始化建表 SQL 完整 | `app/seed/schema.py:1-1432` |

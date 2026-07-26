@@ -1,454 +1,550 @@
-# 00-04 AI测试系统 - 站点探索 PRD
+# 00-04 AI 测试系统 · 站点探索 PRD
 
-## 1. 这份文档解决什么问题
-
-本文细化站点探索能力。站点探索用于把真实 Web 系统的页面结构、表单字段、操作路径、状态流转、依赖关系和定位信息沉淀为来源材料。
-
-核心规则：
-
-- 站点探索基于 Playwright CLI、`playwright-cli` skill、探索 skill 和探索 Agent。
-- 探索 Agent 登录并遍历站点，按模块生成探索文档。
-- 站点探索支持验证码登录。Playwright CLI 探索时可以对验证码区域截图，调用识别能力得到验证码文本，再完成登录并保存登录态。
-- 探索文档先作为来源材料，不自动进入正式知识库。
-- 探索文档 Markdown、截图、trace、video 和页面快照保存在文件系统；SQLite 保存探索任务、模块覆盖、页面、字段、操作、状态流转、locator、失败原因和附件路径。
-- 探索文档详情提供 AI 对话修改入口，用户可以要求补充说明、调整模块归类、补充失败说明、生成候选需求片段或整理页面事实。
-- AI 对话修改探索文档必须生成 diff，经人工确认后才产生新的探索文档版本或人工补充记录。
-- 站点探索必须生成模块探索覆盖矩阵，每个模块都有完成标记；不能漏掉任何一个在探索范围内的模块。
-- 遇到无法探索的模块，必须记录原因、证据和后续处理建议，不能静默跳过。
-- 每个探索文档版本变化都必须生成版本变化日志，供知识库判断是否需要增量更新。
-- 没有需求文档时，探索文档先生成“候选需求文档”，候选需求文档评审确认后才能作为知识库业务来源。
-- 有需求文档时，探索文档作为需求评审和用例生成的页面事实补充，必须和需求分析结果进行映射、补齐和冲突识别。
+> 范围声明：本文档描述"页面探索（page exploration）"子能力：从浏览器自动化环境出发，对站点结构、表单、操作、定位符进行结构化抽取与产物化。文档不覆盖需求分析、测试用例生成、知识库生成（这些分别在 PRD 00-03 / 00-21 / 00-05 中定义）。
 
 ---
 
-## 2. 业务边界
+## 0. 事实源
 
-### 2.1 本模块负责
-
-- 维护被测站点配置
-- 保存登录态
-- 发起站点探索任务
-- 调用浏览器工具执行探索
-- 生成模块化探索文档
-- 通过 AI 对话修改探索文档草稿或补充说明
-- 生成页面事实、状态流转、依赖关系和 locator 来源材料
-- 支持由 UI 自动化生成任务自动触发定向探索定位，补齐缺失页面、步骤和元素 locator
-- 在没有需求文档时，为候选需求文档生成提供页面事实输入
-- 记录探索失败、截图、trace、风险点
-
-### 2.2 本模块不负责
-
-- 不直接生成正式知识库
-- 不直接修改需求文档
-- 不直接把探索结论提升为正式业务需求
-- 不直接生成测试用例
-- 不直接修改自动化代码
+- **基线日期**：2026-07-26
+- **事实源**：`apps/frontend/src`、`apps/backend/app`、`apps/backend/tests` 当前工作区源码（含未提交代码）
+- **Agent 框架**：deepagents（`deepagents.create_deep_agent`），**不是 OpenAI Agents SDK**
+- **状态枚举（9 个）**：`pending / queued / running / stopping / cancelled / interrupted / completed / blocked / failed`
 
 ---
 
-## 3. 工具链
+## 1. 范围与目标
 
-| 工具/能力 | 作用 |
+### 1.1 目标
+
+- 让一个站点在"环境就绪 + 登录策略可控"的前提下，被自动化探索为可追溯的结构化产物（页面 YAML、操作步骤、定位符、截图、追踪）
+- 让产物可被下游"知识库检索"（PRD 00-05）、"用例生成"（PRD 00-21）使用
+- 让"运行中的长任务"可控：可启动、可停止、可恢复、可清理
+
+### 1.2 边界
+
+- 不做测试用例生成、不做需求抽取
+- 不替代生产浏览器；所有运行依赖宿主机上的 Playwright CLI 与浏览器进程
+- 仅 admin 可创建/修改/删除环境（见 §10）
+- 探索 run 不回写源需求文档；两者关系仅通过 `requirement_doc_id` 做上下文输入
+
+---
+
+## 2. 探索模式
+
+### 2.1 goal（目标驱动）
+
+- 以 `goal` 为主线和完成条件，优先执行目标描述的页面流程
+- **第一步必须用 `write_todos` 把探索目标拆成 3-7 个可验证子步骤**，每条包含动词开头的动作描述 + 明确的完成判据
+- 后续每完成一个子步骤，必须 `write_todos` 标记 `completed`，再开始下一个
+- 子步骤全部 `completed` 或被阻塞时立即停止，输出阶段总结
+- 不扩展为全量功能盘点；只探索完成目标所必需的页面、弹窗、字段和状态
+- 目标完成、被阻塞或达到预算上限后停止并总结，不要继续无关分支
+
+依据：`runner.py:438-449` `write_todos` 拆目标
+
+### 2.2 autonomous（自主模式 + 模块覆盖度评估）
+
+- 以 `scope` 为覆盖边界，自动识别范围内的主要模块、页面、入口和可测元素
+- 如果提供了探索目标，它只是补充关注点，不作为单一路径完成条件
+- 按模块盘点，不要因为某个具体动作完成就提前停止
+- 达到范围覆盖或预算上限后总结
+- 完成后触发 `evaluate_autonomous_coverage` 评估模块覆盖度，结果落库 `exploration_module_coverages`
+- 若 `coverage_summary["complete"]` 为 false，run 状态标记为 `partial`
+
+依据：`runner.py:577-580` `evaluate_autonomous_coverage`
+
+---
+
+## 3. 环境管理
+
+### 3.1 自动登录（`auto_auth_service.py`）
+
+- 通过账号密码选择器自动完成登录，支持验证码识别
+- **验证码识别优先使用 ddddocr**（开源、稳定、无内容限制），失败时抛出错误让上层重试（不回退到 AI 模型）
+- 登录态有效期 10 分钟（`AUTO_AUTH_STALE_AFTER_SECONDS = 600`），超时自动失效
+- 登录计划保存到 `<env>/login-plan.json`，可复用
+- 状态流：`idle → queued → running → succeeded / failed`
+- 错误码：`MISSING_CREDENTIALS / CAPTCHA_SOLVE_FAILED / AUTH_STATE_INVALID / AUTO_LOGIN_FAILED`
+
+### 3.2 手动登录（`manual_auth_service.py`）
+
+- 起一个"手动登录会话"，在外部浏览器完成登录后保存登录态
+- 通过 Playwright 打开登录窗口，自动填充用户名和密码（若环境已配置凭据）
+- 会话状态：`waiting_human / saved / cancelled / ended / auto_saved`
+- 支持从已终止的窗口自动检测登录成功（`auto_saved`）
+
+### 3.3 验证码识别（`captcha_solver_service.py`）
+
+- **主方案：ddddocr**（`import ddddocr`）
+- 若 ddddocr 不可用，回退到 AI 模型（`build_captcha_solver_model`）
+- `solve_letter_captcha(image_path, expected_length)` 返回识别的字母数字字符串
+- 长度不匹配时智能截取（识别结果过长则截取前 N 位）
+
+### 3.4 登录表单分析（`login_form_analyzer_service.py`）
+
+- 通过截图 + 元素列表，让 AI 模型识别登录表单关键控件
+- 输出字段：`username_element_id / password_element_id / captcha_image_element_id / captcha_input_element_id / agreement_element_id / login_button_element_id`
+- 失败时回退到 `heuristic` 策略（基于文本和 className 推断）
+
+---
+
+## 4. 执行机制
+
+### 4.1 入口：`run_exploration_background`
+
+```
+POST /api/v1/page-exploration/runs/:runId/start
+  → page_exploration_service.start_exploration_async()
+    → threading.Thread(target=_run_exploration_background, daemon=True).start()
+      → _exploration_run_repo().update_status(..., "running")
+      → _execute_exploration(run_id, run_dict)
+        → asyncio.run(_execute_exploration_async(...))
+          → page_exploration_agent() 创建 agent
+          → await agent.astream(payload, config)
+```
+
+依据：`runner.py:235-358`
+
+### 4.2 事件总线（`event_bus.py`）
+
+- **内存 EventBus**，按 `run_id` 维护订阅者队列
+- `_MAX_HISTORY = 200`：每个 run 最多保留 200 条历史事件
+- 订阅者队列大小：`maxsize=200`（`subscribe` 时初始化 `asyncio.Queue(maxsize=200)`）
+- SSE 推送：每个事件通过 `queue.put_nowait(event)` 推送给前端
+
+---
+
+## 5. Agent 框架
+
+### 5.1 deepagents（**不是 OpenAI Agents SDK**）
+
+```python
+# agent.py:19-22
+from deepagents import create_deep_agent
+from deepagents.backends import FilesystemBackend
+from langchain.agents.middleware import ToolCallLimitMiddleware
+
+agent = create_deep_agent(
+    model=model,
+    tools=all_tools,
+    system_prompt=SYSTEM_PROMPT if exploration_mode == "goal" else AUTONOMOUS_SYSTEM_PROMPT,
+    backend=backend,
+    skills=skills,
+    middleware=middleware,
+)
+```
+
+### 5.2 Backend：FilesystemBackend
+
+- `virtual_mode=True`：虚拟文件系统模式
+- 用于加载 Skills 和汇总中间件的历史存储
+
+### 5.3 Middleware
+
+```python
+# agent.py:82-88
+middleware = [
+    InvalidToolCallRecoveryMiddleware(max_retries=2),  # 无效工具调用恢复
+    ToolCallLimitMiddleware(
+        thread_limit=max_actions,
+        run_limit=max_actions,
+    ),  # 硬截断：单次 run 内最多 max_actions 次工具调用
+]
+```
+
+### 5.4 Skills
+
+- `goal` 模式：`page-explorer`
+- `autonomous` 模式：`autonomous-explorer`
+- 两者共用：`locator-best-practices`
+
+---
+
+## 6. 抗卡死熔断
+
+### 6.1 `_ExplorationProgressGuard`（`runner.py:45-150`）
+
+监控 Agent 循环是否陷入重复状态，三层熔断：
+
+| 熔断条件 | 阈值 | 抛出异常 |
+| --- | --- | --- |
+| 连续快照未变化（同一 URL + 同一 state_signature + 同一 todo） | `stale_snapshot_limit=6` | `ExplorationStalledError` |
+| 同一状态连续工具失败 | `failure_limit=3` | `ExplorationStalledError` |
+| 同一状态连续无进展动作 | `no_progress_limit=8` | `ExplorationStalledError` |
+
+### 6.2 异常处理
+
+- `ExplorationStalledError` → 状态 `blocked`，推送 `run_failed` 事件
+- `ExplorationCancelledError` → 状态 `cancelled`，推送 `run_cancelled` 事件
+- 其他 Exception → 状态 `blocked`，推送 `run_failed` 事件
+
+---
+
+## 7. 页面 ID 与元素 Key
+
+### 7.1 页面 ID：`make_page_id`（`utils/page_id.py`）
+
+规则：
+- 去除首尾斜杠，空路径 → `home`
+- `? & = # % :` → `-`
+- `/` → `-`
+- 合并连续 `-`
+- 过滤空段
+- 前缀 `page-`
+
+例：`/workspace/botSetting` → `page-workspace-botSetting`
+
+### 7.2 元素 Key：`build_element_key`（`utils/element_key.py`）
+
+生成顺序：`role+name > role+aria_label > role+label > role+placeholder > role+test_id > role+text`
+
+slugify 规则：
+- 小写 + 非 ASCII 字母数字 → `-`
+- 折叠连续 `-`
+- 截断至 40 字符
+
+---
+
+## 8. 探索产物
+
+### 8.1 产物目录
+
+```
+<project>/page_exploration/runs/<run_id>/
+  timeline_events.jsonl    # 时间线事件（可读事件流）
+  raw_events.jsonl        # 原始事件（agent projection 原始输出）
+  pages/                  # 页面快照
+  snapshots/              # YAML 快照
+  traces/                # Playwright trace
+  screenshots/           # 截图
+```
+
+### 8.2 产物类型
+
+| 类型 | 表 | 说明 |
+| --- | --- | --- |
+| `page_yaml` | `exploration_artifacts` | 每个页面的结构化 YAML |
+| `operation` | `exploration_artifacts` | 关键操作记录，可单独回放 |
+| `screenshot` | `exploration_artifacts` | 探索过程截图 |
+| `trace` | `exploration_artifacts` | Playwright trace 文件 |
+| `accessibility` | `exploration_artifacts` | 无障碍树快照 |
+| `report` | `exploration_artifacts` | Markdown 探索报告 |
+
+---
+
+## 9. 重放（Replay）
+
+### 9.1 永久定位器 + ReplayOperation
+
+- 项目级 UI 操作存储在 `<project>/page_exploration/operations.yaml`
+- `ReplayOperation` 包含步骤序列（`navigate / click / fill / press / wait / go_back`）
+- 每步引用元素 Key（`element_key`），而非硬编码选择器
+- 支持参数化（`parameters`）和断言（`expected`）
+
+### 9.2 执行
+
+```python
+# replay/service.py:33-102
+ReplayService().execute(
+    project_id=...,
+    environment_id=...,
+    operation_key=...,
+    parameters=...,
+)
+```
+
+- 从 `operations.yaml` 加载操作定义
+- 从 `<project>/page_exploration/pages/*.yaml` 加载项目级永久定位器
+- 按序执行步骤，遇错重试下一个定位器（若当前失败）
+- 支持断言验证（URL / title / overlay / element_value）
+
+### 9.3 产物合并（目标探索）
+
+- `goal` 模式完成后，触发 `merge_goal_run_artifacts`
+- 若存在合并冲突，在 `result_summary` 中注明
+
+---
+
+## 10. 状态机（9 个状态）
+
+```
+pending → queued → running → stopping → cancelled
+                    ↓
+                 completed / partial / blocked / failed
+                    ↓
+              interrupted（进程重启恢复）
+```
+
+| 状态 | 含义 |
 | --- | --- |
-| Playwright CLI | 浏览器启动、页面交互、截图、trace、storage state |
-| `playwright-cli` skill | 标准化 Playwright CLI 操作方式和命令能力 |
-| 探索 skill | 定义探索流程、模块识别、页面文档输出规范 |
-| 探索 Agent | 读取站点配置，调用工具遍历页面并生成探索结果 |
-| Agent Browser | 可作为浏览器自动化补充能力，用于交互式探索和调试 |
+| `pending` | 已创建，等待启动 |
+| `queued` | 已提交，等待 worker 调度 |
+| `running` | 后台线程正在执行 |
+| `stopping` | 用户停止后写入的瞬时态 |
+| `cancelled` | 用户主动停止（不可恢复） |
+| `interrupted` | 进程重启后被恢复流程标记的"中断"态 |
+| `completed` | 成功完成（达到目标或上限） |
+| `partial` | 部分完成（自主模式覆盖度未达 100%） |
+| `blocked` | 探索阻塞（卡死熔断或异常） |
+| `failed` | 执行异常 |
 
 ---
 
-## 4. 站点配置
+## 11. SSE 事件流
 
-| 字段 | 说明 |
+### 11.1 端点
+
+`GET /api/v1/page-exploration/runs/:runId/stream`
+
+### 11.2 主要事件类型
+
+| 事件类型 | 说明 |
 | --- | --- |
-| 项目 ID | 所属项目 |
-| 站点名称 | 例如“后台管理系统测试环境” |
-| 站点 URL | 起始地址 |
-| 环境 | local、test、pre、prod 等 |
-| 登录方式 | 手动登录保存状态、账号密码、跳过登录 |
-| 验证码处理方式 | 无验证码、人工输入、自动截图识别 |
-| 账号说明 | 第一版可存说明，不强制保存明文密码 |
-| 探索范围 | 本次探索覆盖边界，例如全站、指定菜单、指定 URL、指定模块或 `范围包含：入口页、目录导航、正文链接` |
-| 探索目标 | 本次探索需要验证和记录什么，例如遍历页面元素、检查链接跳转、识别 401/403/登录页/无权限页、统计标题和 URL |
-| 禁止路径 | 不允许点击或进入的危险路径/按钮关键词，如删除、支付、外发、批量通知、确认发布 |
-| 默认角色 | 当前探索使用的业务角色 |
+| `run_started` | 探索开始 |
+| `run_completed` / `run_failed` / `run_cancelled` | 终态事件 |
+| `run_snapshot` | 快照（定时推送 + 初始连接） |
+| `planning_completed` | 规划完成 |
+| `agent_plan_updated` | Agent 待办更新 |
+| `step_started / step_completed / step_failed` | 步骤事件 |
+| `page_discovered` | 发现新页面 |
+| `module_coverage_updated` | 模块覆盖度变化 |
+| `blocker_detected` | 阻塞检测 |
 
-字段语义：
+### 11.3 前端处理
 
-- 探索范围回答“去哪里探索”，用于限定模块、页面、URL 或菜单边界。
-- 探索目标回答“探索时要验证什么”，用于说明要点击、检查、统计和记录的事实。
-- 禁止路径回答“哪些不能碰”，用于保护删除、支付、外发、发布等危险动作。
-- 探索目标不是禁止规则；任何必须跳过的动作都必须写入禁止路径。
+- 连接时先拉取 `run_snapshot`
+- 实时事件通过 `applyStreamEvent` 合并到 `monitor` 状态
+- 支持 SSE 断线重连（1.5 秒后自动重连）
 
 ---
 
-## 5. 探索流程
+## 12. 数据模型（6 张表）
 
-```mermaid
-flowchart TD
-    Config["配置站点"] --> Login["登录/加载 storage state"]
-    Login --> Captcha{"需要验证码?"}
-    Captcha -->|是| CaptchaShot["截图并识别验证码"]
-    CaptchaShot --> Scope["确定探索范围"]
-    Captcha -->|否| Scope
-    Scope --> Menu["遍历菜单和路由"]
-    Menu --> Page["采集页面结构"]
-    Page --> Action["采集表单和操作"]
-    Action --> State["识别状态流转和依赖"]
-    State --> Locator["生成 locator 来源材料"]
-    Locator --> Doc["生成模块化探索文档"]
-    Doc --> Source["保存为页面事实来源材料"]
-    Source --> Candidate{"项目缺少需求文档?"}
-    Candidate -->|是| Draft["生成候选需求文档"]
-    Candidate -->|否| Mapping["参与需求模块映射和补齐"]
+### 12.1 `exploration_runs`
+
+```sql
+CREATE TABLE exploration_runs (
+  id TEXT PRIMARY KEY,  -- 'exp_<urlsafe16>'
+  project_id TEXT NOT NULL,
+  environment_id TEXT NOT NULL,
+  requirement_doc_id TEXT NOT NULL DEFAULT '',
+  title TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending'
+    CHECK(status IN ('pending','queued','running','stopping','cancelled',
+                     'interrupted','completed','blocked','failed')),
+  exploration_mode TEXT NOT NULL DEFAULT 'goal'
+    CHECK(exploration_mode IN ('goal','autonomous')),
+  scope TEXT NOT NULL DEFAULT '',
+  forbidden_paths TEXT NOT NULL DEFAULT '',
+  login_strategy TEXT NOT NULL DEFAULT 'skip_login',
+  goal TEXT NOT NULL DEFAULT '',
+  notes TEXT NOT NULL DEFAULT '',
+  max_pages INTEGER NOT NULL DEFAULT 50,
+  max_actions INTEGER NOT NULL DEFAULT 1000,
+  timeout_minutes INTEGER NOT NULL DEFAULT 120,
+  artifact_root TEXT NOT NULL DEFAULT '',
+  result_summary TEXT NOT NULL DEFAULT '',
+  created_by TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  started_at TEXT,
+  finished_at TEXT,
+  FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE,
+  FOREIGN KEY(environment_id) REFERENCES project_environments(id) ON DELETE RESTRICT
+);
+```
+
+### 12.2 `exploration_module_coverages`
+
+```sql
+CREATE TABLE exploration_module_coverages (
+  id TEXT PRIMARY KEY,
+  exploration_run_id TEXT NOT NULL,
+  module_key TEXT NOT NULL,
+  module_name TEXT NOT NULL,
+  entry_path TEXT NOT NULL DEFAULT '',
+  planned_page_count INTEGER NOT NULL DEFAULT 0,
+  explored_page_count INTEGER NOT NULL DEFAULT 0,
+  blocked_page_count INTEGER NOT NULL DEFAULT 0,
+  action_count INTEGER NOT NULL DEFAULT 0,
+  field_count INTEGER NOT NULL DEFAULT 0,
+  state_transition_count INTEGER NOT NULL DEFAULT 0,
+  completion_status TEXT NOT NULL,
+  completion_summary TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY(exploration_run_id) REFERENCES exploration_runs(id) ON DELETE CASCADE,
+  UNIQUE(exploration_run_id, module_key)
+);
+```
+
+### 12.3 `exploration_pages`
+
+```sql
+CREATE TABLE exploration_pages (
+  id TEXT PRIMARY KEY,
+  exploration_run_id TEXT NOT NULL,
+  module_key TEXT NOT NULL DEFAULT '',
+  title TEXT NOT NULL DEFAULT '',
+  url TEXT NOT NULL DEFAULT '',
+  entry_path TEXT NOT NULL DEFAULT '',
+  structure_summary TEXT NOT NULL DEFAULT '',
+  screenshot_path TEXT NOT NULL DEFAULT '',
+  snapshot_path TEXT NOT NULL DEFAULT '',
+  trace_path TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY(exploration_run_id) REFERENCES exploration_runs(id) ON DELETE CASCADE
+);
+```
+
+### 12.4 `exploration_blockers`
+
+```sql
+CREATE TABLE exploration_blockers (
+  id TEXT PRIMARY KEY,
+  exploration_run_id TEXT NOT NULL,
+  module_key TEXT NOT NULL DEFAULT '',
+  page_ref TEXT NOT NULL DEFAULT '',
+  reason_type TEXT NOT NULL DEFAULT '',
+  reason TEXT NOT NULL,
+  evidence_path TEXT NOT NULL DEFAULT '',
+  impact_scope TEXT NOT NULL DEFAULT '',
+  suggested_action TEXT NOT NULL DEFAULT '',
+  is_blocking INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY(exploration_run_id) REFERENCES exploration_runs(id) ON DELETE CASCADE
+);
+```
+
+### 12.5 `exploration_artifacts`
+
+```sql
+CREATE TABLE exploration_artifacts (
+  id TEXT PRIMARY KEY,
+  exploration_run_id TEXT NOT NULL,
+  artifact_type TEXT NOT NULL,
+  file_path TEXT NOT NULL,
+  title TEXT NOT NULL DEFAULT '',
+  summary TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY(exploration_run_id) REFERENCES exploration_runs(id) ON DELETE CASCADE
+);
+```
+
+### 12.6 `exploration_document_versions`
+
+```sql
+CREATE TABLE exploration_document_versions (
+  id TEXT PRIMARY KEY,
+  exploration_run_id TEXT NOT NULL,
+  version_no INTEGER NOT NULL,
+  markdown_path TEXT NOT NULL,
+  change_summary TEXT NOT NULL DEFAULT '',
+  created_by TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY(exploration_run_id) REFERENCES exploration_runs(id) ON DELETE CASCADE,
+  UNIQUE(exploration_run_id, version_no)
+);
 ```
 
 ---
 
-## 6. 探索文档内容
+## 13. API 路由清单
 
-探索功能产物分为两类正式资产：探索文档和元素定位信息。每个模块至少输出一份探索文档，并同步沉淀可被 Playwright UI 自动化引用的元素定位信息。
+### 13.1 runs（`page_exploration/runs.py`）
 
-| 产物 | 内容 | 主要用途 |
+| 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| 探索文档 | 页面、模块、业务路径、字段、按钮、弹窗、状态流转、真实操作路径 | 补齐页面事实，参与知识库构建、需求评审补充和测试用例生成 |
-| 元素定位信息 | 关键元素 locator、备用 locator、稳定性说明、页面截图、trace、页面快照、可访问名称和来源引用 | 支撑 Playwright UI 自动化代码生成，减少代码生成阶段重复探索页面和因元素不足导致的生成失败 |
+| POST | `/api/v1/page-exploration/runs` | 创建探索任务 |
+| GET | `/api/v1/page-exploration/runs/:run_id` | 获取任务详情 |
+| GET | `/api/v1/page-exploration/runs?project_id=...` | 列出项目任务 |
+| PATCH | `/api/v1/page-exploration/runs/:run_id` | 更新任务配置 |
+| DELETE | `/api/v1/page-exploration/runs/:run_id` | 删除任务 |
+| POST | `/api/v1/page-exploration/runs/:run_id/start` | 启动/重新启动任务 |
+| POST | `/api/v1/page-exploration/runs/:run_id/stop` | 停止任务 |
+| GET | `/api/v1/page-exploration/runs-all` | 跨项目列出任务 |
 
-Playwright UI 自动化代码生成时，系统优先复用探索文档和元素定位信息；只有缺失关键 locator 或页面事实不足时，才触发定向探索定位补充。
+### 13.2 pages（`page_exploration/pages.py`）
 
-探索文档内容如下：
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| GET | `/api/v1/page-exploration/runs/:run_id/pages` | 列出任务页面 |
+| GET | `/api/v1/page-exploration/projects/:project_id/pages` | 列出项目页面 |
+| GET | `/api/v1/page-exploration/projects/:project_id/pages/:page_id/yaml` | 获取页面 YAML |
 
-| 内容 | 说明 |
-| --- | --- |
-| 模块名称 | 菜单或业务模块名称 |
-| 页面清单 | 路由、页面标题、入口路径 |
-| 页面结构 | 列表、表单、详情、弹窗、Tab、筛选、分页 |
-| 字段清单 | 字段名、输入控件、必填、校验、默认值、展示格式 |
-| 操作清单 | 新增、编辑、删除、查询、导入、导出、启用、禁用等 |
-| 状态流转 | 状态值、触发动作、前置条件、结果状态 |
-| 依赖关系 | 登录态、角色、前置数据、接口、外部服务 |
-| locator 来源 | 语义名称、推荐 locator、备用 locator、稳定性说明 |
-| 风险点 | 不可访问、无权限、接口错误、弹窗异常、空状态 |
-| 截图/trace | 可选附件路径 |
+### 13.3 artifacts（`page_exploration/artifacts.py`）
 
----
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| GET | `/api/v1/page-exploration/runs/:run_id/artifacts` | 获取探索报告 |
+| GET | `/api/v1/page-exploration/artifacts/:artifact_id/content` | 获取产物内容 |
+| GET | `/api/v1/page-exploration/artifacts` | 列出产物 |
+| DELETE | `/api/v1/page-exploration/projects/:project_id/artifacts` | 清空项目产物 |
+| GET | `/api/v1/page-exploration/projects/:project_id/operations` | 列出项目操作 |
+| PUT | `/api/v1/page-exploration/projects/:project_id/operations/:operation_key` | 保存操作 |
+| POST | `/api/v1/page-exploration/projects/:project_id/replay` | 执行重放 |
+| GET | `/api/v1/page-exploration/projects/:project_id/replay-runs/:run_id` | 获取重放状态 |
+| POST | `/api/v1/page-exploration/projects/:project_id/replay-runs/:run_id/stop` | 停止重放 |
+| POST | `/api/v1/page-exploration/projects/:project_id/replay-runs/:run_id/retry` | 重试重放 |
 
-## 7. 探索文档 AI 对话修改
+### 13.4 events（`page_exploration/events.py`）
 
-探索文档详情页提供 AI 对话区域，用于对探索结果进行人工引导式修订。
-
-适用场景：
-
-- 用户要求补充某个页面的业务说明。
-- 用户要求把某个页面重新归类到其他模块。
-- 用户补充无法探索模块的原因。
-- 用户要求根据截图或 trace 总结页面风险点。
-- 用户要求把探索发现转成候选需求文档片段。
-- 用户要求整理表单字段、按钮、提示语、状态流转。
-
-处理规则：
-
-- AI 对话修改不能直接覆盖探索文档。
-- 系统必须生成 Markdown diff 或结构化补丁。
-- 用户确认后，生成新的探索文档版本或人工补充记录。
-- 修改必须记录用户指令、修改原因、来源引用和影响模块。
-- 如果修改会影响候选需求、知识库、用例或自动化，系统必须标记“页面来源有更新”。
-- AI 修改不得把页面事实直接提升为业务需求，只能形成页面事实、候选需求片段、待确认点或冲突项。
-- 探索文档每次 AI 对话修改、手工补充、重新探索、合并模块或补充说明，都必须写入版本变化日志。
-
-补丁字段：
-
-| 字段 | 说明 |
-| --- | --- |
-| 目标模块 | 被修改的探索模块 |
-| 目标页面 | 被修改的页面或操作 |
-| 修改类型 | 新增、修改、删除、重归类、补充说明 |
-| 修改原因 | 用户指令或 Agent 说明 |
-| 原内容 | 修改前内容 |
-| 建议内容 | 修改后内容 |
-| 来源引用 | 用户输入、截图、trace、页面快照、探索记录 |
-| 影响范围 | 候选需求、知识库、用例、自动化 |
-| 状态 | 待确认、已接受、已拒绝 |
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| GET | `/api/v1/page-exploration/runs/:run_id/stream` | SSE 实时进度流 |
 
 ---
 
-## 8. 探索覆盖与完成验证
+## 14. 前端页面清单
 
-站点探索必须按模块验证，防止漏掉菜单、页面或关键操作。
+| 页面 | 路由 | 说明 |
+| --- | --- | --- |
+| 全局探索工作台 | `/exploration` | 展示所有可见项目的探索 run / 环境 / 产物 |
+| 全局新建 | `/exploration/new` | 创建新的探索任务 |
+| 项目内探索工作台 | `/projects/:projectId/exploration` | 限定项目范围 |
+| 项目内新建 | `/projects/:projectId/exploration/new` | 在项目内创建探索任务 |
+| 项目内编辑 | `/projects/:projectId/exploration/:runId/edit` | 编辑探索任务配置 |
+| 项目内详情 | `/projects/:projectId/exploration/:runId` | 探索任务详情 + SSE 实时进度 + 报告 |
 
-### 8.1 ExplorationModuleCoverage
-
-| 字段 | 说明 |
-| --- | --- |
-| 模块 ID | 系统唯一 |
-| 探索任务 ID | 所属 ExplorationRun |
-| 模块名称 | 菜单或业务模块名称 |
-| 入口路径 | 菜单路径、URL、按钮入口 |
-| 计划探索页面数 | 根据菜单、路由或用户配置识别 |
-| 已探索页面数 | 成功采集页面数量 |
-| 未探索页面数 | 未能进入或未能采集的页面数量 |
-| 操作覆盖数 | 已识别操作数量 |
-| 字段覆盖数 | 已识别字段数量 |
-| 状态流转覆盖数 | 已识别状态流转数量 |
-| 完成状态 | 待探索、探索中、已完成、部分完成、无法探索、已跳过 |
-| 完成说明 | 完成或未完成原因 |
-
-### 8.2 完成状态规则
-
-| 状态 | 说明 |
-| --- | --- |
-| 待探索 | 已识别模块但尚未开始 |
-| 探索中 | 正在探索 |
-| 已完成 | 模块入口、页面、表单、操作、状态和依赖已完成采集 |
-| 部分完成 | 部分页面或操作无法采集，但已有有效结果 |
-| 无法探索 | 权限、验证码、环境、路由错误、页面异常等导致无法探索 |
-| 已跳过 | 用户配置排除或禁止路径 |
-
-### 8.3 无法探索说明
-
-无法探索或部分完成时必须记录：
-
-| 字段 | 说明 |
-| --- | --- |
-| 失败模块 | 模块名称 |
-| 失败页面 | URL、菜单路径或操作入口 |
-| 失败原因 | 无权限、登录失败、验证码失败、页面报错、接口失败、禁止路径、超时、元素不可达 |
-| 失败证据 | 截图、trace、video、console、network 摘要 |
-| 影响范围 | 候选需求、知识库、用例、自动化 |
-| 建议动作 | 人工补充、调整权限、保存登录态、缩小范围、重试 |
-| 是否阻塞探索完成 | 是或否 |
-
-### 8.4 探索任务完成条件
-
-- 探索范围内所有模块都有 `ExplorationModuleCoverage` 记录。
-- 每个模块状态为已完成、部分完成、无法探索或已跳过，不能仍是待探索或探索中。
-- 部分完成和无法探索必须有情况说明和证据附件。
-- 禁止路径必须标记已跳过，不能算失败。
-- 系统必须生成探索覆盖汇总，展示模块总数、已完成数、部分完成数、无法探索数、已跳过数。
-- 如果存在无法探索模块，探索任务可以结束，但状态必须是“完成但有阻塞”或“部分完成”，不能标记为完全成功。
-
-### 8.5 部分完成对下游的影响
-
-| 探索结果 | 是否允许进入知识库 | 是否允许生成测试用例 | 是否允许生成自动化代码 | 处理规则 |
-| --- | --- | --- | --- | --- |
-| 全部核心模块已完成 | 是 | 是 | 是 | 可作为正式来源进入知识库 |
-| 非核心页面部分完成 | 是，但标 warning | 是，但用例标记低置信来源 | 视 locator 是否完整 | 知识库记录探索缺口和风险说明 |
-| 核心页面可访问，但部分字段或按钮 locator 缺失 | 是 | 是 | 否，直到补齐 locator | 生成 locator 补充任务或人工补充入口 |
-| 核心流程无法完成 | 否 | 否 | 否 | 知识库构建应阻塞，必须补充探索或人工确认 |
-| 登录、权限或验证码导致核心模块无法进入 | 否 | 否 | 否 | 任务进入等待人工或探索阻塞 |
-| 只缺少截图、video 等辅助证据 | 是 | 是 | 是 | 不阻塞下游，但报告质量检查 warning |
-| 用户明确跳过非测试范围模块 | 是 | 是 | 不适用 | 必须记录跳过原因，不计入探索失败 |
-
-核心模块判断规则：
-
-- 用户在探索范围中明确标记为核心模块的模块，必须按核心模块处理。
-- 需求文档中出现主流程、关键状态流转、权限控制、资金/订单/审批/发布等关键业务的模块，默认视为核心模块。
-- 如果系统无法判断模块是否核心，应标记为待确认，而不是默认当成非核心模块。
+组件：
+- `apps/frontend/src/components/ai-testing/exploration-workspace.tsx`
+- `apps/frontend/src/components/ai-testing/exploration-run-create-page.tsx`
 
 ---
 
-### 8.6 定向探索定位任务
+## 15. 验收规则
 
-UI 自动化生成任务发现关键 locator 缺失时，可以自动触发定向探索定位任务。
-
-定向探索定位任务输入：
-
-| 输入 | 说明 |
-| --- | --- |
-| 关联用例 | 触发探索定位的已采纳测试用例 |
-| 缺失步骤 | 缺少 locator 的测试步骤或断言目标 |
-| 目标页面 | URL、菜单路径、页面名称或已有探索页面引用 |
-| 目标元素 | 字段、按钮、链接、表格行、弹窗、提示语等 |
-| 期望操作 | 点击、输入、选择、上传、断言、等待状态变化等 |
-
-输出要求：
-
-- 推荐 locator、备用 locator 和稳定性说明。
-- 页面快照、截图、trace 或操作记录来源。
-- 元素可访问名称、role、label、placeholder、test id、稳定文本或稳定属性。
-- 如果元素存在歧义，必须列出候选元素和差异说明，进入人工确认。
-- 如果页面无法进入、权限不足、验证码阻塞、元素不存在或命中禁止路径，必须记录失败原因和建议动作。
-
-定向探索定位只补充页面事实和 locator 来源，不直接修改测试用例和自动化代码。补充结果写回探索文档版本或 locator 元数据后，由 UI 自动化生成任务重新执行 locator 准入检查。
+- **AC-01**：新建环境 → 触发自动登录 → `auth_state_status` 从 `running → succeeded` 或 `failed`
+- **AC-02**：手动登录会话可 start → 在外部浏览器完成后调用 save，登录态被持久化
+- **AC-03**：创建 run → 启动 → 状态依次出现 `pending / queued / running / completed（或 partial）`
+- **AC-04**：探索过程中 SSE 收到 `page_discovered / step_completed / module_coverage_updated` 等事件
+- **AC-05**：运行中点击"停止"，run 在数秒内进入 `cancelled`，产物列表保留已发现条目
+- **AC-06**：再次"启动"同一个 run，上一轮的 `exploration_pages/artifacts/blockers/module_coverages` 被清空
+- **AC-07**：选择某个 operation 发起重放，重放 run 独立状态、可停止/重试
+- **AC-08**：服务端重启后，正在运行的 run 变为 `interrupted`，操作日志可见原因
+- **AC-09**：删除某项目产物，需先确保无运行中 run，否则接口报错
+- **AC-10**：Agent 在同一页面状态连续 8 次无进展动作后抛出 `ExplorationStalledError`，run 标 `blocked`
+- **AC-11**：目标探索第一步必须调用 `write_todos` 拆解目标，否则 Agent 行为不符合预期
+- **AC-12**：自主探索完成后，模块覆盖度评估结果落库 `exploration_module_coverages`
 
 ---
 
-## 9. 验证码登录
+## 16. 与其它 PRD 的边界
 
-第一版需要支持常见图片验证码登录，但不把验证码识别做成独立通用 OCR 平台。
-
-处理流程：
-
-1. 探索 Agent 打开登录页并定位账号、密码、验证码输入框和验证码图片区域。
-2. Playwright CLI 对验证码图片或指定区域截图。
-3. 系统调用配置好的验证码识别能力，返回验证码文本和置信度。
-4. Agent 填写账号、密码、验证码并提交登录。
-5. 登录成功后保存 `storage state`，后续探索优先复用登录态。
-6. 如果识别失败或置信度过低，任务进入“等待人工输入验证码”状态，不应反复失败重试。
-
-记录要求：
-
-- 保存验证码截图路径、识别结果、置信度、登录结果和失败原因。
-- 不在日志中明文展示密码。
-- 验证码截图只作为登录证据和失败排查附件，不进入正式知识库。
-- 如果验证码有频率限制或滑块/短信/二次验证，第一版可标记为“需要人工登录保存状态”。
+- 与 PRD 00-03：探索 run 可读取某个 `requirement_doc_id` 作为上下文，但不会回写需求文档
+- 与 PRD 00-05：项目级页面 YAML 是知识检索 `explorations` 来源；本 PRD 不定义检索开关
+- 与 PRD 00-22：本 PRD 不涉及全局/公司知识库
 
 ---
 
-## 10. 与需求文档的关系
+## 17. 实现依据（精确路径）
 
-### 10.1 没有需求文档
-
-如果项目没有上传需求文档：
-
-- 探索文档不能直接生成正式知识库。
-- 系统可以基于探索文档生成“候选需求文档”。
-- 候选需求文档是一份完整 Markdown 工作稿，不按探索模块拆成多个需求文件。
-- 候选需求文档按模块组织内容，模块来自菜单、页面、业务操作、表单和状态流转。
-- 候选需求文档必须进入需求评审流程，评审确认后才能成为正式需求文档版本。
-- 所有反推内容必须标记来源和置信类型：明确观察、流程推断、待确认。
-- 未探索到的业务规则不能由系统编造。
-- 候选需求未确认前，测试用例只能生成草稿，不能进入正式用例采纳和自动化生成。
-
-候选需求文档建议结构：
-
-| 章节 | 内容 |
-| --- | --- |
-| 模块说明 | 从菜单、页面标题和操作聚合出的模块描述 |
-| 页面清单 | 路由、页面标题、入口路径、角色可见性 |
-| 业务流程 | 从页面跳转、操作前后状态推断出的流程 |
-| 表单与字段 | 字段名、控件类型、必填、默认值、校验提示 |
-| 操作与提示 | 按钮、弹窗、Toast、确认框、错误提示 |
-| 状态流转 | 状态值、触发动作、前置条件、结果状态 |
-| 权限表现 | 不同角色可见、可操作、禁止访问的差异 |
-| 待确认问题 | 探索无法判断的业务规则、边界和例外 |
-| 推断依据 | 对应探索文档、页面、截图、trace 或操作记录 |
-
-### 10.2 有需求文档
-
-如果项目已有需求文档：
-
-- 需求文档负责业务意图、业务规则、流程预期、验收口径。
-- 探索文档负责页面结构、真实字段、交互路径、状态回显、locator。
-- 探索文档不能直接覆盖需求规则。
-- 系统必须生成模块映射和冲突清单。
-- 需求评审以需求文档为主，按模块评审同一份需求文档；探索文档只作为页面事实补充和差异证据。
-- 探索文档发现的新页面、新按钮、新字段或新提示语，不直接变成需求结论，必须转成补齐项、冲突项或澄清问题。
-
-融合步骤：
-
-1. 将探索模块映射到需求模块。
-2. 用探索结果补齐页面、字段、按钮、locator、真实状态回显。
-3. 对需求中存在但探索未发现的功能标记为“待探索”。
-4. 对探索中存在但需求未描述的功能标记为“需求缺口”。
-5. 对两者不一致的字段、状态、流程和权限生成冲突项。
-6. 用户确认冲突项后，结论通过澄清写回或在线编辑写回需求文档新版本。
-7. 写回后的需求文档版本再进入知识库更新。
-
----
-
-## 11. 冲突项
-
-| 字段 | 说明 |
-| --- | --- |
-| 冲突编号 | 项目内唯一 |
-| 所属模块 | 影响模块 |
-| 需求来源 | 文档版本、段落、标题 |
-| 探索来源 | 探索任务、页面、操作 |
-| 冲突类型 | 字段不一致、状态不一致、流程不一致、权限不一致、页面缺失、需求缺口 |
-| 冲突说明 | 具体差异 |
-| 影响范围 | 知识库、用例、自动化、缺陷判断 |
-| 建议问题 | 给业务或测试确认的问题 |
-| 状态 | 待确认、已确认需求为准、已确认页面为准、已废弃 |
-
----
-
-## 12. 更新规则
-
-### 12.1 探索结果更新
-
-当重新探索站点后：
-
-- 新探索结果形成新的 `ExplorationRun`。
-- 系统对比上一次探索结果。
-- 知识库界面提示“页面来源有更新”。
-- 更新计划展示新增页面、删除页面、字段变化、操作变化、locator 变化、状态变化。
-
-### 12.2 对测试资产的影响
-
-如果探索更新影响测试资产：
-
-- 影响字段或按钮：标记相关测试用例需要复核。
-- locator 变化：标记相关自动化脚本需要检查。
-- 状态流转变化：标记相关断言和用例路径需要更新。
-- 页面不存在：标记相关用例和自动化为风险状态。
-
-### 12.3 版本变化日志
-
-探索文档版本变化日志用于让知识库判断是否需要更新。
-
-字段至少包含：
-
-- 旧版本号
-- 新版本号
-- 变化类型：重新探索、AI 对话修改、人工补充、模块重归类、失败说明补充
-- 变化原因
-- 影响模块
-- 影响页面
-- 影响范围：页面事实、字段、按钮、提示语、状态流转、locator、风险点
-- 是否触发知识库更新
-- 变更摘要
-- 创建时间
-
----
-
-## 13. SQLite 存储策略
-
-SQLite 保存：
-
-- 站点配置
-- 探索任务状态
-- 探索模块覆盖矩阵
-- 验证码登录配置、识别状态和截图路径
-- 页面、字段、操作、状态流转结构化索引
-- locator 元数据
-- 无法探索说明
-- AI 对话修改会话和补丁
-- 版本变化日志
-- 冲突项
-- 附件路径
-
-文件系统保存：
-
-- 探索 Markdown 文档
-- 截图
-- trace
-- video
-- 原始快照
-- AI 对话修改 diff
-- 版本变化日志
-
----
-
-## 14. 验收标准
-
-- 能配置站点 URL 和探索范围。
-- 能通过 Playwright CLI 或探索 Agent 发起探索。
-- 能保存登录态并复用。
-- 能在图片验证码场景下截图识别并尝试登录；识别失败时能转为人工输入或人工登录保存状态。
-- 能按模块生成探索文档。
-- 探索文档详情支持 AI 对话修改。
-- AI 对话修改必须生成 diff 或结构化补丁，用户确认后才能生成新版本或补充记录。
-- AI 对话修改不能直接把页面事实提升为正式业务需求。
-- 能生成模块探索覆盖矩阵。
-- 每个探索范围内模块都有完成标记。
-- 无法探索的模块必须有情况说明、失败证据和建议动作。
-- 探索文档版本必须有变化日志，明确知道哪些探索变化会触发知识库更新。
-- 存在无法探索模块时，任务不能标记为完全成功，只能标记为部分完成或完成但有阻塞。
-- 探索文档包含页面、表单、操作、状态流转、依赖关系、风险点。
-- 探索文档不会自动进入正式知识库。
-- 没有需求文档时，可基于探索文档生成候选需求文档，候选需求文档必须评审确认后才能作为知识库来源。
-- 有需求文档时，探索文档必须生成模块映射、补齐项和冲突项，作为需求评审补充和用例生成补充。
-- 冲突项未确认前，不能作为已确认知识写入正式知识库。
-- 探索更新后能提示知识库和测试资产受影响范围。
+- **Agent**：`apps/backend/app/agents/page_exploration/agent.py`（deepagents + FilesystemBackend + ToolCallLimitMiddleware）
+- **Utils**：`apps/backend/app/agents/page_exploration/utils/{page_id,element_key}.py`
+- **Runner**：`apps/backend/app/services/page_exploration/runner.py`
+- **Event Bus**：`apps/backend/app/services/page_exploration/event_bus.py`
+- **Replay**：`apps/backend/app/services/page_exploration/replay/{service,store,run_service,models}.py`
+- **Auth**：`apps/backend/app/services/{auto_auth,manual_auth,captcha_solver,login_form_analyzer}_service.py`
+- **路由**：`apps/backend/app/api/v1/page_exploration/{__init__,runs,pages,artifacts,events}.py`
+- **前端**：`apps/frontend/src/app/(main)/exploration/{page,new}/page.tsx`、`apps/frontend/src/app/(main)/projects/[projectId]/exploration/{[runId]/{edit,page}.tsx`、`apps/frontend/src/components/ai-testing/{exploration-workspace,exploration-run-create-page}.tsx`

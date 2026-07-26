@@ -5,7 +5,6 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { AlertTriangle, ArrowLeft, Check, FileText, Gauge, LoaderCircle, Settings, Sparkles } from "lucide-react";
-import { toast } from "@/lib/toast";
 
 import { ShellSection } from "@/components/ai-testing/page-shell";
 import { Select, SelectOption } from "@/components/ui/animated-select-1";
@@ -28,9 +27,9 @@ import {
   type PerformanceLoadConfig,
   type PerformanceLoadStage,
   type PerformanceRequestPreview,
-  type PerformanceSuccessRule,
   previewPerformanceRequest,
 } from "@/lib/api-client";
+import { toast } from "@/lib/toast";
 
 import { LoadStageEditor } from "./load-stage-editor";
 import { PerformanceDataEditor } from "./performance-data-editor";
@@ -72,8 +71,6 @@ const initialCircuitBreaker: PerformanceCircuitBreaker = {
   consecutive_windows: 3,
 };
 
-const initialSuccessRules: PerformanceSuccessRule[] = [{ kind: "status_code", status_codes: [200] }];
-
 export function PerformanceTestForm() {
   const router = useRouter();
   const previewSequence = useRef(0);
@@ -89,8 +86,6 @@ export function PerformanceTestForm() {
   const [queryJson, setQueryJson] = useState("{}");
   const [headersJson, setHeadersJson] = useState("{}");
   const [bodyJson, setBodyJson] = useState("null");
-  const [successCodes, setSuccessCodes] = useState("200");
-  const [successRules, setSuccessRules] = useState<PerformanceSuccessRule[]>(initialSuccessRules);
   const [mode, setMode] = useState<PerformanceLoadConfig["mode"]>("fixed");
   const [stages, setStages] = useState<PerformanceLoadStage[]>([]);
   const [dataConfig, setDataConfig] = useState<PerformanceDataConfig>(initialDataConfig);
@@ -121,8 +116,6 @@ export function PerformanceTestForm() {
     setQueryJson("{}");
     setHeadersJson("{}");
     setBodyJson("null");
-    setSuccessCodes("200");
-    setSuccessRules(initialSuccessRules);
     setDataConfig(initialDataConfig);
     if (!selectedProjectId) return;
     let ignore = false;
@@ -142,8 +135,6 @@ export function PerformanceTestForm() {
     if (!selectedProjectId || !endpointId) return;
     const sequence = ++previewSequence.current;
     setPreview(null);
-    setSuccessCodes("200");
-    setSuccessRules(initialSuccessRules);
     setPreviewing(true);
     previewPerformanceRequest(selectedProjectId, {
       endpoint_id: endpointId,
@@ -156,9 +147,6 @@ export function PerformanceTestForm() {
         setQueryJson(formatJson(result.request_config.query_parameters));
         setHeadersJson(formatJson(result.request_config.headers));
         setBodyJson(formatJson(result.request_config.body));
-        const statusRule = result.success_rules.find((rule) => rule.kind === "status_code");
-        setSuccessCodes((statusRule?.status_codes ?? [200]).join(", "));
-        setSuccessRules(result.success_rules);
         setRequestTouched(false);
       })
       .catch((error) => {
@@ -232,7 +220,6 @@ export function PerformanceTestForm() {
         data_config: dataConfig,
         circuit_breaker: circuitBreaker,
         performance_goal: compactGoal(numbers),
-        success_rules: withStatusCodes(successRules, parseStatusCodes(successCodes)),
       });
       const script = await generatePerformanceScript(selectedProjectId, created.id);
       toast.success("性能测试已创建，Locust 脚本已生成");
@@ -430,16 +417,6 @@ export function PerformanceTestForm() {
               />
             </Field>
           ) : null}
-
-          <Field>
-            <FieldLabel htmlFor="test-success-codes">成功状态码</FieldLabel>
-            <Input
-              id="test-success-codes"
-              onChange={(event) => setSuccessCodes(event.target.value)}
-              placeholder="200, 201"
-              value={successCodes}
-            />
-          </Field>
 
           {/* 测试数据区块 */}
           <div className="flex items-center gap-2 border-b pb-2 md:col-span-2">
@@ -680,22 +657,6 @@ function parseObject(value: string, label: string): Record<string, unknown> {
   const parsed = parseJson(value, label);
   if (!parsed || Array.isArray(parsed) || typeof parsed !== "object") throw new Error(`${label} 必须是 JSON 对象`);
   return parsed as Record<string, unknown>;
-}
-
-function parseStatusCodes(value: string): number[] {
-  const parts = value
-    .split(",")
-    .map((item) => item.trim())
-    .filter(Boolean);
-  const codes = parts.map(Number);
-  if (codes.length === 0 || codes.some((code) => !Number.isInteger(code) || code < 100 || code > 599)) {
-    throw new Error("成功状态码必须是 100 到 599 之间的整数，多个状态码用逗号分隔");
-  }
-  return [...new Set(codes)];
-}
-
-function withStatusCodes(rules: PerformanceSuccessRule[], statusCodes: number[]): PerformanceSuccessRule[] {
-  return [{ kind: "status_code", status_codes: statusCodes }, ...rules.filter((rule) => rule.kind !== "status_code")];
 }
 
 function positiveNumber(value: string, label: string) {

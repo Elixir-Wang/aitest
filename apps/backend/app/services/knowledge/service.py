@@ -674,8 +674,10 @@ def _collect_exploration_sources(db, project) -> list[KnowledgeSourceDocumentInp
     documents: list[KnowledgeSourceDocumentInput] = []
     for run in exploration_run_repo.list_by_project(db, project["id"]):
         for artifact in exploration_artifact_repo.list_by_run(db, run["id"]):
+            if artifact["artifact_type"] != "page_yaml":
+                continue
             path = resolve_stored_path(artifact["file_path"]) or Path(artifact["file_path"])
-            if not path.exists() or path.suffix.lower() not in {".md", ".markdown", ".json", ".yaml", ".yml", ".txt"}:
+            if not path.exists() or path.suffix.lower() != ".yaml":
                 continue
             try:
                 content = path.read_text(encoding="utf-8")
@@ -692,7 +694,7 @@ def _collect_exploration_sources(db, project) -> list[KnowledgeSourceDocumentInp
                     project_name=project["name"],
                     document_id=run["id"],
                     document_name=artifact["artifact_type"],
-                    file_extension=path.suffix.lstrip(".") or "txt",
+                    file_extension="yaml",
                     markdown_content=content,
                 )
             )

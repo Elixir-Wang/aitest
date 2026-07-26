@@ -1,513 +1,273 @@
-# 00-22 AI测试系统 - 全局知识库 PRD
+# 00-22 AI 测试系统 · 全局知识库 PRD
 
-## 1. 这份文档解决什么问题
+> 范围声明：本文档描述 AI 测试系统的**全局知识库（公司知识库）**功能——独立于项目的跨项目可复用素材库，由管理员上传与管理，向所有项目作为检索来源开放。
+>
+> 术语说明：在本系统中，**公司知识库** = **全局知识库** = **Global Knowledge Vault**，底层路由前缀为 `/global-knowledge`（OpenAPI tag `global-knowledge`），前端在 `/knowledge` 页面"公司知识库" Tab 内展示。
 
-本文定义全局知识库的上传、管理、版本、权限和使用边界。
-
-全局知识库用于沉淀跨项目复用的测试规范、用例模板、评审规则、自动化规范、平台级 PRD、通用术语和团队方法论。它不承载具体项目的业务事实，也不替代项目知识库。
-
-核心规则：
-
-- 项目知识库保持现有生成、更新、版本和来源追踪逻辑不变。
-- 全局知识库单独提供上传入口和上传接口，不复用需求上传接口。
-- 全局知识库上传时不选择项目，不传 `project_id`，不受顶部项目切换器的具体项目限制。
-- 项目需求文档、站点探索文档、澄清记录和项目知识库内容不会自动进入全局知识库。
-- 全局知识库只保存跨项目可复用内容，不保存项目专属客户名称、环境地址、账号、接口私有细节和项目业务状态流转。
-- 下游 Agent 使用知识时，优先级为：项目知识库 > 全局知识库 > 模型通用知识。
+> 不在本文档范围：项目内知识检索会话（PRD 00-05）、对话历史（PRD 00-05）、非 Markdown 格式自动转换。
 
 ---
 
-## 2. 业务边界
+## 0. 事实源
 
-### 2.1 本模块负责
+- **基线日期**：2026-07-26
+- **事实源路径**：
 
-- 展示全局知识库文档列表。
-- 上传全局知识文件。
-- 维护全局知识的名称、类型、版本、状态、说明和来源信息。
-- 对上传文件进行格式转换和 Markdown 预览。
-- 支持全局知识版本化和历史查看。
-- 为需求分析、知识库生成、测试用例生成、自动化生成和失败诊断提供通用规范上下文。
-
-### 2.2 本模块不负责
-
-- 不负责项目知识库生成和更新。
-- 不负责项目需求文档上传。
-- 不负责从项目知识库提炼全局知识。
-- 不负责自动判断项目知识是否应该进入全局知识库。
-- 不负责替代系统设置、模型配置、权限管理。
-- 不负责把全局规范强制写回项目需求文档。
-
----
-
-## 3. 用户角色与权限
-
-| 角色 | 查看全局知识库 | 上传全局知识 | 编辑全局知识 | 删除/废弃全局知识 | 查看历史版本 |
-| --- | --- | --- | --- | --- | --- |
-| 管理员 | 是 | 是 | 是 | 是 | 是 |
-| 测试工程师 | 是 | 否 | 否 | 否 | 是 |
-| 访客 | 是 | 否 | 否 | 否 | 是 |
-
-说明：
-
-- 第一版只有管理员可以维护全局知识库。
-- 测试工程师和访客可查看全局知识库，便于理解系统生成用例和分析结果时参考了哪些通用规则。
-- 删除建议采用逻辑废弃，不物理删除文件和历史版本。
-
----
-
-## 4. 信息架构
-
-知识库模块分为两个入口：
-
-| 入口 | 说明 |
+| 层级 | 路径 |
 | --- | --- |
-| 项目知识库 | 现有项目知识库能力，按项目隔离，基于项目来源材料生成和更新 |
-| 全局知识库 | 新增能力，独立上传和管理跨项目复用知识 |
-
-顶部项目切换器规则：
-
-- 当顶部项目为“全部项目”时，知识库页面默认进入“全局知识库”。
-- 当顶部项目为具体项目时，知识库页面默认进入该项目的“项目知识库”。
-- 用户仍可在知识库页面内切换“项目知识库 / 全局知识库”页签。
-- 全局知识库页签不显示“关联项目”字段。
-- 全局知识库页签不因当前项目切换而过滤内容。
+| 前端页面 | `apps/frontend/src/app/(main)/knowledge/page.tsx`（公司知识库 Tab） |
+| 前端组件 | `apps/frontend/src/components/ai-testing/knowledge-search-settings.tsx`（`company_knowledge` 来源配置） |
+| 后端路由 | `apps/backend/app/api/v1/global_knowledge.py` |
+| 后端服务 | `apps/backend/app/services/knowledge/global_service.py` |
+| 后端仓库 | `apps/backend/app/repositories/global_knowledge_repo.py` |
+| 数据库 Schema | `apps/backend/app/seed/schema.py`（`global_knowledge_bases` / `global_knowledge_folders` / `global_knowledge_vault_files`） |
 
 ---
 
-## 5. 全局知识类型
+## 1. 范围与目标
 
-| 类型 | 说明 | 示例 |
-| --- | --- | --- |
-| 平台 PRD | AI 测试系统自身的平台级产品说明 | 知识库生成规则、用例评审规则 |
-| 测试规范 | 跨项目测试设计规范 | 状态流转测试、权限测试、异常路径测试 |
-| 用例模板 | 测试用例结构和写法模板 | 功能用例模板、回归用例模板 |
-| 评审规则 | 用例、需求、知识库的检查规则 | 用例必须包含前置条件和期望结果 |
-| 自动化规范 | UI 自动化代码生成和断言规范 | locator 准入、Allure 展示规范 |
-| 通用术语 | 团队统一术语解释 | 测试点、测试用例、阻塞项、采纳 |
-| 通用流程 | 跨项目复用的工作流程 | 需求分析到知识库到用例生成流程 |
-| 其他 | 暂不归类但可复用的知识 | 团队约定、专项说明 |
+### 1.1 目标
 
----
+- 提供一个跨项目可用的"通用知识"容器，让规范、模板、最佳实践等内容被多个项目复用
+- 让知识问答 Agent 能把全局知识作为 5 个检索来源之一（`company_knowledge`），无需重复生产
+- 在权限上把"写"收敛到 admin，避免普通用户误改公司级内容
 
-## 6. 上传流程
+### 1.2 与项目知识库的关系
 
-### 6.1 入口
+- **独立存储**：全局知识库与项目知识库（PRD 00-05）在数据库层面完全独立，共用 `global_knowledge_bases` 系列表，不与项目表关联
+- **跨项目复用**：同一份全局知识可被所有项目通过检索来源开关（`company_knowledge`）引用
+- **检索来源对接**：在 `knowledge-search-settings.tsx` 中，`company_knowledge` 来源类型对应遍历所有全局知识库的 Markdown 文件，作为项目/全部项目知识问答的上下文来源之一
 
-全局知识库页面右上角提供按钮：
+### 1.3 边界
 
-```text
-上传全局知识
-```
-
-点击后打开上传弹窗或上传页面。
-
-### 6.2 上传字段
-
-| 字段 | 是否必填 | 说明 |
-| --- | --- | --- |
-| 知识名称 | 是 | 全局知识的显示名称，同一类型下建议唯一 |
-| 知识类型 | 是 | 平台 PRD、测试规范、用例模板、评审规则、自动化规范、通用术语、通用流程、其他 |
-| 版本号 | 否 | 用户可填写，如不填写系统默认生成 v1 |
-| 适用范围 | 否 | 默认全部项目，可填写业务域、项目类型或团队范围 |
-| 来源说明 | 否 | 说明知识来源，如团队规范、平台 PRD、人工整理 |
-| 描述 | 否 | 简要说明该知识解决什么问题 |
-| 上传文件 | 是 | 支持 Markdown、TXT、DOCX、PDF；第一版建议优先支持 Markdown、TXT、DOCX、PDF |
-
-禁止字段：
-
-- 不显示关联项目。
-- 不显示需求名称。
-- 不显示上传模式“新建需求 / 追加到已有需求”。
-- 不显示是否触发项目知识库更新。
-
-### 6.3 上传结果
-
-上传成功后：
-
-- 创建全局知识文档记录。
-- 原始文件保存到全局知识库文件目录。
-- 系统创建转换任务，将文件转换为 Markdown。
-- Markdown 转换成功后可在详情页预览。
-- 全局知识状态变为“可用”。
-- 如果转换失败，全局知识状态变为“转换失败”，保留原始文件并展示失败原因。
+- 不存储项目特有需求（进 PRD 00-05 需求文档）
+- 不做章节级 diff / 版本化：文件仅保存当前版本，旧版本不可回溯
+- 不做富文本自动转换：仅接受 `.md` 文件上传
+- 不复用项目需求上传接口：全局知识库使用独立接口 `/global-knowledge/...`
 
 ---
 
-## 7. 接口设计
+## 2. 数据模型
 
-### 7.1 上传全局知识
+### 2.1 `global_knowledge_bases`
 
-```http
-POST /api/v1/global-knowledge/documents
-```
-
-请求类型：`multipart/form-data`
-
-| 字段 | 类型 | 必填 | 说明 |
+| 字段 | 类型 | 约束 | 说明 |
 | --- | --- | --- | --- |
-| name | string | 是 | 知识名称 |
-| knowledge_type | string | 是 | 知识类型 |
-| version | string | 否 | 版本号 |
-| scope | string | 否 | 适用范围 |
-| source_note | string | 否 | 来源说明 |
-| description | string | 否 | 描述 |
-| files | file[] | 是 | 上传文件，第一版允许 1 个或多个文件 |
-
-请求规则：
-
-- 不允许传 `project_id`。
-- 如果请求中出现 `project_id`，后端忽略或返回参数错误，建议返回参数错误。
-- 同一次上传多个文件时，系统创建同一个全局知识文档，并为每个文件保存文件记录。
-- 文件大小、扩展名和存储路径遵守系统设置中的上传文件安全规则。
-
-响应示例：
-
-```json
-{
-  "id": "gk_doc_001",
-  "name": "通用测试用例编写规范",
-  "knowledge_type": "test_standard",
-  "version": "v1",
-  "status": "processing",
-  "file_count": 1,
-  "created_at": "2026-05-26T10:00:00+08:00"
-}
-```
-
-### 7.2 查询全局知识列表
-
-```http
-GET /api/v1/global-knowledge/documents
-```
-
-查询参数：
-
-| 参数 | 说明 |
-| --- | --- |
-| keyword | 按知识名称和描述搜索 |
-| knowledge_type | 按知识类型筛选 |
-| status | 按状态筛选 |
-| page | 页码 |
-| page_size | 每页数量 |
-
-列表字段：
-
-- 知识名称
-- 知识类型
-- 版本号
-- 适用范围
-- 文件数量
-- 状态
-- 更新时间
-- 创建人
-
-### 7.3 查看全局知识详情
-
-```http
-GET /api/v1/global-knowledge/documents/{document_id}
-```
-
-详情包含：
-
-- 基础信息
-- 文件列表
-- Markdown 预览内容
-- 版本记录
-- 转换状态
-- 使用记录摘要
-
-### 7.4 更新全局知识元数据
-
-```http
-PATCH /api/v1/global-knowledge/documents/{document_id}
-```
-
-允许更新：
-
-- 知识名称
-- 知识类型
-- 适用范围
-- 来源说明
-- 描述
-
-不允许通过该接口直接覆盖文件内容。文件更新必须走新增版本接口。
-
-### 7.5 新增全局知识版本
-
-```http
-POST /api/v1/global-knowledge/documents/{document_id}/versions
-```
-
-用于上传同一全局知识的新版本。
-
-请求字段：
-
-- version
-- source_note
-- change_summary
-- files
-
-新增版本后：
-
-- 保留旧版本。
-- 新版本转换成功后成为默认可用版本。
-- 下游任务使用时记录具体版本 ID，避免历史任务上下文漂移。
-
-### 7.6 废弃全局知识
-
-```http
-POST /api/v1/global-knowledge/documents/{document_id}/archive
-```
-
-废弃规则：
-
-- 废弃后不再作为新任务默认上下文。
-- 历史任务仍可查看当时引用的版本。
-- 管理员可在列表中筛选废弃知识。
-
----
-
-## 8. 数据模型建议
-
-### 8.1 GlobalKnowledgeDocument
-
-| 字段 | 说明 |
-| --- | --- |
-| id | 主键 |
-| name | 知识名称 |
-| knowledge_type | 知识类型 |
-| scope | 适用范围 |
-| source_note | 来源说明 |
-| description | 描述 |
-| status | processing、available、conversion_failed、archived |
-| current_version_id | 当前可用版本 |
-| created_by | 创建人 |
-| created_at | 创建时间 |
-| updated_at | 更新时间 |
-
-### 8.2 GlobalKnowledgeVersion
-
-| 字段 | 说明 |
-| --- | --- |
-| id | 主键 |
-| document_id | 全局知识文档 ID |
-| version_no | 版本号 |
-| markdown_content | Markdown 内容 |
-| markdown_path | Markdown 文件路径 |
-| change_summary | 变更摘要 |
-| conversion_status | queued、running、success、failed |
-| conversion_summary | 转换摘要 |
-| created_by | 创建人 |
-| created_at | 创建时间 |
-
-### 8.3 GlobalKnowledgeFile
-
-| 字段 | 说明 |
-| --- | --- |
-| id | 主键 |
-| version_id | 全局知识版本 ID |
-| original_filename | 原始文件名 |
-| file_path | 原始文件路径 |
-| file_type | 文件类型 |
-| file_size | 文件大小 |
-| created_at | 创建时间 |
-
-### 8.4 GlobalKnowledgeUsageLog
-
-| 字段 | 说明 |
-| --- | --- |
-| id | 主键 |
-| global_knowledge_version_id | 全局知识版本 ID |
-| usage_type | requirement_analysis、knowledge_build、testcase_generation、automation_generation、failure_diagnosis |
-| target_project_id | 使用时关联的项目，可为空 |
-| target_object_id | 使用时关联的业务对象 |
-| summary | 使用摘要 |
-| created_at | 创建时间 |
-
-说明：
-
-- 全局知识本身不归属于项目。
-- 使用日志可以记录它被哪个项目任务引用，但这不改变全局知识的归属。
-
----
-
-## 9. 文件存储建议
-
-全局知识库文件建议独立存储：
-
-```text
-storage/
-  global-knowledge/
-    documents/
-      {document_id}/
-        versions/
-          {version_id}/
-            raw/
-            markdown/
-```
-
-项目知识库继续使用项目维度目录，不与全局知识库目录混放。
-
----
-
-## 10. 下游使用规则
-
-当 Agent 执行需求分析、知识库生成、测试用例生成、自动化生成或失败诊断时，可以读取全局知识库作为通用规范上下文。
-
-使用优先级：
-
-```text
-项目知识库 > 全局知识库 > 模型通用知识
-```
-
-规则：
-
-- 如果项目知识库和全局知识库存在冲突，以项目知识库为准。
-- 如果全局知识库只是模板或规范，Agent 应将其作为输出格式和检查规则，而不是当作项目业务事实。
-- 全局知识库不能生成项目专属测试用例，必须结合项目知识库或项目来源材料。
-- 下游任务必须记录使用了哪些全局知识版本，便于追溯。
-
----
-
-## 11. 页面设计
-
-### 11.1 全局知识库列表
-
-列表字段：
-
-- 知识名称
-- 知识类型
-- 版本
-- 适用范围
-- 文件数量
-- 状态
-- 更新时间
-- 操作
-
-操作：
-
-- 查看
-- 编辑
-- 新增版本
-- 废弃
-
-筛选：
-
-- 搜索知识名称
-- 知识类型
-- 状态
-
-### 11.2 上传全局知识
-
-页面结构：
-
-```text
-上传全局知识
-
-基础信息
-- 知识名称
-- 知识类型
-- 版本号
-- 适用范围
-- 来源说明
-- 描述
-
-文件
-- 上传文件
-
-操作
-- 取消
-- 上传
-```
-
-上传成功提示：
-
-```text
-全局知识已上传，系统正在转换文件。
-```
-
-转换成功提示：
-
-```text
-全局知识已可用。
-```
-
-转换失败提示：
-
-```text
-文件转换失败，请查看失败原因或重新上传版本。
-```
-
-### 11.3 全局知识详情
-
-详情页包含：
-
-- 基础信息
-- 当前版本 Markdown 预览
-- 文件列表
-- 版本记录
-- 使用记录
-
----
-
-## 12. 状态定义
-
-| 状态 | 说明 | 可编辑 | 可被下游引用 |
+| `id` | TEXT | PRIMARY KEY | 格式 `gkb-<hex8>` |
+| `name` | TEXT | NOT NULL, UNIQUE | 知识库名称，全局唯一 |
+| `description` | TEXT | NOT NULL DEFAULT '' | 描述 |
+| `status` | TEXT | NOT NULL, CHECK IN ('processing', 'available', 'conversion_failed') | 状态，当前仅在序列化中提供 |
+| `root_folder_id` | TEXT | | 根文件夹 ID |
+| `created_by` | TEXT | NOT NULL | 创建者用户 ID |
+| `created_at` | TEXT | NOT NULL DEFAULT CURRENT_TIMESTAMP | |
+| `updated_at` | TEXT | NOT NULL DEFAULT CURRENT_TIMESTAMP | |
+
+### 2.2 `global_knowledge_folders`
+
+| 字段 | 类型 | 约束 | 说明 |
 | --- | --- | --- | --- |
-| 转换中 | 文件已上传，正在转换 Markdown | 否 | 否 |
-| 可用 | 当前版本转换成功 | 是 | 是 |
-| 转换失败 | 文件转换失败 | 是，可新增版本 | 否 |
-| 已废弃 | 管理员废弃该知识 | 否 | 否，历史引用除外 |
+| `id` | TEXT | PRIMARY KEY | 格式 `gkfld-<hex8>` |
+| `knowledge_base_id` | TEXT | NOT NULL, FK → global_knowledge_bases(id) ON DELETE CASCADE | 所属知识库 |
+| `parent_id` | TEXT | FK → global_knowledge_folders(id) ON DELETE CASCADE | 父文件夹，NULL 表示根文件夹 |
+| `name` | TEXT | NOT NULL | 文件夹名称 |
+| `sort_order` | INTEGER | NOT NULL DEFAULT 0 | 排序权重 |
+| `created_at` | TEXT | NOT NULL DEFAULT CURRENT_TIMESTAMP | |
+| `updated_at` | TEXT | NOT NULL DEFAULT CURRENT_TIMESTAMP | |
 
-存储枚举建议：
+**索引与约束**：
 
-| 中文显示 | 存储枚举 |
-| --- | --- |
-| 转换中 | processing |
-| 可用 | available |
-| 转换失败 | conversion_failed |
-| 已废弃 | archived |
+- `UNIQUE(knowledge_base_id, parent_id, name)`：同级目录下文件夹名唯一
+- **部分唯一索引** `idx_global_knowledge_root_folder_name(knowledge_base_id, name) WHERE parent_id IS NULL`：根文件夹名在知识库内唯一（同一知识库内不能有两个同名根文件夹）
+- `FOREIGN KEY(knowledge_base_id) REFERENCES global_knowledge_bases(id) ON DELETE CASCADE`
+- `FOREIGN KEY(parent_id) REFERENCES global_knowledge_folders(id) ON DELETE CASCADE`
+
+### 2.3 `global_knowledge_vault_files`
+
+| 字段 | 类型 | 约束 | 说明 |
+| --- | --- | --- | --- |
+| `id` | TEXT | PRIMARY KEY | 格式 `gkfile-<hex8>` |
+| `knowledge_base_id` | TEXT | NOT NULL, FK → global_knowledge_bases(id) ON DELETE CASCADE | 所属知识库 |
+| `folder_id` | TEXT | NOT NULL, FK → global_knowledge_folders(id) ON DELETE CASCADE | 所属文件夹 |
+| `original_filename` | TEXT | NOT NULL | 上传时的原始文件名 |
+| `display_name` | TEXT | NOT NULL | 显示名称 |
+| `file_type` | TEXT | NOT NULL DEFAULT '' | 文件类型后缀 |
+| `file_size` | INTEGER | NOT NULL DEFAULT 0 | 文件大小（字节） |
+| `raw_path` | TEXT | NOT NULL DEFAULT '' | 原始文件存储路径 |
+| `markdown_path` | TEXT | NOT NULL DEFAULT '' | Markdown 文件存储路径 |
+| `markdown_content` | TEXT | NOT NULL DEFAULT '' | Markdown 正文内容 |
+| `conversion_status` | TEXT | NOT NULL, CHECK IN ('queued', 'running', 'success', 'failed') | 转换状态，当前上传 `.md` 直接为 `success` |
+| `conversion_summary` | TEXT | NOT NULL DEFAULT '' | 转换摘要 |
+| `sort_order` | INTEGER | NOT NULL DEFAULT 0 | 排序权重 |
+| `created_at` | TEXT | NOT NULL DEFAULT CURRENT_TIMESTAMP | |
+| `updated_at` | TEXT | NOT NULL DEFAULT CURRENT_TIMESTAMP | |
+
+**索引与约束**：
+
+- `UNIQUE(folder_id, display_name)`：同一文件夹下文件名唯一
+- `FOREIGN KEY(knowledge_base_id) REFERENCES global_knowledge_bases(id) ON DELETE CASCADE`
+- `FOREIGN KEY(folder_id) REFERENCES global_knowledge_folders(id) ON DELETE CASCADE`
+
+### 2.4 附加索引
+
+| 索引名 | 表 | 字段 | 说明 |
+| --- | --- | --- | --- |
+| `idx_global_knowledge_bases_updated` | `global_knowledge_bases` | `updated_at` | 按更新时间排序 |
+| `idx_global_knowledge_folders_base_parent` | `global_knowledge_folders` | `knowledge_base_id, parent_id, sort_order` | 按知识库+父文件夹+排序查询 |
+| `idx_global_knowledge_vault_files_folder` | `global_knowledge_vault_files` | `folder_id, sort_order, display_name` | 按文件夹+排序查询 |
+
+> 实现依据：`apps/backend/app/seed/schema.py`
 
 ---
 
-## 13. 验收标准
+## 3. API 路由清单
 
-1. 管理员可以在全局知识库页面上传全局知识文件。
-2. 上传表单不出现关联项目字段。
-3. 上传接口不接收 `project_id` 作为有效归属字段。
-4. 上传成功后，全局知识列表出现新记录，状态为转换中或可用。
-5. Markdown、TXT、DOCX、PDF 文件可以转换为 Markdown 预览；转换失败时展示明确原因。
-6. 管理员可以查看全局知识详情和版本记录。
-7. 管理员可以为已有全局知识新增版本。
-8. 管理员可以废弃全局知识，废弃后不再被新任务默认引用。
-9. 测试工程师和访客可以查看全局知识，但不能上传、编辑、废弃。
-10. 项目知识库上传、生成和更新流程不因本功能发生变化。
-11. 项目知识库列表不展示全局知识文件。
-12. 全局知识库列表不展示项目需求文档。
-13. 下游任务引用全局知识时记录具体全局知识版本。
+路由前缀：`/api/v1/global-knowledge`，由 `apps/backend/app/api/v1/global_knowledge.py` 注册。
 
----
+| # | 方法 | 路径 | 角色 | 说明 |
+| --- | --- | --- | --- | --- |
+| 1 | GET | `/global-knowledge/bases` | any | 列出全部知识库，支持 `keyword` 过滤 |
+| 2 | POST | `/global-knowledge/bases` | admin | 创建知识库，自动创建同名根文件夹 |
+| 3 | PATCH | `/global-knowledge/bases/:base_id` | admin | 更新知识库名称/描述，同步根文件夹名 |
+| 4 | GET | `/global-knowledge/bases/:base_id/tree` | any | 获取知识库树视图（文件夹+文件嵌套结构） |
+| 5 | DELETE | `/global-knowledge/bases/:base_id` | admin | 删除知识库（含物理目录清理） |
+| 6 | POST | `/global-knowledge/bases/:base_id/folders` | admin | 在指定文件夹下创建子文件夹 |
+| 7 | POST | `/global-knowledge/bases/:base_id/folders/:folder_id/files` | admin | 上传 Markdown 文件到指定文件夹（多文件 multipart） |
+| 8 | GET | `/global-knowledge/bases/:base_id/files/:file_id` | any | 读取文件详情（含 markdown_content） |
+| 9 | DELETE | `/global-knowledge/bases/:base_id/files/:file_id` | admin | 删除文件（含物理路径清理） |
+| 10 | DELETE | `/global-knowledge/bases/:base_id/folders/:folder_id` | admin | 删除文件夹（级联删除子文件夹+物理目录） |
 
-## 14. 不做范围
-
-- 不做项目知识库到全局知识库的自动提炼。
-- 不做全局知识和项目知识的自动合并发布。
-- 不做向量数据库。
-- 不做复杂审批流。
-- 不做全局知识对项目需求文档的自动改写。
-- 不做外部知识库系统集成。
-- 不做 Git 仓库同步。
+> 服务层内部方法（非 HTTP 路由）：`upsert_markdown_file(base_id, folder_id, display_name, markdown_content, actor)` — 当同名文件已存在时原子替换，失败时回滚，供内部脚本/Agent 调用。
 
 ---
 
-## 15. 与现有 PRD 的关系
+## 4. 功能规格
 
-| 文档 | 关系 |
-| --- | --- |
-| `00-03-AI测试系统-需求文档分析与版本管理PRD.md` | 项目需求上传保持不变，全局知识上传不复用需求上传模式 |
-| `00-05-AI测试系统-知识库生成与更新PRD.md` | 该文档继续负责项目知识库生成与更新；本文只补充全局知识库 |
-| `00-08-AI测试系统-测试用例生成PRD.md` | 用例生成可读取全局测试规范和模板，但业务事实仍来自项目知识库 |
-| `00-11-AI测试系统-模型配置与AgentRuntimePRD.md` | Agent 可将全局知识库作为通用上下文，但必须经过后端服务记录引用 |
-| `00-15-AI测试系统-系统设置PRD.md` | 全局知识上传文件大小、目录和格式限制遵守系统设置 |
-| `03-02-AI测试系统-数据模型PRD.md` | 后续需要补充全局知识相关实体、关系和状态字段 |
+### 4.1 知识库 CRUD
 
+**列表**（GET `/bases`）
+
+- 返回 `{ items: [...] }`，每项含：id、name、description、status、status_label、root_folder_id、file_count、created_at、updated_at、available_actions
+- 支持 `keyword` 参数对 name 和 description 模糊搜索
+
+**创建**（POST `/bases`）
+
+- 校验：name 非空，不重名（`GLOBAL_KNOWLEDGE_BASE_NAME_EXISTS`）
+- 自动生成根文件夹（`root_folder_id`，与 base 同名）
+- 创建后调用 `_serialize_base` 序列化返回
+
+**更新**（PATCH `/bases/:base_id`）
+
+- 修改 name/description；name 仍须在知识库间唯一
+- 同步更新根文件夹名称（`update_folder_name`）
+
+**删除**（DELETE `/bases/:base_id`）
+
+- 仅 admin
+- 递归删除物理目录 `global_knowledge_base_dir(base_id)`
+- 级联删除数据库记录（文件夹、文件 ON DELETE CASCADE）
+- 返回 `{ deleted: true, id: base_id }`
+
+### 4.2 文件夹管理
+
+**创建文件夹**（POST `/bases/:base_id/folders`）
+
+- `parent_id`：指定父文件夹 ID（NULL 为根）
+- 校验：name 非空、不能含 `/` 或 `\`、不能仅由点号组成
+- 同级目录唯一约束违反时返回 `GLOBAL_KNOWLEDGE_FOLDER_NAME_EXISTS`
+- 自动创建物理子目录 `global_knowledge_folder_dir`
+
+**删除文件夹**（DELETE `/bases/:base_id/folders/:folder_id`）
+
+- 仅 admin；不允许删除根文件夹（`GLOBAL_KNOWLEDGE_ROOT_FOLDER_DELETE_FORBIDDEN`）
+- 递归查询所有子文件夹 ID（CTE `descendant_folder_ids`）
+- 批量删除物理目录 + 数据库记录
+
+### 4.3 文件管理
+
+**上传文件**（POST `/bases/:base_id/folders/:folder_id/files`）
+
+- 仅接受 `.md` 格式（`VAULT_UPLOAD_ALLOWED_TYPES = {'md'}`）
+- 多文件上传：逐文件串行处理；失败时清理已落盘内容
+- 存储路径：
+  - 原始文件：`folders/<folder_id>/raw/<file_id>-<safe_name>`
+  - Markdown：`folders/<folder_id>/markdown/<file_id>.md`
+- `conversion_status` 直接写入 `success`（`.md` 即 Markdown）
+
+**读取文件**（GET `/bases/:base_id/files/:file_id`）
+
+- 返回完整文件信息，含 `markdown_content`、`raw_path`、`markdown_path`
+- 物理文件优先读取，缺失时回退 `markdown_content` 字段
+
+**删除文件**（DELETE `/bases/:base_id/files/:file_id`）
+
+- 仅 admin
+- 删除 `raw_path` 与 `markdown_path` 两个物理文件（带路径边界校验）
+- 删除数据库记录
+
+### 4.4 树视图（GET `/bases/:base_id/tree`）
+
+- 返回 `{ base, root }`，`root` 是完整嵌套结构
+- 文件夹节点：`id、type='folder'、name、parent_id、is_root、sort_order、children`
+- 文件节点：`id、type='file'、name、display_name、file_type、file_size、conversion_status、sort_order、created_at、updated_at`
+- 排序：`sort_order` 升序，再按 `name` 字典序
+
+### 4.5 原子 Upsert（内部方法）
+
+`upsert_markdown_file(base_id, folder_id, display_name, markdown_content, actor)`：
+
+- 同名文件已存在时原子替换（写临时文件 + `os.replace` 原子覆盖）
+- 失败时 `_restore_file` 回滚到旧内容
+- 用于内部脚本/Agent 批量写入，当前未被 HTTP 路由直接调用
+
+---
+
+## 5. 前端页面清单
+
+**页面路由**：`/knowledge`（`apps/frontend/src/app/(main)/knowledge/page.tsx`）
+
+单页包含三个 Tab（`knowledgeScopes`）：
+
+| Tab | 路由 key | 图标 | 说明 |
+| --- | --- | --- | --- |
+| 知识库问答 | `project` | FolderKanban | 项目级/全部项目知识问答（PRD 00-05） |
+| **公司知识库** | `company` | Building2 | 全局知识库管理 Tab |
+| 检索设置 | `settings` | Settings2 | 检索来源配置（含 `company_knowledge` 开关） |
+
+**公司知识库 Tab 内部结构**：
+
+- **列表视图**（`companyView === 'list'`）：Table 展示全部 base，含名称、描述、文件数量、更新时间、操作列（查看/编辑/删除）；Toolbar 支持搜索和新建
+- **详情视图**（`companyView === 'detail'`）：
+  - 左侧目录树：可展开/折叠、支持按名称搜索、显示文件
+  - 右侧主区域：文件预览（MarkdownPreview）或文件夹内容卡片
+  - 面包屑导航：base → 文件夹 → 文件
+  - 操作：新建文件夹、上传 Markdown、删除
+
+**检索设置组件**：`KnowledgeSearchSettings`（`apps/frontend/src/components/ai-testing/knowledge-search-settings.tsx`），支持配置 `company_knowledge` 来源的开启/关闭。
+
+---
+
+## 6. 与项目知识库的关系
+
+- 全局知识库独立存储于 `global_knowledge_*` 三张表，与项目知识库（需求文档、探索产物）完全隔离
+- 在检索设置中开启 `company_knowledge` 来源后，项目/全部项目知识问答可将全局知识作为上下文来源之一
+- 关闭 `company_knowledge` 后，检索不再引用全局知识文件
+- 全局知识不参与项目知识库的自动构建流程
+
+---
+
+## 7. 验收规则
+
+| # | 验收条件 | 核对依据路径 |
+| --- | --- | --- |
+| AC-01 | 管理员创建知识库 → 自动产生同名根文件夹；同名知识库创建返回 `GLOBAL_KNOWLEDGE_BASE_NAME_EXISTS` | `global_service.py` create_base → `global_knowledge_repo.py` create_base + create_folder |
+| AC-02 | 同名根文件夹禁止创建（`idx_global_knowledge_root_folder_name` 部分唯一索引） | `schema.py` CREATE UNIQUE INDEX ... WHERE parent_id IS NULL |
+| AC-03 | 同一文件夹下禁止同名文件（`UNIQUE(folder_id, display_name)`） | `schema.py` `global_knowledge_vault_files` UNIQUE 约束；`global_service.py` `_save_vault_file` 捕获 UNIQUE 异常 |
+| AC-04 | 非 admin 用户调用写接口返回 403 | `global_service.py` `_require_admin`；`global_knowledge.py` 所有写路由均依赖此校验 |
+| AC-05 | 上传 `.md` 成功；上传非 `.md` 文件返回 `GLOBAL_KNOWLEDGE_FILE_TYPE_NOT_ALLOWED` | `global_service.py` `_validate_vault_upload_filename`；前端 `CompanyUploadDialog` 仅接受 `.md/.markdown` |
+| AC-06 | 上传同名文件返回 `GLOBAL_KNOWLEDGE_FILE_NAME_EXISTS` | `global_service.py` `_save_vault_file` 捕获 UNIQUE 异常 |
+| AC-07 | 删除根文件夹返回 `GLOBAL_KNOWLEDGE_ROOT_FOLDER_DELETE_FORBIDDEN` | `global_service.py` `delete_folder` 校验 `folder_id == base['root_folder_id']` |
+| AC-08 | 删除知识库同步清理物理目录 | `global_service.py` `delete_base` 调用 `shutil.rmtree(global_knowledge_base_dir(base_id))` |
+| AC-09 | 任意登录用户可读取文件（GET 接口无需 admin） | `global_knowledge.py` GET 路由无 `_require_admin` 调用 |
+| AC-10 | 检索设置中 `company_knowledge` 来源可独立开关，影响项目知识问答的上下文来源 | `knowledge-search-settings.tsx` `sourceDefinitions` 包含 `company_knowledge`；`knowledge/page.tsx` 渲染 `KnowledgeSearchSettings` |
+| AC-11 | 公司知识库 Tab 列表支持按名称/描述关键字搜索 | `knowledge/page.tsx` `filteredCompanyRows` 过滤逻辑；`global_knowledge.py` GET `/bases` 支持 `keyword` 参数 |
+| AC-12 | 文件夹树支持展开/折叠/搜索；上传 Markdown 后刷新树视图 | `knowledge/page.tsx` `CompanyTreeNode` + `CompanyKnowledgeVault` 组件；`openFolderUpload` → `refreshCompanyTree` |

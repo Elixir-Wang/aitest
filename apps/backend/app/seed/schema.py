@@ -879,6 +879,9 @@ CREATE TABLE IF NOT EXISTS performance_analysis_sessions (
   project_id TEXT NOT NULL,
   run_id TEXT NOT NULL,
   status TEXT NOT NULL CHECK(status IN ('collecting', 'analyzing', 'waiting_approval', 'failed', 'rejected')),
+  analysis_status TEXT NOT NULL DEFAULT 'collecting',
+  analysis_stage TEXT NOT NULL DEFAULT 'evidence_collection',
+  repair_status TEXT NOT NULL DEFAULT 'not_applicable',
   analysis_version INTEGER NOT NULL,
   category TEXT NOT NULL DEFAULT '',
   summary TEXT NOT NULL DEFAULT '',
@@ -888,6 +891,12 @@ CREATE TABLE IF NOT EXISTS performance_analysis_sessions (
   evidence_json TEXT NOT NULL DEFAULT '[]',
   missing_evidence_json TEXT NOT NULL DEFAULT '[]',
   proposal_json TEXT NOT NULL DEFAULT '{}',
+  metric_snapshot_json TEXT NOT NULL DEFAULT '{}',
+  report_snapshot_json TEXT NOT NULL DEFAULT '{}',
+  calculator_version TEXT NOT NULL DEFAULT '',
+  prompt_version TEXT NOT NULL DEFAULT '',
+  source_fingerprint TEXT NOT NULL DEFAULT '',
+  audience TEXT NOT NULL DEFAULT 'engineer',
   application_status TEXT NOT NULL DEFAULT 'not_requested',
   selected_change_ids_json TEXT NOT NULL DEFAULT '[]',
   preflight_json TEXT NOT NULL DEFAULT '{}',
@@ -1420,4 +1429,5 @@ CREATE TABLE IF NOT EXISTS ui_automation_execution_runs (
 CREATE INDEX IF NOT EXISTS idx_ui_generation_project_created ON ui_automation_generation_runs(project_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_ui_assets_project_updated ON ui_automation_assets(project_id, updated_at);
 CREATE INDEX IF NOT EXISTS idx_ui_execution_project_created ON ui_automation_execution_runs(project_id, created_at);
+
 """

@@ -1,0 +1,102 @@
+import json
+
+import pytest
+from fastapi import HTTPException
+
+from app.core import db as core_db
+from app.seed.init_db import init_db
+from app.services import report_center_service
+
+
+ADMIN = {"id": "u-admin", "role": "admin", "project_scope": "全部项目"}
+PROJECT_ACTOR = {"id": "u-tester", "role": "tester", "project_scope": "项目A"}
+
+
+def _use_temp_db(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    data_dir = tmp_path / "data"
+    monkeypatch.setattr(core_db, "DATA_DIR", data_dir)
+    monkeypatch.setattr(core_db, "DB_PATH", data_dir / "ai_testing.db")
+    init_db()
+
+
+def _seed_report(db, *, project_id: str, project_name: str, suffix: str, verdict: str = "fail") -> None:
+    db.execute(
+        "INSERT INTO projects (id, name, status, description, created_by) VALUES (?, ?, 'active', '', 'u-admin')",
+        (project_id, project_name),
+    )
+    db.execute(
+        """
+        INSERT INTO performance_tests (id, project_id, name, created_by)
+        VALUES (?, ?, ?, 'u-admin')
+        """,
+        (f"test-{suffix}", project_id, f"压测-{suffix}"),
+    )
+    db.execute(
+        """
+        INSERT INTO performance_test_scripts (
+          id, performance_test_id, project_id, version, generation_source,
+          template_version, input_hash, code, validation_status
+        ) VALUES (?, ?, ?, 1, 'default_plan', 'v1', 'hash', 'pass', 'confirmed')
+        """,
+        (f"script-{suffix}", f"test-{suffix}", project_id),
+    )
+    db.execute(
+        """
+        INSERT INTO performance_test_runs (
+          id, project_id, performance_test_id, script_id, status, created_by
+        ) VALUES (?, ?, ?, ?, 'completed', 'u-admin')
+        """,
+        (f"run-{suffix}", project_id, f"test-{suffix}", f"script-{suffix}"),
+    )
+    db.execute(
+        """
+        INSERT INTO performance_analysis_sessions (
+          id, project_id, run_id, status, analysis_status, analysis_stage,
+          analysis_version, report_snapshot_json, metric_snapshot_json, created_by
+        ) VALUES (?, ?, ?, 'waiting_approval', 'completed', 'completed', 1, ?, ?, 'u-admin')
+        """,
+        (
+            f"analysis-{suffix}",
+            project_id,
+            f"run-{suffix}",
+            json.dumps({"verdict": verdict}),
+            json.dumps({"quality": {"status": "complete"}}),
+        ),
+    )
+
+
+def test_report_center_lists_frozen_performance_reports(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    with core_db.connect() as db:
+        _seed_report(db, project_id="project-a", project_name="项目A", suffix="a")
+
+    reports = report_center_service.list_reports("performance", "all", ADMIN)
+
+    assert len(reports) == 1
+    assert reports[0]["name"] == "压测-a - 性能智能分析报告"
+    assert reports[0]["verdict"] == "fail"
+    assert reports[0]["quality_status"] == "complete"
+    assert reports[0]["href"] == "/projects/project-a/performance-tests/test-a/runs/run-a/analysis/analysis-a"
+
+
+def test_report_center_limits_rows_to_visible_projects(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    with core_db.connect() as db:
+        _seed_report(db, project_id="project-a", project_name="项目A", suffix="a")
+        _seed_report(db, project_id="project-b", project_name="项目B", suffix="b", verdict="pass")
+
+    reports = report_center_service.list_reports("performance", "all", PROJECT_ACTOR)
+
+    assert [report["project_id"] for report in reports] == ["project-a"]
+
+
+def test_report_center_rejects_invisible_project_filter(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    with core_db.connect() as db:
+        _seed_report(db, project_id="project-a", project_name="项目A", suffix="a")
+        _seed_report(db, project_id="project-b", project_name="项目B", suffix="b")
+
+    with pytest.raises(HTTPException) as exc_info:
+        report_center_service.list_reports("performance", "project-b", PROJECT_ACTOR)
+
+    assert getattr(exc_info.value, "status_code", None) == 404

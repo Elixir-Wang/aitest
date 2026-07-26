@@ -42,6 +42,32 @@ class ProposedChange(BaseModel):
     risk_level: Literal["low", "medium", "high"]
 
 
+class PerformanceFinding(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: str = Field(min_length=1, max_length=120)
+    severity: Literal["critical", "high", "medium", "low"]
+    level: EvidenceLevel
+    title: str = Field(min_length=1, max_length=200)
+    statement: str = Field(min_length=1, max_length=4000)
+    confidence: float = Field(ge=0, le=1)
+    evidence_refs: list[str] = Field(default_factory=list)
+    alternative_hypotheses: list[str] = Field(default_factory=list)
+    missing_evidence: list[str] = Field(default_factory=list)
+
+
+class PerformanceRecommendation(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: str = Field(min_length=1, max_length=120)
+    priority: Literal["P0", "P1", "P2", "P3"]
+    action: str = Field(min_length=1, max_length=2000)
+    expected_effect: str = Field(default="", max_length=2000)
+    cost: Literal["low", "medium", "high"]
+    verification: str = Field(min_length=1, max_length=2000)
+    finding_refs: list[str] = Field(default_factory=list)
+
+
 class PerformanceDiagnosis(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -54,6 +80,8 @@ class PerformanceDiagnosis(BaseModel):
     missing_evidence: list[str] = Field(default_factory=list)
     requires_second_approval: bool = False
     can_auto_rerun: bool = False
+    findings: list[PerformanceFinding] = Field(default_factory=list)
+    recommendations: list[PerformanceRecommendation] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def validate_capabilities(self) -> "PerformanceDiagnosis":
@@ -75,6 +103,10 @@ class PerformanceAnalysisOut(BaseModel):
     project_id: str
     run_id: str
     status: PerformanceAnalysisStatus
+    legacy_status: str = ""
+    analysis_status: Literal["collecting", "analyzing", "completed", "failed"] = "collecting"
+    analysis_stage: str = "evidence_collection"
+    repair_status: str = "not_applicable"
     analysis_version: int
     category: str = ""
     summary: str = ""
@@ -84,6 +116,12 @@ class PerformanceAnalysisOut(BaseModel):
     evidence: list[dict[str, Any]] = Field(default_factory=list)
     missing_evidence: list[str] = Field(default_factory=list)
     proposal: dict[str, Any] = Field(default_factory=dict)
+    metric_snapshot: dict[str, Any] = Field(default_factory=dict)
+    report_snapshot: dict[str, Any] = Field(default_factory=dict)
+    calculator_version: str = ""
+    prompt_version: str = ""
+    source_fingerprint: str = ""
+    audience: str = "engineer"
     model_name: str = ""
     error_message: str = ""
     created_by: str
