@@ -1,11 +1,19 @@
 import type { FederatedPointerEvent } from "pixi.js";
-import { Application, Container, Graphics, Sprite } from "pixi.js";
+import { Application, Container, Graphics, Sprite, Text } from "pixi.js";
 
 import { getOfficeBackgroundTexture, loadOfficeAssets } from "@/scene/assets/loadOfficeAssets";
 import { loadSpineAssets } from "@/scene/assets/loadSpineAssets";
+import { CEO_CHARACTER_PROFILE } from "@/scene/characters/character-manifest";
 import { AgentEntity } from "@/scene/entities/AgentEntity";
 import { DeskEntity } from "@/scene/entities/DeskEntity";
-import { buildOfficeDesks, COLORS, SCENE_HEIGHT, SCENE_WIDTH } from "@/scene/layout/officeLayout";
+import {
+  buildDepartmentOfficeLayout,
+  buildOfficeDesks,
+  COLORS,
+  OFFICE_DEPARTMENT_ORDER,
+  SCENE_HEIGHT,
+  SCENE_WIDTH,
+} from "@/scene/layout/officeLayout";
 import { AnimationSystem } from "@/scene/systems/AnimationSystem";
 import { MovementSystem, type WalkPoint } from "@/scene/systems/MovementSystem";
 import type { Agent, Desk, DeskVisitMission } from "@/types/agent";
@@ -13,6 +21,16 @@ import type { Agent, Desk, DeskVisitMission } from "@/types/agent";
 const FRONT_AISLE_Y = SCENE_HEIGHT - 68;
 const WALK_EPSILON = 3;
 const HANDOFF_OFFSET_X = 66;
+const CEO_DESK: Desk = {
+  id: "office-ceo-desk",
+  x: SCENE_WIDTH / 2,
+  y: 222,
+  seatX: SCENE_WIDTH / 2 - 54,
+  seatY: 218,
+  visualScale: 0.94,
+  occupiedBy: "office-ceo",
+  variant: "executive",
+};
 
 type MovementGoal = {
   kind: "handoff" | "handoff-return";
@@ -42,6 +60,7 @@ export class OfficeScene {
   private agentEntities = new Map<string, AgentEntity>();
   private deskEntities = new Map<string, DeskEntity>();
   private officeLayer: Container | null = null;
+  private ceoEntity: AgentEntity | null = null;
 
   private animation = new AnimationSystem();
   private movement = new MovementSystem();
@@ -59,7 +78,7 @@ export class OfficeScene {
   constructor(options: { agents?: Agent[]; desks?: Desk[]; onAgentClick?: (event: OfficeAgentClick) => void } = {}) {
     this.options = { onAgentClick: options.onAgentClick };
     this.agents = (options.agents ?? []).map((agent) => ({ ...agent }));
-    this.desks = (options.desks ?? buildOfficeDesks(this.agents.length)).map((desk) => ({ ...desk }));
+    this.desks = (options.desks ?? this.buildCurrentDesks()).map((desk) => ({ ...desk }));
   }
 
   async init(container: HTMLElement, width: number, height: number) {
@@ -105,7 +124,7 @@ export class OfficeScene {
     if (!this.officeLayer) return;
 
     if (previousCount !== this.agents.length) {
-      this.rebuildDesks(buildOfficeDesks(this.agents.length));
+      this.rebuildDesks(this.buildCurrentDesks());
     }
     this.reconcileAgents();
   }
@@ -144,6 +163,7 @@ export class OfficeScene {
     this.world = null;
     this.agentEntities.clear();
     this.deskEntities.clear();
+    this.ceoEntity = null;
     this.movementGoals.clear();
     this.handoffPauses.clear();
     this.handledMissions.clear();
@@ -160,6 +180,7 @@ export class OfficeScene {
     this.resumePausedHandoffs();
 
     this.animation.update(this.agentEntities, dt);
+    this.ceoEntity?.updateVisuals("idle", dt);
     this.sortOfficeDepth();
     this.syncDeskOccupancy();
   };
@@ -174,6 +195,11 @@ export class OfficeScene {
 
     for (const e of this.agentEntities.values()) {
       e.zIndex = e.position.y;
+      e.overlayLayer.zIndex = 10_000 + e.position.y;
+    }
+    if (this.ceoEntity) {
+      this.ceoEntity.zIndex = this.ceoEntity.position.y;
+      this.ceoEntity.overlayLayer.zIndex = 10_000 + this.ceoEntity.position.y;
     }
 
     for (const desk of this.deskEntities.values()) {
@@ -205,6 +231,8 @@ export class OfficeScene {
       this.movementGoals.delete(agentId);
       this.handoffPauses.delete(agentId);
       this.handledMissions.delete(agentId);
+      entity.overlayLayer.removeFromParent();
+      entity.overlayLayer.destroy({ children: true });
       entity.removeFromParent();
       entity.destroy({ children: true });
       this.agentEntities.delete(agentId);
@@ -369,11 +397,33 @@ export class OfficeScene {
     layer.sortableChildren = true;
     this.officeLayer = layer;
 
-    for (const desk of this.desks) {
+    for (const desk of [CEO_DESK, ...this.desks]) {
       const entity = new DeskEntity(desk);
       this.deskEntities.set(desk.id, entity);
       layer.addChild(entity.shadowGfx, entity.deskLayer, entity.chairLayer, entity.occupiedIndicator);
     }
+
+    const ceoAgent: Agent = {
+      id: "office-ceo",
+      name: "硅基 CEO",
+      department: "CEO",
+      characterProfileId: CEO_CHARACTER_PROFILE.employeeId,
+      color: CEO_CHARACTER_PROFILE.accentColor,
+      x: CEO_DESK.seatX,
+      y: CEO_DESK.seatY,
+      visualScale: CEO_CHARACTER_PROFILE.scale,
+      state: "idle",
+      currentTask: "战略调度官",
+      facing: 1,
+      viewFacing: "front",
+    };
+    const ceoEntity = new AgentEntity(ceoAgent);
+    ceoEntity.eventMode = "none";
+    ceoEntity.cursor = "default";
+    ceoEntity.zIndex = ceoAgent.y;
+    ceoEntity.overlayLayer.zIndex = 10_000 + ceoAgent.y;
+    this.ceoEntity = ceoEntity;
+    layer.addChild(ceoEntity, ceoEntity.overlayLayer);
 
     for (const agent of this.agents) {
       this.spawnAgent(agent);
@@ -390,6 +440,7 @@ export class OfficeScene {
     entity.zIndex = agent.y;
     entity.on("pointertap", (event: FederatedPointerEvent) => {
       event.stopPropagation();
+      entity.wakeFromRest();
       this.options.onAgentClick?.({
         agent: { ...entity.data },
         rosterNo: this.agents.findIndex((candidate) => candidate.id === entity.agentId) + 1,
@@ -397,7 +448,8 @@ export class OfficeScene {
         clientY: event.clientY,
       });
     });
-    this.officeLayer.addChild(entity);
+    entity.overlayLayer.zIndex = 10_000 + agent.y;
+    this.officeLayer.addChild(entity, entity.overlayLayer);
     return entity;
   }
 
@@ -406,11 +458,22 @@ export class OfficeScene {
     for (const entity of this.deskEntities.values()) entity.destroy();
     this.deskEntities.clear();
     this.desks = nextDesks.map((desk) => ({ ...desk }));
-    for (const desk of this.desks) {
+    for (const desk of [CEO_DESK, ...this.desks]) {
       const entity = new DeskEntity(desk);
       this.deskEntities.set(desk.id, entity);
       this.officeLayer.addChild(entity.shadowGfx, entity.deskLayer, entity.chairLayer, entity.occupiedIndicator);
     }
+  }
+
+  private buildCurrentDesks() {
+    if (!this.agents.some((agent) => agent.department)) return buildOfficeDesks(this.agents.length);
+    return buildDepartmentOfficeLayout(
+      this.agents.map((agent, seatIndex) => ({
+        id: agent.id,
+        department: agent.department ?? "其他",
+        seat_index: seatIndex,
+      })),
+    );
   }
 
   private drawMap(parent: Container) {
@@ -425,12 +488,50 @@ export class OfficeScene {
     const bgTex = getOfficeBackgroundTexture();
     if (bgTex) {
       const bg = new Sprite(bgTex);
-      const scale = Math.min(SCENE_WIDTH / bgTex.width, SCENE_HEIGHT / bgTex.height);
+      const scale = Math.max(SCENE_WIDTH / bgTex.width, SCENE_HEIGHT / bgTex.height);
       bg.scale.set(scale);
       bg.position.set((SCENE_WIDTH - bgTex.width * scale) / 2, (SCENE_HEIGHT - bgTex.height * scale) / 2);
       map.addChild(bg);
     }
 
+    this.drawDepartmentGuides(map);
+
     parent.addChildAt(map, 0);
+  }
+
+  private drawDepartmentGuides(map: Container) {
+    const guide = new Graphics();
+    const centers = [118, 358, 602, 842];
+    const colors = [0x4f7cff, 0x18a589, 0xf97316, 0x4a90d9];
+
+    guide.moveTo(118, 320);
+    guide.lineTo(842, 320);
+    guide.stroke({ color: 0x2f6fe4, width: 2, alpha: 0.2 });
+
+    for (const [index, department] of OFFICE_DEPARTMENT_ORDER.entries()) {
+      const centerX = centers[index] ?? SCENE_WIDTH / 2;
+      const color = colors[index] ?? 0x4a90d9;
+      guide.roundRect(centerX - 92, 302, 184, 420, 22);
+      guide.fill({ color, alpha: 0.055 });
+      guide.stroke({ color, width: 1.5, alpha: 0.2 });
+      guide.circle(centerX, 320, 5);
+      guide.fill({ color, alpha: 0.8 });
+
+      const label = new Text({
+        text: department,
+        style: {
+          fill: 0x24364c,
+          fontFamily: "Noto Sans SC, sans-serif",
+          fontSize: 14,
+          fontWeight: "600",
+        },
+      });
+      label.anchor.set(0.5, 0.5);
+      label.position.set(centerX, 292);
+      map.addChild(label);
+    }
+
+    guide.label = "协作链路";
+    map.addChild(guide);
   }
 }

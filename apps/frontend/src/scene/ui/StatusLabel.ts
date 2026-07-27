@@ -21,9 +21,9 @@ const STATE_COLORS: Record<string, number> = {
   thinking: 0x4f8df7,
 };
 
-const CARD_WIDTH = 140;
-const CARD_HEIGHT = 36;
-const LABEL_CENTER_Y = 76;
+const CARD_WIDTH = 118;
+const CARD_HEIGHT = 30;
+const LABEL_CENTER_Y = 28;
 
 export class StatusLabel extends Container {
   private nameText: Text;
@@ -68,24 +68,24 @@ export class StatusLabel extends Container {
   private paintCard() {
     this.cardBackground.clear();
     this.cardBackground.roundRect(-CARD_WIDTH / 2, -CARD_HEIGHT / 2, CARD_WIDTH, CARD_HEIGHT, 6);
-    this.cardBackground.fill({ color: 0xffffff, alpha: 0.96 });
-    this.cardBackground.stroke({ color: 0xdce4ee, width: 1, alpha: 0.95 });
+    this.cardBackground.fill({ color: 0xfffcf4, alpha: 0.98 });
+    this.cardBackground.stroke({ color: 0xcab88f, width: 1.2, alpha: 0.95 });
     this.layoutContent();
   }
 
   private layoutContent() {
     const left = -CARD_WIDTH / 2 + 10;
     this.nameText.anchor.set(0, 0.5);
-    this.nameText.position.set(left, -7);
+    this.nameText.position.set(left, -6);
     this.taskText.anchor.set(0, 0.5);
-    this.taskText.position.set(left, 9);
+    this.taskText.position.set(left, 7);
     this.paintStateDot();
   }
 
   private paintStateDot() {
     const color = STATE_COLORS[this.currentState] ?? STATE_COLORS.idle;
     this.stateDot.clear();
-    this.stateDot.circle(CARD_WIDTH / 2 - 12, -8, 3.5);
+    this.stateDot.circle(CARD_WIDTH / 2 - 10, -6, 3);
     this.stateDot.fill(color);
   }
 }

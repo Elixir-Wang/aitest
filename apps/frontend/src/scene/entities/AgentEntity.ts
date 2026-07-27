@@ -1,6 +1,7 @@
 import { Container, Graphics, Rectangle } from "pixi.js";
 
 import { isSpineReady } from "@/scene/assets/loadSpineAssets";
+import { getCharacterProfile } from "@/scene/characters/character-manifest";
 import { SpineCharacter } from "@/scene/characters/SpineCharacter";
 import { resolveWalkViewFacing, viewFacingToLR } from "@/scene/systems/movementFacing";
 import { Bubble } from "@/scene/ui/Bubble";
@@ -9,6 +10,7 @@ import type { Agent, AgentState } from "@/types/agent";
 
 export class AgentEntity extends Container {
   readonly agentId: string;
+  readonly overlayLayer = new Container();
   private agent: Agent;
   private spineChar: SpineCharacter | null = null;
   private fallbackBody: Graphics | null = null;
@@ -17,11 +19,20 @@ export class AgentEntity extends Container {
   private bubble: Bubble;
   private walkPhase = 0;
   private useSpine = false;
+  private readonly profile;
+  private readonly roleAccessories = new Graphics();
+  private readonly behaviorSeed: number;
+  private idleElapsed = 0;
+  private nextBehaviorAt: number;
+  private reducedMotion = false;
 
   constructor(agent: Agent) {
     super();
     this.agentId = agent.id;
     this.agent = { ...agent };
+    this.profile = getCharacterProfile(agent.characterProfileId ?? agent.id);
+    this.behaviorSeed = stableBehaviorSeed(agent.id);
+    this.nextBehaviorAt = 8 + (this.behaviorSeed % 7);
 
     this.statusLabel = new StatusLabel(agent.name);
     this.bubble = new Bubble();
@@ -34,7 +45,7 @@ export class AgentEntity extends Container {
         this.spineChar.setFacing(agent.facing);
         this.spineChar.setViewFacing(agent.viewFacing ?? "front");
         this.spineChar.playState(agent.state);
-        this.addChild(this.spineChar, this.statusLabel, this.bubble);
+        this.addChild(this.spineChar);
       } else {
         this.spineChar.destroy();
         this.spineChar = null;
@@ -44,12 +55,18 @@ export class AgentEntity extends Container {
       this.initFallbackGraphics();
     }
 
+    this.overlayLayer.eventMode = "none";
+    this.overlayLayer.addChild(this.statusLabel, this.bubble);
+
+    this.mountRoleAccessories();
+    this.addChild(this.roleAccessories);
+
     this.eventMode = "static";
     this.cursor = "pointer";
     this.hitArea = new Rectangle(-84, -92, 168, 210);
 
     this.syncVisual();
-    this.position.set(agent.x, agent.y);
+    this.setPosition(agent.x, agent.y);
     this.setVisualScale(agent.visualScale ?? 1);
   }
 
@@ -66,6 +83,7 @@ export class AgentEntity extends Container {
     const prevBubbleText = this.agent.bubbleText;
     const prevVisualScale = this.agent.visualScale;
     this.agent = { ...this.agent, ...patch };
+    if (patch.state != null && patch.state !== "idle") this.wakeFromRest();
 
     this.statusLabel.setName(this.agent.name);
     this.statusLabel.setState(this.agent.state);
@@ -100,10 +118,12 @@ export class AgentEntity extends Container {
     this.agent.x = x;
     this.agent.y = y;
     this.position.set(x, y);
+    this.overlayLayer.position.set(x, y);
   }
 
   setVisualScale(scale: number) {
     this.scale.set(scale);
+    this.overlayLayer.scale.set(scale);
   }
 
   showBubble(text: string, duration = 4) {
@@ -118,6 +138,7 @@ export class AgentEntity extends Container {
   }
 
   playCustomAnimation(animation: string, task?: string) {
+    this.wakeFromRest();
     this.agent = {
       ...this.agent,
       state: "talking",
@@ -145,6 +166,7 @@ export class AgentEntity extends Container {
   }
 
   updateVisuals(state: AgentState, dt: number) {
+    this.updatePresentation(state, dt);
     if (this.useSpine && this.spineChar) {
       if (state === "walking" && this.agent.targetX != null && this.agent.targetY != null) {
         const viewFacing = resolveWalkViewFacing(this.agent.targetX - this.agent.x, this.agent.targetY - this.agent.y);
@@ -166,6 +188,17 @@ export class AgentEntity extends Container {
     this.statusLabel.setState(state);
     this.statusLabel.setTask(this.agent.currentTask);
     this.updateOverlayPositions();
+  }
+
+  setReducedMotion(reducedMotion: boolean) {
+    this.reducedMotion = reducedMotion;
+    if (reducedMotion) this.wakeFromRest();
+  }
+
+  wakeFromRest() {
+    this.idleElapsed = 0;
+    this.nextBehaviorAt = 8 + ((this.behaviorSeed + Math.floor(performance.now() / 1000)) % 9);
+    this.spineChar?.resumeState(this.agent.state);
   }
 
   private updateOverlayPositions() {
@@ -198,8 +231,52 @@ export class AgentEntity extends Container {
   private initFallbackGraphics() {
     this.fallbackBody = new Graphics();
     this.fallbackScarf = new Graphics();
-    this.addChild(this.fallbackBody, this.fallbackScarf, this.statusLabel, this.bubble);
+    this.addChild(this.fallbackBody, this.fallbackScarf);
     this.useSpine = false;
+  }
+
+  private updatePresentation(state: AgentState, dt: number) {
+    if (this.reducedMotion || state !== "idle") {
+      this.idleElapsed = 0;
+      return;
+    }
+
+    this.idleElapsed += dt;
+    if (this.idleElapsed < this.nextBehaviorAt) return;
+    this.idleElapsed = 0;
+    this.nextBehaviorAt = 10 + ((this.behaviorSeed + Math.floor(performance.now() / 1000)) % 8);
+    this.spineChar?.playFirstAvailable(this.profile.idleActions);
+  }
+
+  private mountRoleAccessories() {
+    const graphics = this.roleAccessories;
+    graphics.clear();
+    this.profile.accessorySlots.slice(0, 2).forEach((accessory, index) => {
+      const x = index === 0 ? -29 : 29;
+      const y = -8 - index * 6;
+      graphics.roundRect(x - 8, y - 7, 16, 14, 4);
+      graphics.fill({ color: this.profile.accentColor, alpha: 0.9 });
+      graphics.stroke({ color: 0xffffff, width: 1.2, alpha: 0.9 });
+
+      if (accessory.includes("glasses") || accessory.includes("monitors")) {
+        graphics.rect(x - 5, y - 3, 4, 5);
+        graphics.rect(x + 1, y - 3, 4, 5);
+        graphics.fill(0xffffff);
+      } else if (accessory.includes("headset") || accessory.includes("compass")) {
+        graphics.circle(x, y, 4);
+        graphics.stroke({ color: 0xffffff, width: 1.5, alpha: 1 });
+      } else if (accessory.includes("chart") || accessory.includes("board")) {
+        graphics.moveTo(x - 5, y + 3);
+        graphics.lineTo(x - 1, y);
+        graphics.lineTo(x + 2, y + 1);
+        graphics.lineTo(x + 5, y - 4);
+        graphics.stroke({ color: 0xffffff, width: 1.5, alpha: 1 });
+      } else {
+        graphics.moveTo(x - 4, y + 3);
+        graphics.lineTo(x + 4, y - 3);
+        graphics.stroke({ color: 0xffffff, width: 1.7, alpha: 1 });
+      }
+    });
   }
 
   private drawFallbackBody(state: AgentState, bob: number) {
@@ -255,6 +332,14 @@ export class AgentEntity extends Container {
     // badge / 工牌
     s.roundRect(facing * 4 - 5, -2 + bounce, 10, 8, 2);
     s.fill(this.agent.color);
-
   }
+}
+
+function stableBehaviorSeed(agentId: string) {
+  let hash = 2166136261;
+  for (const character of agentId) {
+    hash ^= character.charCodeAt(0);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
 }

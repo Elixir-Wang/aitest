@@ -1,6 +1,6 @@
 import { Assets, type Texture } from "pixi.js";
 
-const BACKGROUND_URL = "/assets/office/office.png";
+const BACKGROUND_URL = "/assets/office/silicon-office-bg.webp";
 const DESK_URL = "/assets/office/desk.png";
 const CHAIR_URL = "/assets/office/chair.png";
 

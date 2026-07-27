@@ -1,109 +1,109 @@
 .scene {
-  background-color: #eceeef;
-  background-image: url("/assets/office/ai-workforce-office.webp");
-  background-position: top center;
-  background-repeat: no-repeat;
-  background-size: cover;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #e9eef3;
 }
 
-.floorWash {
-  background:
-    linear-gradient(to bottom, rgb(238 241 244 / 0%) 34%, rgb(231 233 235 / 10%) 58%, rgb(218 221 224 / 54%) 100%),
-    radial-gradient(ellipse at 50% 72%, rgb(255 255 255 / 30%), transparent 58%);
+.sceneFrame {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  aspect-ratio: 960 / 780;
+  overflow: hidden;
+  background: linear-gradient(180deg, rgb(241 246 251 / 18%), rgb(214 224 234 / 28%)), #e9eef3;
 }
 
-.headMotion {
-  animation: head-alive 11s ease-in-out infinite;
-  transform-box: fill-box;
-  transform-origin: 50% 82%;
-  will-change: transform;
+.canvasHost,
+.hitLayer {
+  position: absolute;
+  inset: 0;
 }
 
-.blinkEyes {
-  animation: eye-blink 6.2s linear infinite;
-  transform-box: fill-box;
-  transform-origin: center;
-  will-change: transform;
+.canvasHost canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
 }
 
-.bodyBreath {
-  animation: body-breathe 4.8s ease-in-out infinite;
-  transform-box: fill-box;
-  transform-origin: center bottom;
-  will-change: transform;
+.hitLayer {
+  z-index: 4;
+  padding: 0;
+  border: 0;
+  margin: 0;
+  pointer-events: none;
 }
 
-.screenGlow {
-  animation: screen-pulse 3.8s ease-in-out infinite;
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  border: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
 }
 
-.statusDot {
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--status-color), transparent 86%);
+.agentHitTarget {
+  position: absolute;
+  width: clamp(58px, 10%, 104px);
+  height: clamp(104px, 23%, 188px);
+  padding: 0;
+  border: 0;
+  border-radius: 44%;
+  outline: none;
+  background: transparent;
+  cursor: pointer;
+  pointer-events: auto;
+  transform: translate(-50%, -54%);
 }
 
-@keyframes eye-blink {
-  0%,
-  91%,
-  94%,
-  100% {
-    transform: scaleY(1);
-  }
-  92%,
-  93% {
-    transform: scaleY(0.08);
-  }
+.agentHitTarget::after {
+  position: absolute;
+  inset: 4px;
+  border: 2px solid transparent;
+  border-radius: inherit;
+  content: "";
+  transition:
+    border-color 160ms ease,
+    box-shadow 160ms ease,
+    background-color 160ms ease;
 }
 
-@keyframes head-alive {
-  0%,
-  18%,
-  52%,
-  74%,
-  100% {
-    transform: rotate(0deg) translateY(0);
-  }
-  25% {
-    transform: rotate(-1.4deg) translateY(-0.4px);
-  }
-  62% {
-    transform: rotate(1.2deg) translateY(0.5px);
-  }
-  82% {
-    transform: rotate(-0.6deg) translateY(-0.3px);
-  }
+.agentHitTarget:hover::after {
+  border-color: color-mix(in srgb, var(--agent-color), white 45%);
+  background: color-mix(in srgb, var(--agent-color), transparent 93%);
+  box-shadow: 0 0 0 5px color-mix(in srgb, var(--agent-color), transparent 88%);
 }
 
-@keyframes body-breathe {
-  0%,
-  100% {
-    transform: translateY(0) scaleY(1);
-  }
-  50% {
-    transform: translateY(-0.8px) scaleY(1.006);
-  }
+.agentHitTarget:focus-visible::after {
+  border-color: #1f66d1;
+  background: rgb(255 255 255 / 18%);
+  box-shadow:
+    0 0 0 3px white,
+    0 0 0 6px #1f66d1;
 }
 
-@keyframes screen-pulse {
-  0%,
-  100% {
-    opacity: 0.42;
-  }
-  50% {
-    opacity: 0.72;
-  }
-}
-
-@media (max-width: 639px) {
-  .scene {
-    background-size: auto 780px;
-  }
+.loading {
+  position: absolute;
+  top: 18px;
+  left: 50%;
+  z-index: 5;
+  padding: 8px 14px;
+  border: 1px solid rgb(95 121 153 / 18%);
+  border-radius: 999px;
+  background: rgb(255 255 255 / 82%);
+  box-shadow: 0 8px 24px rgb(47 74 106 / 10%);
+  color: #526477;
+  font-size: 12px;
+  transform: translateX(-50%);
+  backdrop-filter: blur(10px);
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .headMotion,
-  .blinkEyes,
-  .bodyBreath,
-  .screenGlow {
-    animation: none;
+  .agentHitTarget::after {
+    transition: none;
   }
 }

@@ -7,6 +7,7 @@ import test from "node:test";
 const sceneSource = readFileSync(new URL("../src/scene/OfficeScene.ts", import.meta.url), "utf8");
 const movementSource = readFileSync(new URL("../src/scene/systems/MovementSystem.ts", import.meta.url), "utf8");
 const layoutSource = readFileSync(new URL("../src/scene/layout/officeLayout.ts", import.meta.url), "utf8");
+const officeAssetsSource = readFileSync(new URL("../src/scene/assets/loadOfficeAssets.ts", import.meta.url), "utf8");
 const pageSource = readFileSync(new URL("../src/app/(main)/agents/page.tsx", import.meta.url), "utf8");
 const canvasSource = readFileSync(
   new URL("../src/components/ai-testing/silicon-office/office-canvas.tsx", import.meta.url),
@@ -16,6 +17,19 @@ const canvasStyles = readFileSync(
   new URL("../src/components/ai-testing/silicon-office/office-canvas.module.css", import.meta.url),
   "utf8",
 );
+const rosterSource = readFileSync(
+  new URL("../src/components/ai-testing/silicon-office/agent-roster.ts", import.meta.url),
+  "utf8",
+);
+const manifestSource = readFileSync(new URL("../src/scene/characters/character-manifest.ts", import.meta.url), "utf8");
+const spineCharacterSource = readFileSync(
+  new URL("../src/scene/characters/SpineCharacter.ts", import.meta.url),
+  "utf8",
+);
+const agentEntitySource = readFileSync(new URL("../src/scene/entities/AgentEntity.ts", import.meta.url), "utf8");
+const deskEntitySource = readFileSync(new URL("../src/scene/entities/DeskEntity.ts", import.meta.url), "utf8");
+const animationSystemSource = readFileSync(new URL("../src/scene/systems/AnimationSystem.ts", import.meta.url), "utf8");
+const statusLabelSource = readFileSync(new URL("../src/scene/ui/StatusLabel.ts", import.meta.url), "utf8");
 const movementModuleSource = ts.transpileModule(movementSource, {
   compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 },
 }).outputText;
@@ -37,7 +51,8 @@ test("office scene reconciles configured agents instead of only patching initial
 
 test("agent count changes rebuild desks and place every agent at its assigned seat", () => {
   assert.match(sceneSource, /previousCount !== this\.agents\.length/);
-  assert.match(sceneSource, /this\.rebuildDesks\(buildOfficeDesks\(this\.agents\.length\)\)/);
+  assert.match(sceneSource, /this\.rebuildDesks\(this\.buildCurrentDesks\(\)\)/);
+  assert.match(sceneSource, /buildDepartmentOfficeLayout/);
   assert.match(sceneSource, /entity\.setPosition\(incoming\.x, incoming\.y\)/);
   assert.doesNotMatch(sceneSource, /scheduleIdleWanders|wanderPoint|idleWanderAt/);
 });
@@ -56,6 +71,91 @@ test("twelve seats form a spacious four-by-three grid", () => {
   assert.ok(desks[4].visualScale < desks[8].visualScale);
   assert.ok(desks[1].x > desks[5].x);
   assert.ok(desks[2].x < desks[6].x);
+});
+
+test("department layout keeps the collaboration order and three seats per department", () => {
+  assert.match(layoutSource, /export function buildDepartmentOfficeLayout/);
+  assert.match(rosterSource, /buildDepartmentOfficeLayout/);
+  assert.match(rosterSource, /department: employee\.department/);
+  assert.match(layoutSource, /需求工程/);
+  assert.match(layoutSource, /测试设计/);
+  assert.match(layoutSource, /自动化工程/);
+  assert.match(layoutSource, /运行与分析/);
+  assert.match(layoutSource, /其他/);
+});
+
+test("office character manifest defines a stable CEO placeholder and every employee profile", () => {
+  assert.match(manifestSource, /office-ceo/);
+  assert.match(manifestSource, /CEO_CHARACTER_PROFILE/);
+  for (const employeeId of [
+    "document_editor",
+    "requirement_standardization",
+    "requirement_analysis",
+    "knowledge_query",
+    "test_case_generation",
+    "test_point_generation",
+    "api_test_generation",
+    "api_scenario_orchestration",
+    "ui_test_generation",
+    "page_exploration",
+    "performance_script_generation",
+    "performance_report_analysis",
+  ]) {
+    assert.match(manifestSource, new RegExp(`\\"${employeeId}\\"`));
+  }
+  assert.match(manifestSource, /getCharacterProfile/);
+  assert.match(manifestSource, /accessorySlots/);
+  assert.match(manifestSource, /idleActions/);
+});
+
+test("office scene uses the confirmed static background and renders the CEO between department islands", () => {
+  assert.match(officeAssetsSource, /silicon-office-bg\.webp/);
+  assert.match(sceneSource, /office-ceo/);
+  assert.match(sceneSource, /CEO_CHARACTER_PROFILE/);
+  assert.match(sceneSource, /OFFICE_DEPARTMENT_ORDER/);
+  assert.match(sceneSource, /协作链路/);
+  assert.match(sceneSource, /战略调度官/);
+});
+
+test("seated characters render behind desks while labels stay in the foreground", () => {
+  assert.match(agentEntitySource, /readonly overlayLayer = new Container/);
+  assert.match(sceneSource, /entity.overlayLayer.zIndex/);
+  assert.match(sceneSource, /addChild\(entity, entity\.overlayLayer\)/);
+  assert.match(layoutSource, /SEAT_OFFSET_Y = 26/);
+});
+
+test("CEO receives a business-class desk, suit skin, plant, and right-side monitor", () => {
+  assert.match(sceneSource, /CEO_DESK/);
+  assert.match(sceneSource, /variant: "executive"/);
+  assert.match(manifestSource, /skin: "harri"/);
+  assert.match(manifestSource, /agentId === CEO_CHARACTER_PROFILE\.employeeId/);
+  assert.match(deskEntitySource, /drawExecutiveDesk/);
+  assert.match(deskEntitySource, /drawPlant/);
+  assert.match(deskEntitySource, /monitorX = 48/);
+  assert.match(sceneSource, /x: CEO_DESK.seatX/);
+  assert.match(sceneSource, /y: CEO_DESK.seatY/);
+});
+
+test("employee desks use left-side seating, right-side monitors, and on-desk title plates", () => {
+  assert.match(layoutSource, /seatX: centerX - 32/);
+  assert.match(deskEntitySource, /drawStandardDesk/);
+  assert.match(deskEntitySource, /monitorX = 34/);
+  assert.match(statusLabelSource, /LABEL_CENTER_Y = 28/);
+});
+
+test("Spine characters use the manifest skin and render role-specific accessories", () => {
+  assert.match(spineCharacterSource, /getCharacterProfile/);
+  assert.match(spineCharacterSource, /profile\.skin/);
+  assert.match(agentEntitySource, /accessorySlots/);
+  assert.match(agentEntitySource, /mountRoleAccessories/);
+});
+
+test("human-like idle behavior keeps gestures but removes all sleeping effects", () => {
+  assert.match(agentEntitySource, /stableBehaviorSeed/);
+  assert.match(agentEntitySource, /profile\.idleActions/);
+  assert.match(animationSystemSource, /prefersReducedMotion/);
+  assert.doesNotMatch(agentEntitySource, /sleeping|sleep-loop|restIndicator|Z · z/);
+  assert.doesNotMatch(animationSystemSource, /entity\.apply\(\{ state: "sleeping"/);
 });
 
 test("an incomplete perspective row stays centered", () => {
@@ -103,36 +203,38 @@ test("employee configuration is refreshed while the workspace remains open", () 
   assert.match(pageSource, /员工配置同步失败/);
 });
 
-test("office workspace keeps the scene primary and moves details behind selection", () => {
-  assert.match(pageSource, /viewMode/);
-  assert.match(pageSource, /卡片视图/);
-  assert.match(pageSource, /列表视图/);
-  assert.match(pageSource, /detailOpen/);
-  assert.match(pageSource, /onClose=\{\(\) => setDetailOpen\(false\)\}/);
-  assert.doesNotMatch(pageSource, /OverviewMetric/);
-  assert.doesNotMatch(pageSource, /今日任务/);
+test("office workspace uses a compact metrics header and permanent detail panel", () => {
+  assert.doesNotMatch(pageSource, /viewMode/);
+  assert.doesNotMatch(pageSource, /列表视图/);
+  assert.doesNotMatch(pageSource, /卡片视图/);
+  assert.match(pageSource, /status_group=failed/);
+  assert.match(pageSource, /今日运行/);
+  assert.match(pageSource, /失败/);
+  assert.match(pageSource, /selectedEmployee/);
+  assert.match(pageSource, /未选择员工/);
+  assert.match(pageSource, /EmployeeDetail/);
+  assert.doesNotMatch(pageSource, /EmployeeListView/);
   assert.doesNotMatch(pageSource, /placeholder="搜索员工"/);
 });
 
-test("active office view is a fixed front-facing employee wall", () => {
+test("active office view mounts one Pixi office scene and preserves DOM employee buttons", () => {
   assert.match(canvasSource, /硅基员工动态办公室/);
-  assert.match(canvasSource, /function AgentDesk/);
-  assert.match(canvasSource, /function LayeredChibi/);
-  assert.match(canvasSource, /function DeskIllustration/);
-  assert.match(canvasSource, /AI 测试总控/);
-  assert.match(canvasSource, /grid-cols-2/);
-  assert.match(canvasSource, /xl:grid-cols-4/);
-  assert.doesNotMatch(canvasSource, /OfficeScene/);
+  assert.match(canvasSource, /new OfficeScene/);
+  assert.match(canvasSource, /scene\.updateAgents\(agents\)/);
+  assert.match(canvasSource, /scene\.destroy\(\)/);
+  assert.match(canvasSource, /ResizeObserver/);
+  assert.match(canvasSource, /aria-label=\{`\$\{agent\.name\}/);
+  assert.match(canvasSource, /onAgentSelect\(agent\.id\)/);
+  assert.doesNotMatch(canvasSource, /function LayeredChibi/);
+  assert.doesNotMatch(canvasSource, /function DeskIllustration/);
   assert.doesNotMatch(canvasSource, /MovementSystem/);
-  assert.doesNotMatch(canvasSource, /ResizeObserver/);
 });
 
-test("employee animation is limited to subtle human micro-motion", () => {
-  assert.match(canvasStyles, /@keyframes eye-blink/);
-  assert.match(canvasStyles, /@keyframes head-alive/);
-  assert.match(canvasStyles, /@keyframes body-breathe/);
+test("office canvas keeps a stable aspect ratio and accessible reduced-motion fallback", () => {
+  assert.match(canvasStyles, /aspect-ratio: 960 \/ 780/);
+  assert.match(canvasStyles, /\.agentHitTarget/);
+  assert.match(canvasStyles, /:focus-visible/);
   assert.match(canvasStyles, /prefers-reduced-motion: reduce/);
-  assert.doesNotMatch(canvasStyles, /translateX\([^0]/);
 });
 
 function fakeEntity() {

@@ -1,5 +1,5 @@
 import type { ApiTaskItem } from "@/lib/api-client";
-import { buildOfficeDesks } from "@/scene/layout/officeLayout";
+import { buildDepartmentOfficeLayout } from "@/scene/layout/officeLayout";
 import type { Agent } from "@/types/agent";
 
 export type SiliconEmployee = {
@@ -23,10 +23,11 @@ export function tasksForEmployee(employee: SiliconEmployee, tasks: ApiTaskItem[]
 
 export function buildOfficeAgents(employees: SiliconEmployee[], tasks: ApiTaskItem[]): Agent[] {
   const orderedEmployees = [...employees].sort((left, right) => left.seat_index - right.seat_index);
-  const desks = buildOfficeDesks(orderedEmployees.length);
+  const desks = buildDepartmentOfficeLayout(orderedEmployees);
+  const deskByEmployeeId = new Map(desks.map((desk) => [desk.occupiedBy, desk]));
 
-  return orderedEmployees.map((employee, seatIndex) => {
-    const desk = desks[seatIndex];
+  return orderedEmployees.map((employee) => {
+    const desk = deskByEmployeeId.get(employee.id);
     const assignedTasks = tasksForEmployee(employee, tasks);
     const currentTask = assignedTasks[0];
     const state = currentTask
@@ -38,6 +39,8 @@ export function buildOfficeAgents(employees: SiliconEmployee[], tasks: ApiTaskIt
     return {
       id: employee.id,
       name: employee.name,
+      department: employee.department,
+      characterProfileId: employee.id,
       color: parseAccentColor(employee.accent_color),
       x: desk?.seatX ?? 0,
       y: desk?.seatY ?? 0,

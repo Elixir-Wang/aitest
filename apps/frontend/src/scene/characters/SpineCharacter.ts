@@ -7,6 +7,7 @@ import {
   getSpineSkeletonAlias,
   type SpineCharacterPack,
 } from "@/scene/assets/loadSpineAssets";
+import { getCharacterProfile } from "@/scene/characters/character-manifest";
 import { type ChibiFacing, resolveChibiPresetAnim } from "@/scene/characters/chibiAgentPresets";
 import { getChibiSkinName } from "@/scene/characters/chibiStickerSkins";
 import type { AgentState } from "@/types/agent";
@@ -68,6 +69,7 @@ const PACK_CONFIG: Record<SpineCharacterPack, PackConfig> = {
 export class SpineCharacter extends Container {
   private readonly agentId: string;
   private readonly agentColor: number;
+  private readonly profile;
   private spine: Spine | null = null;
   private shadow: Graphics;
   private currentAnim = "";
@@ -82,6 +84,7 @@ export class SpineCharacter extends Container {
     super();
     this.agentId = agentId;
     this.agentColor = agentColor;
+    this.profile = getCharacterProfile(agentId);
     this.shadow = new Graphics();
     this.addChild(this.shadow);
     this.createSpine();
@@ -145,6 +148,25 @@ export class SpineCharacter extends Container {
     if (entry) entry.mixDuration = 0.12;
   }
 
+  playFirstAvailable(animations: string[], loop = false) {
+    if (!this.spine || !this.ready) return false;
+    const animation = animations.find((candidate) => this.spine?.skeleton.data.findAnimation(candidate));
+    if (!animation) return false;
+    this.customAnimation = animation;
+    this.currentAnim = animation;
+    const entry = this.spine.state.setAnimation(0, animation, loop);
+    this.spine.state.timeScale = 1;
+    if (entry) entry.mixDuration = 0.18;
+    return true;
+  }
+
+  resumeState(state: AgentState) {
+    this.customAnimation = undefined;
+    this.currentAnim = "";
+    this.agentState = state;
+    this.applyAnimation();
+  }
+
   getHeadOffsetY(): number {
     if (!this.spine || !this.pack) return -52;
 
@@ -181,6 +203,8 @@ export class SpineCharacter extends Container {
       if (this.agentState === "talking" && (this.viewFacing === "left" || this.viewFacing === "right")) {
         return CHIBI_DIR_ANIM.idle[this.viewFacing];
       }
+      const profileAnim = this.profile.stateActions[this.agentState];
+      if (profileAnim) return profileAnim;
       const presetAnim = resolveChibiPresetAnim(this.agentId, this.agentState);
       if (presetAnim) return presetAnim;
     }
@@ -240,7 +264,9 @@ export class SpineCharacter extends Container {
       });
 
       if (pack === "chibi-stickers") {
-        const skinName = getChibiSkinName(this.agentId);
+        const skinName = spine.skeleton.data.findSkin(this.profile.skin)
+          ? this.profile.skin
+          : getChibiSkinName(this.agentId);
         if (spine.skeleton.data.findSkin(skinName)) {
           spine.skeleton.setSkinByName(skinName);
           spine.skeleton.setSlotsToSetupPose();

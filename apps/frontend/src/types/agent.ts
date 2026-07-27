@@ -26,6 +26,8 @@ export interface DeskVisitMission {
 export interface Agent {
   id: string;
   name: string;
+  department?: string;
+  characterProfileId?: string;
   color: number;
   x: number;
   y: number;
@@ -57,4 +59,5 @@ export interface Desk {
   /** Perspective scale based on the desk row depth. */
   visualScale?: number;
   occupiedBy?: string;
+  variant?: "standard" | "executive";
 }

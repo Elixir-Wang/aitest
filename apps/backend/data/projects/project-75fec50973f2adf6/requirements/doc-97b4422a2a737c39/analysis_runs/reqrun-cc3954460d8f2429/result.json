@@ -1,0 +1,100 @@
+{
+  "status": "needs_clarification",
+  "summary": "发现 9 个待澄清问题",
+  "analysis_summary": "发现 9 个待澄清问题",
+  "understanding_markdown": "# 需求理解\n\n## 1. 需求背景\n\n第三方渠道服务当前已有 Python 版本（包括 gateway 和 worker），现已使用 Go 重构。需要将 Go 版本逐步上线，并保证上线过程中的流量迁移平稳、异常时可快速回退。\n\n关键约束：\n- Go gateway 和 Python gateway 对第三方 webhook 的处理方式不同。\n- Go gateway 和 Python gateway 写入 RabbitMQ 的消息结构不同。\n- 因此 Go worker 不能直接消费 Python gateway 写入的队列消息，Python worker 也不能直接消费 Go gateway 写入的队列消息。\n\n基于该约束，本次上线不采用 worker 层混合消费，也不采用同一队列竞争消费，而采用 gateway 与 worker 成对灰度的方式。\n\n## 2. 目标与价值\n\n本次上线目标：\n1. 支持 Go gateway + Go worker 独立承接第三方渠道流量。\n2. 保证 Python 链路和 Go 链路互相隔离，避免队列消息格式混用。\n3. 根据第三方平台 webhook 配置能力选择不同灰度方式。\n4. 支持异常时快速切回 Python 链路。\n5. 保证迁移期间消息不丢失、不重复回复、可观测、可排查。\n\n## 3. 用户角色与使用场景\n\n| 用户角色 | 使用场景 | 用户目标 | 已知约束 |\n|---------|---------|---------|---------|\n| 运维/发布工程师 | 灰度上线 Go 版本服务 | 逐步将第三方渠道流量从 Python 链路迁移到 Go 链路，保证平稳过渡 | 两套 gateway 写入 MQ 的消息结构不一致，不能混用 |\n| 运维/发布工程师 | 异常回退 | 发现异常时快速将流量切回 Python 链路 | 优先切入口流量，而非搬运队列存量消息 |\n| 第三方平台 | 发送 webhook 消息 | 将消息发送到配置的 gateway URL | 根据平台能力，可配置到机器人级别或渠道级别 |\n| 客服/业务运营 | 观察迁移过程 | 确认消息正常处理，无丢失或重复 | 原文未说明运营侧是否有专属监控面板 |\n\n## 4. 功能范围\n\n**包含的功能**：\n1. Go gateway 独立接收第三方渠道 webhook 请求\n2. Go gateway 将消息写入独立 Go 队列\n3. Go worker 独立消费 Go 队列消息并处理\n4. Python gateway 继续处理未迁移渠道的流量\n5. Python worker 继续消费 Python 队列消息\n6. A 类平台支持按机器人维度灰度迁移和回退\n7. B 类平台支持按渠道维度整体切换和回退\n8. 队列完全隔离：Go 队列与 Python 队列独立命名、独立 retry queue 和 DLQ\n9. 回退时优先切入口流量，Go worker 继续处理存量消息\n\n**不包含的功能**：\n1. 不采用 worker 层混合消费\n2. 不采用同一队列竞争消费\n3. 不允许 Go gateway 写入 Python 队列\n4. 不允许 Python gateway 写入 Go 队列\n5. 不允许 Go worker 消费 Python 队列\n6. 不允许 Python worker 消费 Go 队列\n7. 不允许 Go 队列消息直接搬到 Python 队列\n8. 不允许 Python 队列消息直接搬到 Go 队列\n9. 原文未说明是否包含自动化灰度发布平台或工具\n\n## 5. 业务流程\n\n### A 类平台（支持按机器人配置 webhook）灰度迁移流程\n\n1. 运维工程师确认 Go gateway 和 Go worker 已部署就绪\n2. 运维工程师确认 Go 队列已创建（独立命名，如 cyber_telegram_go）\n3. 运维工程师确认路由配置正确：Go gateway 只写 Go 队列，Go worker 只消费 Go 队列\n4. 运维工程师在第三方平台将目标机器人的 webhook URL 从 Python gateway 改为 Go gateway\n5. 第三方平台将 webhook 请求发送到 Go gateway\n6. Go gateway 处理请求并写入 Go 队列\n7. Go worker 从 Go 队列消费消息并处理\n8. 运维工程师观察迁移是否正常\n9. 如异常，执行回退流程（见下方回退流程）\n\n### B 类平台（不支持按机器人配置 webhook）灰度迁移流程\n\n1. 运维工程师确认 Go gateway 和 Go worker 已部署就绪\n2. 运维工程师确认 Go 队列已创建\n3. 运维工程师确认路由配置正确\n4. 运维工程师在第三方平台将该渠道的 webhook URL 从 Python gateway 改为 Go gateway\n5. 第三方平台将 webhook 请求发送到 Go gateway\n6. Go gateway 处理请求并写入 Go 队列\n7. Go worker 从 Go 队列消费消息并处理\n8. 运维工程师观察迁移是否正常\n9. 如异常，执行回退流程\n\n### A 类平台回退流程\n\n**场景一：Go worker 正常，仅需回退某个机器人**\n1. 运维工程师在第三方平台将异常机器人的 webhook 改回 Python gateway URL\n2. Go gateway 不再接收该机器人新流量\n3. Go worker 继续处理 Go queue 中该机器人已入队消息\n4. 运维工程师观察 Go queue ready / unacked 清零\n\n**场景二：Go worker 本身异常**\n1. webhook 立即切回 Python gateway\n2. 暂停 Go worker\n3. 保留 Go queue / Go DLQ\n4. 评估修复后重放或人工补偿\n\n### B 类平台回退流程\n\n**场景一：Go worker 可以继续处理**\n1. 将该渠道 webhook 从 Go gateway URL 改回 Python gateway URL\n2. Go gateway 不再接收该渠道新流量\n3. Python gateway 恢复接收该渠道流量\n4. Python worker 继续消费 Python 队列\n5. Go worker 处理 Go 队列存量消息\n\n**场景二：Go worker 不可用**\n1. 入口立即切回 Python\n2. 暂停 Go worker\n3. 保留 Go queue / Go DLQ\n4. 根据原始 webhook、业务日志或转换脚本评估补偿\n\n## 6. 状态流转\n\n原文未定义业务对象（如机器人、渠道、迁移任务）的明确状态机。文档主要描述的是运维操作流程而非业务对象状态流转。\n\n**可推断的运维操作状态**（原文未明确定义状态机）：\n\n| 当前状态 | 触发条件/动作 | 执行角色 | 下一状态 | 可观察结果 |\n|---------|-------------|---------|---------|-----------|\n| Python 链路运行中 | 将 webhook 改为 Go gateway URL | 运维工程师 | 灰度迁移中 | 流量开始进入 Go 链路 |\n| 灰度迁移中 | 观察正常 | 运维工程师 | Go 链路运行中 | 消息正常处理 |\n| 灰度迁移中 | 发现异常，执行回退 | 运维工程师 | Python 链路运行中 | 流量切回 Python 链路 |\n| Go 链路运行中 | 发现异常，执行回退 | 运维工程师 | Python 链路运行中 | 流量切回 Python 链路 |\n| Go 链路运行中 | Go worker 处理完 Go queue 存量消息 | 运维工程师 | 迁移完成 | Go queue ready/unacked 清零 |\n\n原文未说明：\n- 迁移完成后 Go 链路和 Python 链路的最终状态（是否下线 Python 链路）\n- 灰度迁移中 Go worker 异常时 Go queue 中存量消息的处理状态\n- 回退后 Go queue 中存量消息的最终处理时限\n\n## 7. 业务规则\n\n| 规则类型 | 触发条件 | 判断逻辑 | 处理结果 |\n|---------|---------|---------|---------|\n| 链路隔离规则 | 任何消息写入或消费 | Go gateway 只能写 Go 队列，Python gateway 只能写 Python 队列 | 禁止跨语言混用 |\n| 队列隔离规则 | 队列创建或消费 | Go 队列和 Python 队列独立命名、独立 retry queue 和 DLQ | 队列完全隔离 |\n| 消费隔离规则 | worker 启动 | Go worker 只消费 Go 队列，Python worker 只消费 Python 队列 | 禁止跨语言消费 |\n| 灰度粒度规则 | A 类平台迁移 | 支持按机器人维度灰度 | 可单机器人迁移和回退 |\n| 灰度粒度规则 | B 类平台迁移 | 不支持按机器人灰度 | 必须渠道级整体切换 |\n| 回退优先级规则 | 异常回退 | 优先将新流量切回 Python gateway | 不优先搬运 Go 队列消息 |\n| 回退后存量处理规则 | 回退后 Go worker 正常 | Go worker 继续处理 Go queue 存量消息 | 等待 Go queue ready/unacked 清零 |\n| 回退后存量处理规则 | 回退后 Go worker 不可用 | 暂停 Go worker，保留 Go queue / Go DLQ | 人工评估重放或补偿 |\n| 队列命名规则 | 创建 Go 队列 | 在原 Python 队列名后加 `_go` 后缀 | 如 cyber_telegram → cyber_telegram_go |\n| 多渠道迁移规则 | 同时迁移多个渠道 | 每个渠道单独配置 Go 队列，不共用 | 如 CHANNEL_GATEWAY_ENABLED_PLATFORMS=telegram,lark |\n\n## 8. 页面与交互\n\n原文未说明具体的页面和交互设计。本文档为灰度上线评审方案，不涉及用户界面。\n\n**已知的配置项**（非页面，属于配置管理）：\n- `CHANNEL_GATEWAY_ENABLED_PLATFORMS`：配置 Go gateway 启用的平台列表\n- `CHANNEL_GATEWAY_TELEGRAM_QUEUE`：配置 Telegram 渠道的 Go 队列名\n- `MQ_QUEUE_NAME_TELEGRAM`：Python 链路使用的原队列名\n\n**已知的操作**（非页面，属于运维操作）：\n- 在第三方平台修改 webhook URL\n- 修改服务配置并重启/重载\n- 观察队列指标（ready / unacked）\n\n原文未说明：\n- 是否有灰度管理后台或控制面板\n- 是否有迁移进度可视化界面\n- 是否有异常告警和通知页面\n\n## 9. 数据与系统交互\n\n### 已知数据\n\n**队列数据**：\n- Python 队列：原队列名（如 cyber_telegram），消息结构为 Python gateway 写入格式\n- Go 队列：原队列名 + `_go` 后缀（如 cyber_telegram_go），消息结构为 Go gateway 写入格式\n- 两套队列的消息结构不一致，不能混用\n\n**配置数据**：\n- `CHANNEL_GATEWAY_ENABLED_PLATFORMS`：Go gateway 启用的平台列表\n- `CHANNEL_GATEWAY_{PLATFORM}_QUEUE`：各平台 Go 队列名\n- `MQ_QUEUE_NAME_{PLATFORM}`：Python 链路队列名\n\n### 系统交互\n\n```text\n第三方平台 webhook\n       |\n       v\n  [Python gateway] 或 [Go gateway]  (根据 webhook URL 配置)\n       |                    |\n       v                    v\n  Python queue         Go queue\n       |                    |\n       v                    v\n  Python worker         Go worker\n```\n\n**交互说明**：\n1. 第三方平台 → gateway：通过 webhook URL 发送 HTTP 请求\n2. gateway → queue：将处理后的消息写入 RabbitMQ 队列\n3. worker → queue：从 RabbitMQ 队列消费消息\n\n### 系统边界\n\n| 系统/组件 | 职责 | 已知约束 |\n|----------|------|---------|\n| 第三方平台 | 发送 webhook 请求 | 根据平台能力，可配置到机器人级别或渠道级别 |\n| Python gateway | 接收 webhook，写入 Python 队列 | 只写 Python 队列 |\n| Go gateway | 接收 webhook，写入 Go 队列 | 只写 Go 队列 |\n| Python queue | 存储 Python gateway 写入的消息 | 消息结构为 Python 格式 |\n| Go queue | 存储 Go gateway 写入的消息 | 消息结构为 Go 格式，独立 retry queue 和 DLQ |\n| Python worker | 消费 Python 队列消息 | 只消费 Python 队列 |\n| Go worker | 消费 Go 队列消息 | 只消费 Go 队列 |\n\n原文未说明：\n- webhook 请求的格式和字段\n- gateway 处理 webhook 的具体逻辑\n- worker 处理消息的具体逻辑\n- 消息丢失或重复的检测机制\n- 监控和告警系统的对接方式",
+  "clarification_markdown": "# 待澄清问题\n\n| 优先级 | 模块/对象 | 澄清问题 | 选项 A | 选项 B | 测试影响 |\n|-------|----------|---------|--------|--------|------|\n| P0 | 灰度迁移流程 | A 类平台按机器人灰度迁移时，同一个机器人下的所有 webhook 事件是否必须整体迁移，还是可以按事件类型（如消息、回调）拆分迁移？ | 机器人维度整体迁移，该机器人的所有 webhook 事件全部走 Go 链路 | 可以按事件类型拆分，部分事件类型走 Go 链路，部分仍走 Python 链路 | 影响灰度迁移的测试用例设计：如果按事件类型拆分，需要测试不同事件类型在不同链路的处理；如果整体迁移，则只需验证机器人级切换的完整性 |\n| P0 | 灰度迁移流程 | A 类平台灰度迁移时，同一个机器人下的 webhook URL 在第三方平台修改后，是否存在新旧 URL 同时生效的过渡期（即第三方平台同时向新旧两个 URL 发送请求）？ | 不存在过渡期，修改后所有新请求立即发往新 URL | 存在过渡期，第三方平台可能同时向新旧 URL 发送请求一段时间 | 影响消息去重和幂等性测试设计：如果存在过渡期，需要验证双写场景下消息不重复处理 |\n| P0 | 消息处理 | Go gateway 收到 webhook 请求后写入 Go 队列失败（如 RabbitMQ 不可用）时，Go gateway 如何处理？是否向第三方平台返回错误响应？ | Go gateway 返回 5xx 错误给第三方平台，由第三方平台重试 | Go gateway 本地缓存或重试写入，不立即返回错误 | 影响消息丢失场景的测试用例设计和异常处理断言 |\n| P0 | 消息处理 | Go worker 消费 Go 队列消息处理失败时，重试机制和最终失败处理策略是什么？ | 消息进入 retry queue 重试若干次，最终进入 Go DLQ | 消息直接进入 Go DLQ，不重试 | 影响异常处理场景的测试用例设计，无法验证重试逻辑和 DLQ 消息的最终处理 |\n| P1 | 回退方案 | A 类平台回退时，Go worker 继续处理 Go queue 中已入队消息，但该机器人的 webhook 已切回 Python gateway。如果 Go worker 处理完消息后需要向第三方平台回复（如发送消息状态回调），此时回复应该走 Go 链路还是 Python 链路？ | Go worker 处理完存量消息后，通过 Go 链路直接回复第三方平台 | Go worker 处理完存量消息后，将回复结果写入 Python 队列，由 Python worker 回复 | 影响回退场景的测试用例设计，无法验证存量消息处理完成后的回复是否正确路由 |\n| P1 | 回退方案 | B 类平台回退时，Go worker 处理 Go queue 存量消息期间，Python gateway 已恢复接收新流量。如果 Go worker 处理的消息与 Python worker 处理的新消息涉及同一业务对象（如同一客户会话），是否存在数据一致性问题？ | 存在一致性问题，需要设计补偿机制或等待 Go queue 清空后再恢复 Python 链路 | 不存在一致性问题，Go 和 Python 处理的消息在业务上完全独立 | 影响回退场景的数据一致性测试设计，无法验证并发处理同一业务对象时的正确性 |\n| P1 | 监控与可观测性 | 灰度迁移期间，如何判断迁移是否正常？具体的可观测指标和成功标准是什么？ | Go 链路消息处理成功率 >= 99.9%，且无消息积压增长，持续观察 15 分钟 | Go 链路无报错日志，Go queue ready 数量稳定或下降，即可认为正常 | 影响灰度迁移验收判断，无法确定何时可以继续下一批迁移或判定迁移成功 |\n| P1 | 配置管理 | Go gateway 的路由配置（CHANNEL_GATEWAY_ENABLED_PLATFORMS）修改后，是否需要重启 Go gateway 服务才能生效？ | 需要重启 Go gateway 服务 | 支持热加载，无需重启 | 影响灰度迁移操作的测试设计：如需重启，需验证重启期间请求是否丢失；如支持热加载，需验证配置切换的实时性 |\n| P2 | 消息处理 | Go gateway 收到 webhook 请求后，是否向第三方平台返回与 Python gateway 完全相同的响应格式和状态码？ | 响应格式和状态码完全一致，第三方平台无感知 | 响应格式可能不同，但状态码语义一致 | 影响第三方平台兼容性测试：如响应格式不同，部分第三方平台可能根据响应做后续处理，导致行为差异 |",
+  "clarification_items": [
+    {
+      "id": "clar-001",
+      "priority": "P0",
+      "module": "灰度迁移流程",
+      "question": "A 类平台按机器人灰度迁移时，同一个机器人下的所有 webhook 事件是否必须整体迁移，还是可以按事件类型（如消息、回调）拆分迁移？",
+      "option_a": "机器人维度整体迁移，该机器人的所有 webhook 事件全部走 Go 链路",
+      "option_b": "可以按事件类型拆分，部分事件类型走 Go 链路，部分仍走 Python 链路",
+      "source_excerpt": "原文提到：'A 类平台可以按机器人维度灰度'，'A 类平台的回退粒度是单机器人'",
+      "impact": "影响灰度迁移的测试用例设计：如果按事件类型拆分，需要测试不同事件类型在不同链路的处理；如果整体迁移，则只需验证机器人级切换的完整性"
+    },
+    {
+      "id": "clar-002",
+      "priority": "P0",
+      "module": "灰度迁移流程",
+      "question": "A 类平台灰度迁移时，同一个机器人下的 webhook URL 在第三方平台修改后，是否存在新旧 URL 同时生效的过渡期（即第三方平台同时向新旧两个 URL 发送请求）？",
+      "option_a": "不存在过渡期，修改后所有新请求立即发往新 URL",
+      "option_b": "存在过渡期，第三方平台可能同时向新旧 URL 发送请求一段时间",
+      "source_excerpt": "原文提到：'将目标机器人的 webhook URL 从 Python gateway 改为 Go gateway'",
+      "impact": "影响消息去重和幂等性测试设计：如果存在过渡期，需要验证双写场景下消息不重复处理"
+    },
+    {
+      "id": "clar-003",
+      "priority": "P0",
+      "module": "消息处理",
+      "question": "Go gateway 收到 webhook 请求后写入 Go 队列失败（如 RabbitMQ 不可用）时，Go gateway 如何处理？是否向第三方平台返回错误响应？",
+      "option_a": "Go gateway 返回 5xx 错误给第三方平台，由第三方平台重试",
+      "option_b": "Go gateway 本地缓存或重试写入，不立即返回错误",
+      "source_excerpt": "原文提到：'保证迁移期间消息不丢失'，但未说明 gateway 写入队列失败时的处理逻辑",
+      "impact": "影响消息丢失场景的测试用例设计和异常处理断言"
+    },
+    {
+      "id": "clar-004",
+      "priority": "P0",
+      "module": "消息处理",
+      "question": "Go worker 消费 Go 队列消息处理失败时，重试机制和最终失败处理策略是什么？",
+      "option_a": "消息进入 retry queue 重试若干次，最终进入 Go DLQ",
+      "option_b": "消息直接进入 Go DLQ，不重试",
+      "source_excerpt": "原文提到：'Go 队列配置独立 retry queue 和 DLQ'，但未说明重试次数、间隔和最终处理策略",
+      "impact": "影响异常处理场景的测试用例设计，无法验证重试逻辑和 DLQ 消息的最终处理"
+    },
+    {
+      "id": "clar-005",
+      "priority": "P1",
+      "module": "回退方案",
+      "question": "A 类平台回退时，Go worker 继续处理 Go queue 中已入队消息，但该机器人的 webhook 已切回 Python gateway。如果 Go worker 处理完消息后需要向第三方平台回复（如发送消息状态回调），此时回复应该走 Go 链路还是 Python 链路？",
+      "option_a": "Go worker 处理完存量消息后，通过 Go 链路直接回复第三方平台",
+      "option_b": "Go worker 处理完存量消息后，将回复结果写入 Python 队列，由 Python worker 回复",
+      "source_excerpt": "原文提到：'Go worker 继续处理 Go queue 中该机器人已入队消息'，但未说明处理完成后的回复路径",
+      "impact": "影响回退场景的测试用例设计，无法验证存量消息处理完成后的回复是否正确路由"
+    },
+    {
+      "id": "clar-006",
+      "priority": "P1",
+      "module": "回退方案",
+      "question": "B 类平台回退时，Go worker 处理 Go queue 存量消息期间，Python gateway 已恢复接收新流量。如果 Go worker 处理的消息与 Python worker 处理的新消息涉及同一业务对象（如同一客户会话），是否存在数据一致性问题？",
+      "option_a": "存在一致性问题，需要设计补偿机制或等待 Go queue 清空后再恢复 Python 链路",
+      "option_b": "不存在一致性问题，Go 和 Python 处理的消息在业务上完全独立",
+      "source_excerpt": "原文提到：'入口切回 Python 后，让 Go worker 处理完 Go queue 存量消息'，但未说明存量消息与新消息的业务关联性",
+      "impact": "影响回退场景的数据一致性测试设计，无法验证并发处理同一业务对象时的正确性"
+    },
+    {
+      "id": "clar-007",
+      "priority": "P1",
+      "module": "监控与可观测性",
+      "question": "灰度迁移期间，如何判断迁移是否正常？具体的可观测指标和成功标准是什么？",
+      "option_a": "Go 链路消息处理成功率 >= 99.9%，且无消息积压增长，持续观察 15 分钟",
+      "option_b": "Go 链路无报错日志，Go queue ready 数量稳定或下降，即可认为正常",
+      "source_excerpt": "原文提到：'保证迁移期间消息不丢失、不重复回复、可观测、可排查'，但未定义具体的可观测指标和成功标准",
+      "impact": "影响灰度迁移验收判断，无法确定何时可以继续下一批迁移或判定迁移成功"
+    },
+    {
+      "id": "clar-008",
+      "priority": "P1",
+      "module": "配置管理",
+      "question": "Go gateway 的路由配置（CHANNEL_GATEWAY_ENABLED_PLATFORMS）修改后，是否需要重启 Go gateway 服务才能生效？",
+      "option_a": "需要重启 Go gateway 服务",
+      "option_b": "支持热加载，无需重启",
+      "source_excerpt": "原文提到配置项 CHANNEL_GATEWAY_ENABLED_PLATFORMS，但未说明配置变更的生效方式",
+      "impact": "影响灰度迁移操作的测试设计：如需重启，需验证重启期间请求是否丢失；如支持热加载，需验证配置切换的实时性"
+    },
+    {
+      "id": "clar-009",
+      "priority": "P2",
+      "module": "消息处理",
+      "question": "Go gateway 收到 webhook 请求后，是否向第三方平台返回与 Python gateway 完全相同的响应格式和状态码？",
+      "option_a": "响应格式和状态码完全一致，第三方平台无感知",
+      "option_b": "响应格式可能不同，但状态码语义一致",
+      "source_excerpt": "原文提到：'Go gateway 和 Python gateway 对第三方 webhook 的处理方式不同'，但未说明响应格式是否保持一致",
+      "impact": "影响第三方平台兼容性测试：如响应格式不同，部分第三方平台可能根据响应做后续处理，导致行为差异"
+    }
+  ],
+  "artifacts": {}
+}

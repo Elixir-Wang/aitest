@@ -1,8 +1,17 @@
 import type { Desk } from "@/types/agent";
 
 export const SCENE_WIDTH = 960;
-export const SCENE_HEIGHT = 640;
-export const SEAT_OFFSET_Y = 10;
+export const SCENE_HEIGHT = 780;
+export const SEAT_OFFSET_Y = 26;
+
+export const OFFICE_DEPARTMENT_ORDER = ["需求工程", "测试设计", "自动化工程", "运行与分析"] as const;
+export const OTHER_DEPARTMENT = "其他";
+
+export type OfficeLayoutEmployee = {
+  id: string;
+  department: string;
+  seat_index: number;
+};
 
 export const COLORS = {
   floor: 0xeef1ef,
@@ -36,11 +45,62 @@ export function buildOfficeDesks(employeeCount: number): Desk[] {
       id: `desk-${index}`,
       x,
       y,
-      seatX: x,
+      seatX: x - 32,
       seatY: y + SEAT_OFFSET_Y,
       visualScale,
     };
   });
+}
+
+export function buildDepartmentOfficeLayout(employees: OfficeLayoutEmployee[]): Desk[] {
+  const departmentX = new Map<string, number>([
+    ["需求工程", 118],
+    ["测试设计", 358],
+    ["自动化工程", 602],
+    ["运行与分析", 842],
+  ]);
+  const rowY = [342, 440, 530];
+  const rowScale = [0.78, 0.88, 0.98];
+  const desks: Desk[] = [];
+
+  for (const department of OFFICE_DEPARTMENT_ORDER) {
+    const members = employees
+      .filter((employee) => employee.department === department)
+      .sort((left, right) => left.seat_index - right.seat_index);
+    const centerX = departmentX.get(department) ?? SCENE_WIDTH / 2;
+
+    members.forEach((employee, index) => {
+      const row = Math.min(index, rowY.length - 1);
+      desks.push({
+        id: `department-${OFFICE_DEPARTMENT_ORDER.indexOf(department)}-${index}`,
+        x: centerX,
+        y: rowY[row],
+        seatX: centerX - 32,
+        seatY: rowY[row] + SEAT_OFFSET_Y,
+        visualScale: rowScale[row],
+        occupiedBy: employee.id,
+      });
+    });
+  }
+
+  const knownDepartments = new Set<string>(OFFICE_DEPARTMENT_ORDER);
+  const otherEmployees = employees
+    .filter((employee) => !knownDepartments.has(employee.department))
+    .sort((left, right) => left.seat_index - right.seat_index);
+  const otherDesks = buildOfficeDesks(otherEmployees.length);
+  otherDesks.forEach((desk, index) => {
+    const employee = otherEmployees[index];
+    if (!employee) return;
+    desks.push({
+      ...desk,
+      id: `${OTHER_DEPARTMENT}-${index}`,
+      y: Math.min(desk.y + 30, SCENE_HEIGHT - 60),
+      seatY: Math.min(desk.seatY + 30, SCENE_HEIGHT - 50),
+      occupiedBy: employee.id,
+    });
+  });
+
+  return desks;
 }
 
 function buildPerspectiveRowY(rows: number) {
