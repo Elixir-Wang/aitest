@@ -429,6 +429,15 @@ export function LocustConsole({ projectId, testId, runId }: { projectId: string;
             <FileText aria-hidden="true" />
             请求统计
           </TabsTrigger>
+          {snapshot?.sse_metrics.metrics.length ? (
+            <TabsTrigger
+              className="h-16 rounded-none px-1 text-slate-500 text-sm data-[state=active]:text-emerald-600 dark:text-slate-400 dark:data-[state=active]:text-emerald-400"
+              value="sse"
+            >
+              <Clock3 aria-hidden="true" />
+              流式指标
+            </TabsTrigger>
+          ) : null}
           <TabsTrigger
             className="h-16 rounded-none px-1 text-slate-500 text-sm data-[state=active]:text-emerald-600 dark:text-slate-400 dark:data-[state=active]:text-emerald-400"
             value="analysis"
@@ -449,6 +458,23 @@ export function LocustConsole({ projectId, testId, runId }: { projectId: string;
         </TabsContent>
         <TabsContent value="charts">
           <LocustChartsPanel samples={samples} />
+        </TabsContent>
+        <TabsContent value="sse">
+          <LocustGenericTable
+            columns={[
+              ["metric_id", "指标"],
+              ["attempt_count", "请求数"],
+              ["matched_count", "命中数"],
+              ["missing_count", "缺失数"],
+              ["failure_count", "失败数"],
+              ["average_ms", "平均值"],
+              ["p50_ms", "P50"],
+              ["p95_ms", "P95"],
+              ["p99_ms", "P99"],
+            ]}
+            empty="暂无 SSE 流式指标"
+            rows={sseMetricRows(snapshot)}
+          />
         </TabsContent>
         <TabsContent value="requests">
           <LocustStatisticsTable rows={statisticsRows(snapshot)} />
@@ -574,6 +600,10 @@ function formatSampleTime(value: unknown) {
 function statisticsRows(snapshot: PerformanceRunStats | null) {
   if (!snapshot) return [];
   return snapshot.request_stats.map((row) => (row.name === "Aggregated" ? { ...row, name: "汇总" } : row));
+}
+
+function sseMetricRows(snapshot: PerformanceRunStats | null) {
+  return (snapshot?.sse_metrics.metrics ?? []).map((metric) => ({ ...metric }));
 }
 
 function percentage(value: unknown) {

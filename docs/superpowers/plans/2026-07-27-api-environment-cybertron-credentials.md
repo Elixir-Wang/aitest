@@ -8,6 +8,8 @@
 
 **Tech Stack:** FastAPI、Pydantic、SQLite repository、pytest、Next.js、React、TypeScript、lucide-react、Biome。
 
+**Implementation Status (2026-07-27):** Completed. 后端凭据明文返回、空值清除、前端回填和独立可见性切换均已实现并通过聚焦测试。
+
 ## Global Constraints
 
 - `cybertron-robot-key`、`cybertron-robot-token`、`username` 必须可为空保存。
@@ -29,7 +31,7 @@
 - Consumes: `ApiEnvironmentIn.auth_config: dict` 和已加密的 `cybertron_robot_key_encrypted` / `cybertron_robot_token_encrypted`。
 - Produces: `ApiEnvironmentOut.auth_config` 中的 `cybertron_robot_key`、`cybertron_robot_token`、`username` 字段。
 
-- [ ] **Step 1: 写失败的服务测试。**
+- [x] **Step 1: 写失败的服务测试。**
 
 ```python
 created = service.create_api_environment(project_id, cybertron_payload(key="robot-key", token="robot-token", username="tmp"), admin)
@@ -42,13 +44,13 @@ assert updated["auth_config"]["cybertron_robot_token"] == ""
 assert updated["auth_config"]["username"] == ""
 ```
 
-- [ ] **Step 2: 运行测试确认当前实现不满足返回或清空要求。**
+- [x] **Step 2: 运行测试确认当前实现不满足返回或清空要求。**
 
 Run: `rtk pytest apps/backend/tests/test_api_automation_environment.py -q`
 
 Expected: 断言 key/token 不存在、为空或更新后仍被保留时失败。
 
-- [ ] **Step 3: 最小化修改服务层。**
+- [x] **Step 3: 最小化修改服务层。**
 
 ```python
 # 序列化：解密凭据并暴露为 auth_config 的三个字段。
@@ -57,7 +59,7 @@ Expected: 断言 key/token 不存在、为空或更新后仍被保留时失败�
 
 将 `_serialize_api_environment` 从单纯掩码改为按已确认方案返回解密后的塞伯坦凭据；调整创建/更新逻辑，使空的 `auth_config` 值不会被旧密文回填。保持非塞伯坦鉴权与已有 saved 标记兼容。
 
-- [ ] **Step 4: 运行后端环境测试。**
+- [x] **Step 4: 运行后端环境测试。**
 
 Run: `rtk pytest apps/backend/tests/test_api_automation_environment.py -q`
 
@@ -73,7 +75,7 @@ Expected: PASS。
 - Consumes: `ApiAutomationEnvironment.auth_config` 的 `cybertron_robot_key`、`cybertron_robot_token` 和 `username`。
 - Produces: 塞伯坦环境表单允许三字段为空，编辑时可回填，key/token 提供独立的显示切换按钮。
 
-- [ ] **Step 1: 写失败的前端契约测试。**
+- [x] **Step 1: 写失败的前端契约测试。**
 
 ```js
 assert.match(source, /cybertronRobotKey:\s*asString\(authConfig\.cybertron_robot_key\)/);
@@ -84,13 +86,13 @@ assert.match(source, /Eye|EyeOff/);
 
 测试还应断言仅 key/token 启用显示切换，且按钮包含描述显示状态的 `aria-label`。
 
-- [ ] **Step 2: 运行契约测试确认当前实现失败。**
+- [x] **Step 2: 运行契约测试确认当前实现失败。**
 
 Run: `node --test apps/frontend/tests/api-environment-cybertron-credentials-contract.test.mjs`
 
 Expected: FAIL，原因是当前字段不回填、存在必填校验且没有显示切换。
 
-- [ ] **Step 3: 最小化修改页面。**
+- [x] **Step 3: 最小化修改页面。**
 
 ```tsx
 const [showCybertronRobotKey, setShowCybertronRobotKey] = useState(false);
@@ -99,7 +101,7 @@ const [showCybertronRobotKey, setShowCybertronRobotKey] = useState(false);
 
 移除塞伯坦三字段的必填分支；将三个表单字段原样放入 `auth_config`；从环境返回值回填；使用已有 `lucide-react` 图标实现独立眼睛按钮，不扩展到账号密码字段。
 
-- [ ] **Step 4: 运行前端契约测试和格式检查。**
+- [x] **Step 4: 运行前端契约测试和格式检查。**
 
 Run: `node --test apps/frontend/tests/api-environment-cybertron-credentials-contract.test.mjs && npm run check -- --files 'src/app/(main)/projects/[projectId]/automation/api/page.tsx' 'tests/api-environment-cybertron-credentials-contract.test.mjs'`
 
@@ -114,20 +116,27 @@ Expected: PASS。
 - Consumes: Tasks 1–2 产出的后端响应和前端表单行为。
 - Produces: 已验证的实现结果。
 
-- [ ] **Step 1: 运行后端完整目标测试。**
+- [x] **Step 1: 运行后端完整目标测试。**
 
 Run: `rtk pytest apps/backend/tests/test_api_automation_environment.py -q`
 
 Expected: PASS。
 
-- [ ] **Step 2: 运行前端相关契约测试。**
+- [x] **Step 2: 运行前端相关契约测试。**
 
 Run: `node --test apps/frontend/tests/api-environment-cybertron-credentials-contract.test.mjs apps/frontend/tests/api-automation-interface-set-copy-contract.test.mjs`
 
 Expected: PASS。
 
-- [ ] **Step 3: 检查变更范围。**
+- [x] **Step 3: 检查变更范围。**
 
 Run: `rtk git diff --check && rtk git diff -- apps/backend/app/services/api_automation/service.py apps/backend/tests/test_api_automation_environment.py "apps/frontend/src/app/(main)/projects/[projectId]/automation/api/page.tsx" apps/frontend/tests/api-environment-cybertron-credentials-contract.test.mjs`
 
 Expected: 无空白错误，且只有计划内改动。
+
+## Verification Result
+
+- 后端目标测试：`9 passed`。
+- 本功能前端契约测试：`2 passed`；Biome 和 TypeScript 类型检查通过。
+- 既有 `api-automation-interface-set-copy-contract.test.mjs` 为 `29 passed, 2 failed`；失败断言在变更前的 `HEAD` 页面中已不成立，与本功能无关。
+- 本地页面可访问，但浏览器没有登录态，停留在登录检查页；未使用未知凭据绕过认证。

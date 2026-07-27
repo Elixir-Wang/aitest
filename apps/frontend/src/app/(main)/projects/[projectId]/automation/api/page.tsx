@@ -12,6 +12,7 @@ import {
   ChevronRight,
   ClipboardPaste,
   Eye,
+  EyeOff,
   FileJson,
   Globe,
   ImportIcon,
@@ -233,6 +234,8 @@ export default function Page() {
   const [environmentOpen, setEnvironmentOpen] = useState(false);
   const [editingEnvironment, setEditingEnvironment] = useState<ApiAutomationEnvironment | null>(null);
   const [environmentForm, setEnvironmentForm] = useState<EnvironmentForm>({ ...emptyEnvironmentForm });
+  const [showCybertronRobotKey, setShowCybertronRobotKey] = useState(false);
+  const [showCybertronRobotToken, setShowCybertronRobotToken] = useState(false);
   const [debugOpen, setDebugOpen] = useState(false);
   const [debugForm, setDebugForm] = useState<EndpointDebugForm>({ ...emptyDebugForm });
   const [debugResult, setDebugResult] = useState<ApiAutomationDebugResult | null>(null);
@@ -737,16 +740,6 @@ export default function Page() {
       toast.error("账号密码鉴权必须填写用户名和密码");
       return;
     }
-    if (
-      environmentForm.authType === "cybertron_agent" &&
-      (!environmentForm.cybertronUsername.trim() ||
-        (!environmentForm.cybertronRobotKey.trim() && !editingEnvironment?.auth_config.cybertron_robot_key_saved) ||
-        (!environmentForm.cybertronRobotToken.trim() && !editingEnvironment?.auth_config.cybertron_robot_token_saved))
-    ) {
-      toast.error("塞伯坦智能体必须填写 robot key、robot token 和 username");
-      return;
-    }
-
     setBusy(true);
     try {
       const authConfig =
@@ -1039,12 +1032,16 @@ export default function Page() {
   function openCreateEnvironmentDialog() {
     setEditingEnvironment(null);
     setEnvironmentForm({ ...emptyEnvironmentForm });
+    setShowCybertronRobotKey(false);
+    setShowCybertronRobotToken(false);
     setEnvironmentOpen(true);
   }
 
   function openEditEnvironmentDialog(environment: ApiAutomationEnvironment) {
     setEditingEnvironment(environment);
     setEnvironmentForm(formFromEnvironment(environment));
+    setShowCybertronRobotKey(false);
+    setShowCybertronRobotToken(false);
     setEnvironmentOpen(true);
   }
 
@@ -2300,11 +2297,9 @@ export default function Page() {
                   label="cybertron-robot-key"
                   mono
                   onChange={(value) => setEnvironmentForm((current) => ({ ...current, cybertronRobotKey: value }))}
-                  placeholder={
-                    editingEnvironment?.auth_config.cybertron_robot_key_saved
-                      ? "已保存，不填写则保留"
-                      : "请输入 robot key"
-                  }
+                  onTogglePasswordVisibility={() => setShowCybertronRobotKey((current) => !current)}
+                  passwordVisible={showCybertronRobotKey}
+                  placeholder="请输入 robot key（可选）"
                   type="password"
                   value={environmentForm.cybertronRobotKey}
                 />
@@ -2312,11 +2307,9 @@ export default function Page() {
                   label="cybertron-robot-token"
                   mono
                   onChange={(value) => setEnvironmentForm((current) => ({ ...current, cybertronRobotToken: value }))}
-                  placeholder={
-                    editingEnvironment?.auth_config.cybertron_robot_token_saved
-                      ? "已保存，不填写则保留"
-                      : "请输入 robot token"
-                  }
+                  onTogglePasswordVisibility={() => setShowCybertronRobotToken((current) => !current)}
+                  passwordVisible={showCybertronRobotToken}
+                  placeholder="请输入 robot token（可选）"
                   type="password"
                   value={environmentForm.cybertronRobotToken}
                 />
@@ -2324,7 +2317,7 @@ export default function Page() {
                   label="username"
                   mono
                   onChange={(value) => setEnvironmentForm((current) => ({ ...current, cybertronUsername: value }))}
-                  placeholder="请输入 username"
+                  placeholder="请输入 username（可选）"
                   value={environmentForm.cybertronUsername}
                 />
               </div>
@@ -2631,6 +2624,8 @@ function FieldText({
   label,
   mono,
   onChange,
+  onTogglePasswordVisibility,
+  passwordVisible = false,
   placeholder,
   type,
   value,
@@ -2638,6 +2633,8 @@ function FieldText({
   label: string;
   mono?: boolean;
   onChange: (value: string) => void;
+  onTogglePasswordVisibility?: () => void;
+  passwordVisible?: boolean;
   placeholder?: string;
   type?: string;
   value: string;
@@ -2645,13 +2642,27 @@ function FieldText({
   return (
     <div className="space-y-2">
       <div className="font-medium text-sm">{label}</div>
-      <Input
-        className={mono ? "font-mono text-xs" : undefined}
-        onChange={(event) => onChange(event.target.value)}
-        placeholder={placeholder}
-        type={type}
-        value={value}
-      />
+      <div className="relative">
+        <Input
+          className={cn(mono && "font-mono text-xs", onTogglePasswordVisibility && "pr-9")}
+          onChange={(event) => onChange(event.target.value)}
+          placeholder={placeholder}
+          type={type === "password" && passwordVisible ? "text" : type}
+          value={value}
+        />
+        {onTogglePasswordVisibility ? (
+          <Button
+            aria-label={`${passwordVisible ? "隐藏" : "显示"} ${label}`}
+            className="absolute top-0 right-0"
+            onClick={onTogglePasswordVisibility}
+            size="icon"
+            type="button"
+            variant="ghost"
+          >
+            {passwordVisible ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+          </Button>
+        ) : null}
+      </div>
     </div>
   );
 }
@@ -3018,8 +3029,8 @@ function formFromEnvironment(environment: ApiAutomationEnvironment): Environment
       : "none") as EnvironmentForm["authType"],
     username: environment.username,
     password: "",
-    cybertronRobotKey: "",
-    cybertronRobotToken: "",
+    cybertronRobotKey: asString(authConfig.cybertron_robot_key),
+    cybertronRobotToken: asString(authConfig.cybertron_robot_token),
     cybertronUsername: asString(authConfig.username),
     defaultHeaders: JSON.stringify(environment.default_headers ?? {}, null, 2),
     timeoutSeconds: String(environment.timeout_seconds),

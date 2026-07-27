@@ -76,11 +76,20 @@ def test_create_api_environment_encrypts_password_and_cybertron_secret(
     assert decrypt_api_environment_secret(auth_config["cybertron_robot_key_encrypted"]) == "plain-key"
     assert decrypt_api_environment_secret(auth_config["cybertron_robot_token_encrypted"]) == "plain-token"
     assert auth_config["username"] == "robot-user"
+    assert created["auth_config"] == {
+        "cybertron_robot_key": "plain-key",
+        "cybertron_robot_key_saved": True,
+        "cybertron_robot_token": "plain-token",
+        "cybertron_robot_token_saved": True,
+        "username": "robot-user",
+    }
     default_headers = api_automation_repo.loads_json(row["default_headers_json"], {})
     assert default_headers == {}
 
 
-def test_list_api_environments_masks_sensitive_auth_config(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_list_api_environments_returns_decrypted_cybertron_auth_config(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     _use_temp_db(monkeypatch, tmp_path)
     _seed_project()
     service.create_api_environment(
@@ -101,11 +110,89 @@ def test_list_api_environments_masks_sensitive_auth_config(monkeypatch: pytest.M
     environments = service.list_api_environments("project-1", ACTOR)
 
     assert environments[0]["auth_config"] == {
+        "cybertron_robot_key": "plain-key",
         "cybertron_robot_key_saved": True,
+        "cybertron_robot_token": "plain-token",
         "cybertron_robot_token_saved": True,
         "username": "robot-user",
     }
     assert environments[0]["default_headers"] == {}
+
+
+def test_cybertron_environment_allows_empty_credentials(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    _seed_project()
+
+    created = service.create_api_environment(
+        "project-1",
+        ApiEnvironmentIn(
+            name="空凭据环境",
+            api_base_url="https://api.example.test",
+            auth_type="cybertron_agent",
+            auth_config={
+                "cybertron_robot_key": "",
+                "cybertron_robot_token": "",
+                "username": "",
+            },
+        ),
+        ACTOR,
+    )
+
+    assert created["auth_config"] == {
+        "cybertron_robot_key": "",
+        "cybertron_robot_key_saved": False,
+        "cybertron_robot_token": "",
+        "cybertron_robot_token_saved": False,
+        "username": "",
+    }
+
+
+def test_update_cybertron_environment_empty_credentials_clear_saved_values(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    _seed_project()
+    created = service.create_api_environment(
+        "project-1",
+        ApiEnvironmentIn(
+            name="测试环境",
+            api_base_url="https://api.example.test",
+            auth_type="cybertron_agent",
+            auth_config={
+                "cybertron_robot_key": "plain-key",
+                "cybertron_robot_token": "plain-token",
+                "username": "robot-user",
+            },
+        ),
+        ACTOR,
+    )
+
+    updated = service.update_api_environment(
+        "project-1",
+        created["id"],
+        ApiEnvironmentIn(
+            name="测试环境",
+            api_base_url="https://api.example.test",
+            auth_type="cybertron_agent",
+            auth_config={
+                "cybertron_robot_key": "",
+                "cybertron_robot_token": "",
+                "username": "",
+            },
+        ),
+        ACTOR,
+    )
+
+    assert updated["auth_config"] == {
+        "cybertron_robot_key": "",
+        "cybertron_robot_key_saved": False,
+        "cybertron_robot_token": "",
+        "cybertron_robot_token_saved": False,
+        "username": "",
+    }
+    with connect() as db:
+        row = api_automation_repo.find_api_environment(db, created["id"])
+    assert api_automation_repo.loads_json(row["auth_config_json"], {}) == {"username": ""}
 
 
 def test_cybertron_environment_builds_runtime_headers(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

@@ -66,6 +66,77 @@ def test_parse_openapi_document_extracts_endpoint() -> None:
     assert endpoint["responses"]["200"]["description"] == "ok"
 
 
+def test_parse_cybotstar_assets_normalizes_structured_and_html_fallback_tags() -> None:
+    result = openapi_parser.parse_openapi_document(
+        """{
+          "openapi": "3.0.3",
+          "info": {"title": "Cybotstar", "version": "1.0.0"},
+          "x-adjusted-for-interface-assets": {"profile": "cybotstar-assets"},
+          "paths": {
+            "/openapi/v1/gw/multi-agent/segment-code/gen": {
+              "post": {
+                "summary": "生成SegmentCode",
+                "tags": ["segment-code/gen"],
+                "x-source-doc-url": "http://example.test/api-reference/multi_agent/gen",
+                "responses": {"200": {"description": "ok"}}
+              }
+            },
+            "/openapi/v1/gw/multi-agent/sse": {
+              "post": {
+                "summary": "对话(SSE)",
+                "tags": ["Multi-Agent / 基本能力"],
+                "x-source-doc-url": "http://example.test/api-reference/multi_agent/sse",
+                "responses": {"200": {"description": "ok"}}
+              }
+            }
+          }
+        }""",
+        source_name="cybotstar-openapi.generated.json",
+    )
+
+    assert result["tags"] == ["Multi-Agent / 基本能力"]
+    assert {endpoint["summary"]: endpoint["tags"] for endpoint in result["endpoints"]} == {
+        "生成SegmentCode": ["Multi-Agent / 基本能力"],
+        "对话(SSE)": ["Multi-Agent / 基本能力"],
+    }
+
+
+@pytest.mark.parametrize(
+    ("source_path", "expected_tag"),
+    [
+        ("knowledge_v2/base/info", "知识库 / 基本能力"),
+        ("knowledge_v2/qa/create", "知识库 / QA"),
+        ("conversation/segment/create", "智能体 / 会话"),
+        ("conversation/segment/session_file_add", "智能体 / 会话文件"),
+        ("conversation/agent_analysis", "智能体 / 智能体统计"),
+        ("chatflow/file/upload", "智能体 / 对话流"),
+        ("file/upload_single", "文件系统 / 文件"),
+        ("image_conversion/health", "文件系统 / 图片转换"),
+        ("batch_task/dataset/create", "智能体 / 批量任务-数据集"),
+        ("batch_task/task/create", "智能体 / 批量任务"),
+        ("scheduler/register", "调度平台 / 任务"),
+    ],
+)
+def test_normalize_cybotstar_asset_groups(source_path: str, expected_tag: str) -> None:
+    tags = openapi_parser.normalize_operation_tags(
+        {"x-adjusted-for-interface-assets": {"profile": "cybotstar-assets"}},
+        {"x-source-doc-url": f"http://example.test/api-reference/{source_path}"},
+        ["raw/tag"],
+    )
+
+    assert tags == [expected_tag]
+
+
+def test_normalize_operation_tags_leaves_other_openapi_documents_unchanged() -> None:
+    tags = openapi_parser.normalize_operation_tags(
+        {},
+        {"x-source-doc-url": "http://example.test/api-reference/multi_agent/gen"},
+        ["segment-code/gen"],
+    )
+
+    assert tags == ["segment-code/gen"]
+
+
 def test_parse_openapi_document_resolves_local_schema_refs() -> None:
     result = openapi_parser.parse_openapi_document(
         """{

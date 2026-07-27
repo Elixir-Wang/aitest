@@ -152,6 +152,9 @@ def get_performance_run_stats(project_id: str, run_id: str, actor=Depends(curren
             "failures": [dict(row) for row in run_repo.list_failures(db, run_id)],
             "exceptions": [dict(row) for row in run_repo.list_exceptions(db, run_id)],
             "events": [dict(row) for row in run_repo.list_events(db, run_id)],
+            "sse_metrics": headless_worker.summarize_sse_measurements(
+                _run_report_directory(project_id, run_id) / "sse-measurements.jsonl"
+            ),
         }
 
 

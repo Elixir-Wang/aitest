@@ -3,14 +3,20 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.agents.api_automation.orchestration.schemas import ScenarioPlanEdge, ScenarioPlanNode, ScenarioPlanResult
+from app.agents.api_automation.orchestration.schemas import (
+    ScenarioPlanEdge,
+    ScenarioPlanNode,
+    ScenarioPlanResult,
+    binding_to_runtime,
+)
 from app.core import db as db_core
 from app.core import settings, storage
 from app.core.db import connect
 from app.repositories import api_automation_repo
-from app.schemas.api_automation import ApiScenarioAiPlanApplyIn, ApiScenarioAiPlanIn, ApiScenarioIn
+from app.schemas.api_automation import ApiScenarioAiPlanApplyIn, ApiScenarioAiPlanIn, ApiScenarioIn, ApiScenarioStepIn
 from app.seed.init_db import init_db
 from app.services.api_automation import service
+from app.services.api_automation.orchestration_compiler import compile_plan
 
 
 ACTOR = {"id": "u-admin", "role": "admin", "nickname": "管理员", "username": "admin", "project_scope": "全部项目"}
@@ -89,6 +95,9 @@ def test_ai_plan_is_preview_until_explicitly_applied(monkeypatch: pytest.MonkeyP
         ACTOR,
     )
     assert plan["validation"]["valid"] is True
+    recovered = service.get_api_scenario_ai_plan("project-1", plan["plan_id"], ACTOR)
+    assert recovered["plan_id"] == plan["plan_id"]
+    assert recovered["status"] == "preview"
     assert service.get_api_scenario("project-1", scenario_id, ACTOR)["steps"] == []
 
     applied = service.apply_api_scenario_ai_plan(
@@ -150,3 +159,115 @@ def test_ai_plan_rejects_cycles() -> None:
     )
     assert validation["valid"] is False
     assert "AI 计划不能包含循环依赖。" in validation["errors"]
+
+
+def test_compiler_binds_json_response_to_required_multipart_field() -> None:
+    endpoints = [
+        {
+            "id": "generate-code",
+            "method": "POST",
+            "path": "/segment-code/gen",
+            "summary": "生成分段码",
+            "parameters": [],
+            "request_body": {},
+            "responses": {
+                "200": {
+                    "content": {
+                        "application/json": {
+                            "schema": {"type": "object", "properties": {"data": {"type": "object", "properties": {"segment_code": {"type": "string"}}}}}
+                        }
+                    }
+                }
+            },
+        },
+        {
+            "id": "stream-segment",
+            "method": "POST",
+            "path": "/segment/stream",
+            "summary": "流式处理分段",
+            "parameters": [],
+            "request_body": {
+                "required": True,
+                "content": {
+                    "multipart/form-data": {
+                        "schema": {
+                            "type": "object",
+                            "required": ["segment_code"],
+                            "properties": {"segment_code": {"type": "string"}},
+                        }
+                    }
+                },
+            },
+            "responses": {"200": {"description": "ok"}},
+        },
+    ]
+    compiled = compile_plan(
+        ScenarioPlanResult(
+            scenario_name="生成并处理",
+            nodes=[
+                ScenarioPlanNode(id="generate", type="api_request", endpoint_id="generate-code"),
+                ScenarioPlanNode(id="stream", type="api_request", endpoint_id="stream-segment"),
+            ],
+        ),
+        endpoints,
+        {"configured": False, "variables": [], "secrets": [], "auth_type": "none"},
+    )
+
+    generate, stream = compiled.nodes
+    assert generate.extractors[0].name == "segment_code"
+    assert generate.extractors[0].path == "/data/segment_code"
+    assert stream.bindings[0].target.location == "multipart"
+    assert stream.bindings[0].target.path == "/segment_code"
+    assert stream.bindings[0].source.type == "step_output"
+    assert stream.bindings[0].source.step_id == "generate"
+    assert binding_to_runtime(stream.bindings[0])["target"] == "/request/multipart_form/segment_code"
+    assert [(edge.source, edge.target) for edge in compiled.edges] == [("generate", "stream")]
+
+
+def test_legacy_pointer_binding_remains_accepted() -> None:
+    step = ApiScenarioStepIn(
+        endpoint_id="apiend-1",
+        bindings=[
+            {
+                "target": "/request/multipart_form/segment_code",
+                "source": {"type": "step_output", "step_id": "generate", "variable": "segment_code"},
+            }
+        ],
+    )
+
+    assert step.bindings[0].target.location == "multipart"
+    assert step.bindings[0].target.path == "/segment_code"
+
+
+def test_ai_plan_rejects_forward_step_output_reference() -> None:
+    plan = ScenarioPlanResult(
+        nodes=[
+            ScenarioPlanNode(
+                id="consumer",
+                type="api_request",
+                endpoint_id="apiend-1",
+                bindings=[
+                    {
+                        "target": {"location": "query", "path": "/segment_code"},
+                        "source": {"type": "step_output", "step_id": "producer", "variable": "segment_code"},
+                    }
+                ],
+            ),
+            ScenarioPlanNode(
+                id="producer",
+                type="api_request",
+                endpoint_id="apiend-1",
+                extractors=[{"name": "segment_code", "path": "$.data.segment_code"}],
+            ),
+        ]
+    )
+
+    validation = service._validate_ai_plan(
+        "project-1",
+        plan,
+        [{"id": "apiend-1", "method": "GET", "project_id": "project-1"}],
+        False,
+    )
+
+    assert validation["valid"] is False
+    assert "节点 consumer 的变量来源 引用了后续步骤输出：producer.segment_code。" in validation["errors"]

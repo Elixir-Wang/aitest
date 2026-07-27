@@ -1,8 +1,30 @@
 import json
 from typing import Any
+from urllib.parse import urlparse
 
 
 HTTP_METHODS = {"get", "post", "put", "delete", "patch", "options", "head", "trace"}
+
+CYBOTSTAR_ASSET_GROUPS = (
+    ("/api-reference/knowledge/base/", "知识库 / 基本能力"),
+    ("/api-reference/knowledge_v2/base/", "知识库 / 基本能力"),
+    ("/api-reference/knowledge_v2/qa/", "知识库 / QA"),
+    ("/api-reference/knowledge/image/", "知识库 / 图片"),
+    ("/api-reference/knowledge_v2/text/", "知识库 / 文本"),
+    ("/api-reference/knowledge_v2/file/", "知识库 / 文件"),
+    ("/api-reference/knowledge_v2/folder/", "知识库 / 文件夹"),
+    ("/api-reference/conversation/segment/session_file", "智能体 / 会话文件"),
+    ("/api-reference/conversation/segment/", "智能体 / 会话"),
+    ("/api-reference/conversation/agent_analysis", "智能体 / 智能体统计"),
+    ("/api-reference/conversation/", "智能体 / 基本能力"),
+    ("/api-reference/chatflow/", "智能体 / 对话流"),
+    ("/api-reference/image_conversion/", "文件系统 / 图片转换"),
+    ("/api-reference/file/", "文件系统 / 文件"),
+    ("/api-reference/multi_agent/", "Multi-Agent / 基本能力"),
+    ("/api-reference/batch_task/dataset/", "智能体 / 批量任务-数据集"),
+    ("/api-reference/batch_task/task/", "智能体 / 批量任务"),
+    ("/api-reference/scheduler/", "调度平台 / 任务"),
+)
 
 
 class OpenAPIParseError(ValueError):
@@ -57,6 +79,7 @@ def extract_endpoints(openapi_spec: dict[str, Any]) -> list[dict[str, Any]]:
             if not isinstance(tags, list) or not tags:
                 tags = ["Other"]
             tags = [_string(tag) or "Other" for tag in tags]
+            tags = normalize_operation_tags(openapi_spec, method_spec, tags)
             operation_id = _string(method_spec.get("operationId"))
             endpoints.append(
                 {
@@ -87,6 +110,29 @@ def extract_endpoints(openapi_spec: dict[str, Any]) -> list[dict[str, Any]]:
             )
     endpoints.sort(key=lambda item: (item["path"], item["method"]))
     return endpoints
+
+
+def normalize_operation_tags(
+    openapi_spec: dict[str, Any],
+    method_spec: dict[str, Any],
+    tags: list[str],
+) -> list[str]:
+    profile = openapi_spec.get("x-adjusted-for-interface-assets")
+    if not isinstance(profile, dict) or profile.get("profile") != "cybotstar-assets":
+        return tags
+
+    section = _string(method_spec.get("x-sidebar-section"))
+    group = _string(method_spec.get("x-sidebar-group"))
+    normalized_tag = f"{section} / {group}" if section and group else ""
+    if not normalized_tag:
+        source_path = urlparse(_string(method_spec.get("x-source-doc-url"))).path.rstrip("/") + "/"
+        normalized_tag = next(
+            (tag for prefix, tag in CYBOTSTAR_ASSET_GROUPS if source_path.startswith(prefix)),
+            "",
+        )
+    if not normalized_tag:
+        return tags
+    return [normalized_tag, *tags[1:]]
 
 
 def normalize_path(path: str) -> str:

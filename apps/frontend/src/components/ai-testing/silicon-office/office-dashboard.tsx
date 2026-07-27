@@ -5,23 +5,27 @@ import { type ReactNode, useMemo, useState } from "react";
 import Image from "next/image";
 
 import {
-  AlertTriangle,
-  CheckCircle2,
-  Clock3,
+  CalendarDays,
+  CircleAlert,
   Coffee,
+  Ellipsis,
   Mail,
   MessageSquare,
+  Moon,
   Phone,
   PlayCircle,
-  RotateCcw,
-  UserRoundCheck,
+  Sun,
+  UserRound,
   UsersRound,
   X,
 } from "lucide-react";
 
+import { persistPreference } from "@/lib/preferences/preferences-storage";
+import { usePreferencesStore } from "@/stores/preferences/preferences-provider";
+
 import styles from "./office-dashboard.module.css";
 
-type EmployeeStatus = "idle" | "running" | "human-waiting" | "error";
+type EmployeeStatus = "idle" | "running" | "error";
 type WorkstationVariant = "male-gray" | "male-white" | "female-cream";
 
 type OfficeEmployee = {
@@ -42,6 +46,7 @@ type OfficeEmployee = {
 type OfficeRoomData = {
   id: string;
   name: string;
+  occupied: number;
   capacity: number;
   image: string;
   employees: OfficeEmployee[];
@@ -49,83 +54,114 @@ type OfficeRoomData = {
 };
 
 const ASSET_ROOT = "/assets/silicon-office-v2";
-const WORKSTATION_IMAGES: Record<WorkstationVariant, string> = {
-  "male-gray": ASSET_ROOT + "/workstations/workstation-male-gray.png",
-  "male-white": ASSET_ROOT + "/workstations/workstation-male-white.png",
-  "female-cream": ASSET_ROOT + "/workstations/workstation-female-cream.png",
+const EMPLOYEE_PORTRAITS: Record<WorkstationVariant, string> = {
+  "male-gray": `${ASSET_ROOT}/workstations/workstation-male-gray.png`,
+  "male-white": `${ASSET_ROOT}/workstations/workstation-male-white.png`,
+  "female-cream": `${ASSET_ROOT}/workstations/workstation-female-cream.png`,
 };
-const EMPTY_WORKSTATION_IMAGE = ASSET_ROOT + "/workstations/workstation-empty.png";
 
 const STATUS_META: Record<EmployeeStatus, { label: string; detail: string }> = {
   idle: { label: "空闲", detail: "等待任务" },
-  running: { label: "执行中", detail: "专注工作" },
-  "human-waiting": { label: "等待人工", detail: "需要人工处理" },
+  running: { label: "运行中", detail: "专注工作" },
   error: { label: "异常", detail: "任务执行异常" },
 };
 
 const EMPLOYEES: OfficeEmployee[] = [
-  employee("li-ming", "李明", "需求分析师", "requirement", "01-01", "running", "male-gray", 27, 39, ["需求分析", "业务建模"]),
-  employee("wang-fang", "王芳", "产品分析师", "requirement", "01-02", "running", "female-cream", 73, 39, ["需求澄清", "文档分析"]),
-  employee("liu-yang", "刘洋", "需求工程师", "requirement", "01-03", "human-waiting", "male-white", 27, 73, ["原型审查", "规则提取"]),
-  employee("zhang-wei", "张伟", "测试设计师", "test-design", "02-03", "running", "male-gray", 27, 39, ["测试设计", "接口测试", "性能测试", "自动化测试"]),
-  employee("zhou-yan", "周燕", "测试分析师", "test-design", "02-04", "running", "female-cream", 73, 39, ["用例评审", "覆盖分析"]),
-  employee("zhou-jie", "周杰", "测试工程师", "test-design", "02-05", "running", "male-white", 27, 73, ["边界分析", "缺陷预测"]),
-  employee("chen-yan", "陈燕", "自动化工程师", "automation", "03-01", "running", "female-cream", 27, 39, ["UI 自动化", "脚本生成"]),
-  employee("sun-na", "孙娜", "接口自动化工程师", "automation", "03-02", "human-waiting", "female-cream", 73, 39, ["接口测试", "场景编排"]),
-  employee("zheng-kai", "郑凯", "自动化架构师", "automation", "03-03", "running", "male-gray", 27, 73, ["框架设计", "任务编排"]),
-  employee("tang-yu", "唐宇", "运行分析师", "operations", "04-01", "running", "male-white", 27, 39, ["运行监控", "日志分析"]),
-  employee("lin-yue", "林悦", "数据分析师", "operations", "04-02", "running", "male-gray", 73, 39, ["数据分析", "质量洞察"]),
-  employee("peng-yu", "彭宇", "质量分析师", "operations", "04-03", "running", "male-gray", 27, 73, ["质量分析", "趋势预测"]),
-  employee("xu-jing", "徐静", "AI 能力工程师", "ai-center", "05-01", "running", "female-cream", 27, 39, ["模型评测", "提示词工程"]),
-  employee("yang-fan", "杨帆", "知识工程师", "ai-center", "05-02", "running", "male-white", 73, 39, ["知识检索", "RAG"]),
-  employee("he-li", "何立", "算法工程师", "ai-center", "05-03", "human-waiting", "female-cream", 27, 73, ["模型路由", "智能分析"]),
+  employee("li-ming", "李明", "需求分析师", "requirement", "01-01", "running", "male-gray", 31, 35, ["需求分析", "业务建模"]),
+  employee("wang-fang", "王芳", "产品分析师", "requirement", "01-02", "running", "female-cream", 69, 35, ["需求澄清", "文档分析"]),
+  employee("liu-yang", "刘洋", "需求工程师", "requirement", "01-03", "idle", "male-white", 31, 69, ["原型审查", "规则提取"]),
+  employee("zhang-wei", "张伟", "测试设计师", "test-design", "02-03", "running", "male-gray", 31, 35, ["测试设计", "接口测试", "性能测试", "自动化测试"]),
+  employee("zhou-yan", "周燕", "测试分析师", "test-design", "02-04", "running", "female-cream", 69, 35, ["用例评审", "覆盖分析"]),
+  employee("zhou-jie", "周杰", "测试工程师", "test-design", "02-05", "running", "male-white", 31, 69, ["边界分析", "缺陷预测"]),
+  employee("chen-yan", "陈燕", "自动化工程师", "automation", "03-01", "running", "female-cream", 31, 35, ["UI 自动化", "脚本生成"]),
+  employee("sun-na", "孙娜", "接口自动化工程师", "automation", "03-02", "error", "female-cream", 69, 35, ["接口测试", "场景编排"]),
+  employee("zheng-kai", "郑凯", "自动化架构师", "automation", "03-03", "running", "male-gray", 31, 69, ["框架设计", "任务编排"]),
+  employee("tang-yu", "唐宇", "运行分析师", "operations", "04-01", "running", "male-white", 31, 35, ["运行监控", "日志分析"]),
+  employee("lin-yue", "林悦", "数据分析师", "operations", "04-02", "running", "male-gray", 69, 35, ["数据分析", "质量洞察"]),
+  employee("peng-yu", "彭宇", "质量分析师", "operations", "04-03", "running", "male-gray", 31, 69, ["质量分析", "趋势预测"]),
+  employee("xu-jing", "徐静", "AI 能力工程师", "ai-center", "05-01", "running", "female-cream", 31, 35, ["模型评测", "提示词工程"]),
+  employee("yang-fan", "杨帆", "知识工程师", "ai-center", "05-02", "running", "male-white", 69, 35, ["知识检索", "RAG"]),
+  employee("he-li", "何立", "算法工程师", "ai-center", "05-03", "idle", "female-cream", 31, 69, ["模型路由", "智能分析"]),
   employee("ceo", "CEO 李总", "AI 测试负责人", "ceo", "CEO-01", "running", "male-gray", 50, 72, ["战略规划", "团队管理"]),
 ];
 
 const ROOMS: OfficeRoomData[] = [
-  room("requirement", "需求工程组", 7, ASSET_ROOT + "/rooms/requirement-room-empty.png"),
-  room("test-design", "测试设计组", 8, ASSET_ROOT + "/rooms/test-design-room-empty.png"),
-  room("automation", "自动化工程组", 7, ASSET_ROOT + "/rooms/automation-room-empty.png"),
-  room("operations", "运行与分析组", 6, ASSET_ROOT + "/rooms/operations-room-empty.png"),
-  room("ai-center", "AI能力中枢", 4, ASSET_ROOT + "/rooms/ai-center-room-empty.png"),
-  room("ceo", "CEO办公室", 1, ASSET_ROOT + "/rooms/ceo-office.png", true),
+  room("requirement", "需求工程组", 6, 7, ASSET_ROOT + "/rooms/requirement-room-enterprise-portrait.png"),
+  room("test-design", "测试设计组", 8, 8, ASSET_ROOT + "/rooms/test-design-room-enterprise-portrait.png"),
+  room("automation", "自动化工程组", 7, 7, ASSET_ROOT + "/rooms/automation-room-enterprise-portrait.png"),
+  room("operations", "运行与分析组", 5, 6, ASSET_ROOT + "/rooms/operations-room-enterprise-portrait.png"),
+  room("ai-center", "AI能力中枢", 4, 4, ASSET_ROOT + "/rooms/ai-center-room-enterprise-portrait.png"),
+  room("ceo", "CEO办公室", 1, 1, ASSET_ROOT + "/rooms/ceo-office-enterprise-portrait.png", true),
 ];
 
 const METRICS = [
   { label: "硅基员工总数", value: 32, suffix: "人", hint: "较昨日 +2", tone: "blue", icon: UsersRound },
+  { label: "在线人数", value: 28, suffix: "人", hint: "87.5%", tone: "blue", icon: UserRound },
+  { label: "运行中", value: 24, suffix: "人", hint: "75.0%", tone: "green", icon: PlayCircle },
   { label: "空闲", value: 4, suffix: "人", hint: "12.5%", tone: "slate", icon: Coffee },
-  { label: "执行中", value: 24, suffix: "人", hint: "75.0%", tone: "green", icon: PlayCircle },
-  { label: "等待人工", value: 3, suffix: "人", hint: "9.4%", tone: "amber", icon: UserRoundCheck },
-  { label: "异常", value: 1, suffix: "人", hint: "3.1%", tone: "red", icon: AlertTriangle },
+  { label: "异常", value: 3, suffix: "人", hint: "9.4%", tone: "red", icon: CircleAlert },
 ] as const;
 
 export function SiliconOfficeDashboard({ embedded = false }: { embedded?: boolean }) {
   const [selectedId, setSelectedId] = useState("zhang-wei");
+  const themeMode = usePreferencesStore((state) => state.themeMode);
+  const themeScheme = usePreferencesStore((state) => state.themeScheme);
+  const setThemeMode = usePreferencesStore((state) => state.setThemeMode);
   const selectedEmployee = useMemo(
     () => EMPLOYEES.find((employeeItem) => employeeItem.id === selectedId) ?? EMPLOYEES[3],
     [selectedId],
   );
 
+  const toggleTheme = () => {
+    const nextTheme = themeMode === "dark" ? themeScheme : "dark";
+    setThemeMode(nextTheme);
+    void persistPreference("theme_mode", nextTheme);
+  };
+
   return (
-    <main className={[styles.dashboard, embedded ? styles.embedded : ""].join(" ")}>
-      <section aria-label="硅基员工状态概览" className={styles.metrics}>
-        {METRICS.map((metric) => <MetricCard key={metric.label} metric={metric} />)}
+    <main className={[styles.dashboard, embedded ? styles.embedded : "", themeMode === "dark" ? styles.dark : ""].join(" ")}>
+      <section aria-label="硅基员工状态概览" className={styles.metricsSection}>
+        <div className={styles.metrics}>
+          {METRICS.map((metric) => <MetricCard key={metric.label} metric={metric} />)}
+        </div>
+        <button
+          aria-label={themeMode === "dark" ? "切换为浅色模式" : "切换为深色模式"}
+          className={styles.themeToggle}
+          onClick={toggleTheme}
+          title={themeMode === "dark" ? "切换为浅色模式" : "切换为深色模式"}
+          type="button"
+        >
+          {themeMode === "dark" ? <Sun aria-hidden="true" /> : <Moon aria-hidden="true" />}
+        </button>
       </section>
 
       <section className={styles.workspace}>
-        <div className={styles.roomGrid}>
-          {ROOMS.map((roomItem) => (
-            <OfficeRoom
-              key={roomItem.id}
-              onSelect={setSelectedId}
-              room={roomItem}
-              selectedId={selectedEmployee.id}
-            />
-          ))}
+        <div className={styles.officeFloor}>
+          <div className={styles.roomGrid}>
+            {ROOMS.map((roomItem) => (
+              <OfficeRoom
+                key={roomItem.id}
+                onSelect={setSelectedId}
+                room={roomItem}
+                selectedId={selectedEmployee.id}
+              />
+            ))}
+          </div>
+          <StatusLegend />
         </div>
         <EmployeeDetailPanel employee={selectedEmployee} onClose={() => setSelectedId("")} />
       </section>
     </main>
+  );
+}
+
+function StatusLegend() {
+  return (
+    <section aria-label="员工状态图例" className={styles.statusLegend}>
+      <span data-status="running"><i />运行中</span>
+      <span data-status="idle"><i />空闲</span>
+      <span data-status="error"><i />异常</span>
+    </section>
   );
 }
 
@@ -146,15 +182,21 @@ function MetricCard({ metric }: { metric: (typeof METRICS)[number] }) {
 function OfficeRoom({ room, selectedId, onSelect }: { room: OfficeRoomData; selectedId: string; onSelect: (employeeId: string) => void }) {
   return (
     <article className={styles.room} data-executive={room.executive ? "true" : "false"}>
-      <Image alt="" className={styles.roomBackground} fill priority={room.id === "test-design"} sizes="(max-width: 1200px) 24vw, 280px" src={room.image} />
+      <Image
+        alt=""
+        className={styles.roomBackground}
+        fill
+        priority={room.id === "requirement" || room.id === "test-design"}
+        sizes="(max-width: 1200px) 24vw, 280px"
+        src={room.image}
+      />
       <header className={styles.roomHeader}>
         <h2>{room.name}</h2>
-        <span><UsersRound aria-hidden="true" /> {room.employees.length}/{room.capacity}</span>
+        <span><UsersRound aria-hidden="true" /> {room.occupied}/{room.capacity}</span>
       </header>
       {!room.executive ? room.employees.map((employeeItem) => (
         <Workstation employee={employeeItem} key={employeeItem.id} onSelect={onSelect} selected={employeeItem.id === selectedId} />
       )) : null}
-      {!room.executive && room.employees.length < 4 ? <EmptyWorkstation left={73} top={73} /> : null}
       {room.executive ? (
         <button
           aria-label="查看 CEO 李总"
@@ -174,22 +216,13 @@ function Workstation({ employee, selected, onSelect }: { employee: OfficeEmploye
     <button
       aria-label={employee.name + "，" + STATUS_META[employee.status].label}
       className={[styles.workstation, styles[employee.status], selected ? styles.selected : ""].join(" ")}
+      data-variant={employee.workstation}
       onClick={() => onSelect(employee.id)}
       style={{ left: employee.left + "%", top: employee.top + "%" }}
       type="button"
     >
-      <Image alt="" className={styles.workstationImage} fill sizes="110px" src={WORKSTATION_IMAGES[employee.workstation]} />
       <Nameplate employee={employee} />
     </button>
-  );
-}
-
-function EmptyWorkstation({ left, top }: { left: number; top: number }) {
-  return (
-    <div className={styles.emptyWorkstation} style={{ left: left + "%", top: top + "%" }}>
-      <Image alt="" className={styles.workstationImage} fill sizes="110px" src={EMPTY_WORKSTATION_IMAGE} />
-      <span className={styles.emptyLabel}>空闲</span>
-    </div>
   );
 }
 
@@ -197,7 +230,6 @@ function Nameplate({ employee }: { employee: OfficeEmployee }) {
   const status = STATUS_META[employee.status];
   return (
     <span className={styles.nameplate}>
-      <span className={styles.avatar}>{employee.name.slice(0, 1)}</span>
       <span className={styles.nameCopy}>
         <strong>{employee.name}</strong>
         <small><i /> {status.label}</small>
@@ -216,7 +248,15 @@ function EmployeeDetailPanel({ employee, onClose }: { employee: OfficeEmployee; 
       </header>
 
       <div className={styles.profile}>
-        <div className={styles.profileAvatar}><span>{employee.name.slice(0, 1)}</span></div>
+        <div className={styles.profileAvatar}>
+          <Image
+            alt={`${employee.name}的头像`}
+            className={styles.profileAvatarImage}
+            fill
+            sizes="56px"
+            src={EMPLOYEE_PORTRAITS[employee.workstation]}
+          />
+        </div>
         <div>
           <h3>{employee.name}</h3>
           <p className={styles.profileStatus} data-status={employee.status}><i /> {status.detail}</p>
@@ -235,7 +275,9 @@ function EmployeeDetailPanel({ employee, onClose }: { employee: OfficeEmployee; 
       <div className={styles.detailBody}>
         <DetailSection title="工位信息">
           <div className={styles.seatCard}>
-            <span className={styles.seatPreview} />
+            <span className={styles.seatPreview}>
+              <Image alt={`${roomName(employee.room)}工位实景`} fill sizes="52px" src={roomImage(employee.room)} />
+            </span>
             <div><strong>{roomName(employee.room)} · 工位 {employee.seat}</strong><p>双屏工位 · 靠窗</p></div>
             <em>正常使用</em>
           </div>
@@ -258,8 +300,8 @@ function EmployeeDetailPanel({ employee, onClose }: { employee: OfficeEmployee; 
 
       <footer className={styles.detailActions}>
         <button type="button"><MessageSquare aria-hidden="true" />发送消息</button>
-        <button type="button"><Clock3 aria-hidden="true" />查看日志</button>
-        <button type="button"><RotateCcw aria-hidden="true" />更多操作</button>
+        <button type="button"><CalendarDays aria-hidden="true" />查看日程</button>
+        <button type="button"><Ellipsis aria-hidden="true" />更多操作</button>
       </footer>
     </aside>
   );
@@ -272,14 +314,14 @@ function DetailSection({ title, children }: { title: string; children: ReactNode
 function TimelineItem({ time, label, status, active = false }: { time: string; label: string; status: string; active?: boolean }) {
   return (
     <li className={active ? styles.timelineActive : ""}>
-      <span className={styles.timelineDot}>{active ? <CheckCircle2 aria-hidden="true" /> : null}</span>
+      <span className={styles.timelineDot} />
       <time>{time}</time><p>{label}</p><em>{status}</em>
     </li>
   );
 }
 
-function room(id: string, name: string, capacity: number, image: string, executive = false): OfficeRoomData {
-  return { id, name, capacity, image, executive, employees: EMPLOYEES.filter((employeeItem) => employeeItem.room === id) };
+function room(id: string, name: string, occupied: number, capacity: number, image: string, executive = false): OfficeRoomData {
+  return { id, name, occupied, capacity, image, executive, employees: EMPLOYEES.filter((employeeItem) => employeeItem.room === id) };
 }
 
 function employee(
@@ -294,9 +336,26 @@ function employee(
   top: number,
   skills: string[],
 ): OfficeEmployee {
-  return { id, name, role, room: roomId, seat, status, workstation, left, top, skills, email: id + "@siliconflow.ai", phone: "138****5678" };
+  return {
+    id,
+    name,
+    role,
+    room: roomId,
+    seat,
+    status,
+    workstation,
+    left,
+    top,
+    skills,
+    email: `${id.replaceAll("-", "")}@siliconflow.ai`,
+    phone: "138****5678",
+  };
 }
 
 function roomName(roomId: string) {
   return ROOMS.find((roomItem) => roomItem.id === roomId)?.name ?? "硅基员工中心";
+}
+
+function roomImage(roomId: string) {
+  return ROOMS.find((roomItem) => roomItem.id === roomId)?.image ?? `${ASSET_ROOT}/rooms/standard-room.png`;
 }

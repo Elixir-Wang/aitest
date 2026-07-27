@@ -27,6 +27,7 @@ import {
   type PerformanceLoadConfig,
   type PerformanceLoadStage,
   type PerformanceRequestPreview,
+  type PerformanceSseConfig,
   previewPerformanceRequest,
 } from "@/lib/api-client";
 import { toast } from "@/lib/toast";
@@ -86,6 +87,11 @@ export function PerformanceTestForm() {
   const [queryJson, setQueryJson] = useState("{}");
   const [headersJson, setHeadersJson] = useState("{}");
   const [bodyJson, setBodyJson] = useState("null");
+  const [transport, setTransport] = useState<"http" | "sse">("http");
+  const [sseMaxStreamSeconds, setSseMaxStreamSeconds] = useState("60");
+  const [firstContentPath, setFirstContentPath] = useState("$.choices[*].delta.content");
+  const [firstToolCallPath, setFirstToolCallPath] = useState("$.choices[*].delta.tool_calls[*]");
+  const [trackToolCall, setTrackToolCall] = useState(true);
   const [mode, setMode] = useState<PerformanceLoadConfig["mode"]>("fixed");
   const [stages, setStages] = useState<PerformanceLoadStage[]>([]);
   const [dataConfig, setDataConfig] = useState<PerformanceDataConfig>(initialDataConfig);
@@ -194,6 +200,49 @@ export function PerformanceTestForm() {
     }
     setSaving(true);
     try {
+      const sse: PerformanceSseConfig | null =
+        transport === "sse"
+          ? {
+              max_stream_seconds: positiveNumber(sseMaxStreamSeconds, "SSE 流超时"),
+              end_rule: {
+                event_name: "",
+                source: "data_text",
+                path: "",
+                operator: "equals",
+                expected: "[DONE]",
+              },
+              metrics: [
+                {
+                  id: "first_content",
+                  name: "首内容耗时",
+                  occurrence: "first",
+                  missing_policy: "record_null",
+                  match: {
+                    event_name: "",
+                    source: "data_json",
+                    path: firstContentPath.trim(),
+                    operator: "non_empty",
+                  },
+                },
+                ...(trackToolCall
+                  ? [
+                      {
+                        id: "first_tool_call",
+                        name: "首次工具调用耗时",
+                        occurrence: "first" as const,
+                        missing_policy: "record_null" as const,
+                        match: {
+                          event_name: "",
+                          source: "data_json" as const,
+                          path: firstToolCallPath.trim(),
+                          operator: "exists" as const,
+                        },
+                      },
+                    ]
+                  : []),
+              ],
+            }
+          : null;
       const created = await createPerformanceTest(selectedProjectId, {
         name: name.trim(),
         description: description.trim(),
@@ -206,6 +255,8 @@ export function PerformanceTestForm() {
           headers: parseObject(headersJson, "Headers"),
           body: parseJson(bodyJson, "Request Body"),
           random_seed: null,
+          transport,
+          sse,
         },
         load_config: {
           mode,
@@ -416,6 +467,65 @@ export function PerformanceTestForm() {
                 value={bodyJson}
               />
             </Field>
+          ) : null}
+
+          <Field>
+            <FieldLabel htmlFor="test-transport">响应传输</FieldLabel>
+            <Select
+              id="test-transport"
+              placeholder="选择响应传输"
+              setValue={(value) => setTransport(value as "http" | "sse")}
+              value={transport}
+            >
+              <SelectOption value="http">普通 HTTP</SelectOption>
+              <SelectOption value="sse">SSE 流式响应</SelectOption>
+            </Select>
+          </Field>
+
+          {transport === "sse" ? (
+            <>
+              <Field>
+                <FieldLabel htmlFor="sse-max-stream">SSE 流超时（秒）</FieldLabel>
+                <Input
+                  id="sse-max-stream"
+                  min={0.1}
+                  onChange={(event) => setSseMaxStreamSeconds(event.target.value)}
+                  step={1}
+                  type="number"
+                  value={sseMaxStreamSeconds}
+                />
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="sse-first-content-path">首内容字段路径</FieldLabel>
+                <Input
+                  id="sse-first-content-path"
+                  onChange={(event) => setFirstContentPath(event.target.value)}
+                  spellCheck={false}
+                  value={firstContentPath}
+                />
+              </Field>
+              <Field className="md:col-span-2">
+                <label className="flex items-center gap-2">
+                  <input
+                    checked={trackToolCall}
+                    onChange={(event) => setTrackToolCall(event.target.checked)}
+                    type="checkbox"
+                  />
+                  <span className="text-sm">采集首次工具调用耗时</span>
+                </label>
+              </Field>
+              {trackToolCall ? (
+                <Field className="md:col-span-2">
+                  <FieldLabel htmlFor="sse-first-tool-path">首次工具调用字段路径</FieldLabel>
+                  <Input
+                    id="sse-first-tool-path"
+                    onChange={(event) => setFirstToolCallPath(event.target.value)}
+                    spellCheck={false}
+                    value={firstToolCallPath}
+                  />
+                </Field>
+              ) : null}
+            </>
           ) : null}
 
           {/* 测试数据区块 */}

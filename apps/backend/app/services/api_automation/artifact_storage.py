@@ -3,6 +3,7 @@ import re
 from contextlib import contextmanager
 from pathlib import Path
 
+from app.agents.api_automation.pytest_requests.renderer import render_scenario_files
 from app.core import storage
 
 

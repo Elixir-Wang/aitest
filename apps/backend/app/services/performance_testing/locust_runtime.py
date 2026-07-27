@@ -9,6 +9,7 @@ from pathlib import Path
 
 import gevent
 from locust import events
+import generated_locustfile as generated
 from generated_locustfile import *
 
 
@@ -20,6 +21,7 @@ PLAN["request"]["headers"] = {
 PerformanceUser.host = str(RUNTIME["environment"]["api_base_url"]).rstrip("/")
 
 EVENT_LOG = Path(__file__).with_name("locust-events.jsonl")
+SSE_MEASUREMENTS = Path(__file__).with_name("sse-measurements.jsonl")
 CONTROL_FILE = Path(__file__).with_name("locust-control.json")
 
 
@@ -29,6 +31,15 @@ def _append_event(payload):
             "occurred_at": datetime.now(timezone.utc).isoformat(),
             **payload,
         }, ensure_ascii=False) + "\\n")
+
+
+def _append_sse_measurement(payload):
+    # Measurements intentionally contain only timings, IDs, and failure reasons.
+    with SSE_MEASUREMENTS.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(payload, ensure_ascii=False, separators=(",", ":")) + "\\n")
+
+
+generated.SSE_MEASUREMENT_SINK = _append_sse_measurement
 
 
 def _redact_response_value(value, key=""):
@@ -79,6 +90,7 @@ def _control_loop(environment):
                     if environment.runner is not None:
                         environment.runner.stats.reset_all()
                         environment.runner.exceptions = {}
+                    SSE_MEASUREMENTS.write_text("", encoding="utf-8")
                     last_command = command_id
         except (OSError, UnicodeDecodeError, json.JSONDecodeError):
             pass

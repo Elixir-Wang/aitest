@@ -2,6 +2,7 @@ import asyncio
 import hashlib
 import json
 import os
+import re
 import secrets
 import shutil
 import tempfile
@@ -38,7 +39,12 @@ from app.agents.api_automation.pytest_requests.suite import (
 )
 from app.agents.api_automation.pytest_requests.skill import pytest_requests_skill_fingerprint
 from app.agents.api_automation.orchestration.agent import api_scenario_orchestration_agent
-from app.agents.api_automation.orchestration.schemas import ScenarioPlanResult
+from app.agents.api_automation.orchestration.schemas import (
+    ScenarioPlanResult,
+    binding_to_runtime,
+    control_config_to_runtime,
+    extractor_to_runtime,
+)
 from app.core.environment_credentials import decrypt_api_environment_secret, encrypt_api_environment_secret
 from app.core.security import hash_secret
 from app.core import storage
@@ -70,6 +76,12 @@ from app.services.api_automation.artifact_storage import (
     project_suite_path,
     project_workspace_lock,
 )
+from app.services.api_automation.orchestration_asset_analysis import (
+    endpoint_fingerprint,
+    endpoint_summary,
+    environment_schema_projection,
+)
+from app.services.api_automation.orchestration_compiler import COMPILER_VERSION, compile_plan
 
 
 def artifacts_dir_for(project_id: str):
@@ -464,7 +476,7 @@ def update_api_environment(project_id: str, environment_id: str, payload: ApiEnv
         existing_data = _serialize_api_environment(existing)
         _validate_linked_ui_environment(db, project_id, payload.linked_ui_environment_id)
         _validate_account_password_config(payload, existing)
-        auth_config = _merge_auth_config_for_update(existing, payload)
+        auth_config = dict(payload.auth_config)
         _validate_auth_config(payload.auth_type, auth_config)
         auth_config = _prepare_auth_config_for_storage(payload.auth_type, auth_config)
         fields = {
@@ -2277,8 +2289,15 @@ def create_api_scenario_ai_plan(project_id: str, payload: ApiScenarioAiPlanIn, a
         if not endpoints:
             raise api_error(422, "API_SCENARIO_AI_NO_ASSETS", "当前范围内没有可用的接口资产。")
         endpoint_context = [_serialize_endpoint(endpoint) for endpoint in endpoints[:100]]
+        environment_row = None
+        if payload.constraints.environment_id:
+            environment_row = api_automation_repo.find_api_environment(db, payload.constraints.environment_id)
+            if not environment_row or environment_row["project_id"] != project_id:
+                raise api_error(404, "API_ENVIRONMENT_NOT_FOUND", "接口环境不存在。")
+        environment_projection = environment_schema_projection(environment_row)
         expected_revision = int(scenario["revision"]) if scenario else None
         scenario_draft_hash = _scenario_draft_hash(db, scenario) if scenario else None
+        assets_hash = endpoint_fingerprint(endpoint_context)
 
     try:
         selection = resolve_model_selection("api_scenario_orchestration")
@@ -2286,10 +2305,12 @@ def create_api_scenario_ai_plan(project_id: str, payload: ApiScenarioAiPlanIn, a
         selection = resolve_model_selection("api_test_generation")
     prompt = json.dumps(
         {
-            "goal": payload.goal,
+            "goal": _redact_orchestration_text(payload.goal),
             "constraints": payload.constraints.model_dump(),
             "current_scenario_revision": expected_revision,
-            "endpoint_assets": _redact_orchestration_assets(endpoint_context),
+            "endpoint_catalog": [endpoint_summary(endpoint) for endpoint in endpoint_context],
+            "environment_schema": environment_projection,
+            "instructions": "接口详情由服务端编译器核验。不要猜测字段路径；无法确定时写入 unresolved_items。",
         },
         ensure_ascii=False,
     )
@@ -2300,7 +2321,8 @@ def create_api_scenario_ai_plan(project_id: str, payload: ApiScenarioAiPlanIn, a
             ).ainvoke({"messages": [{"role": "user", "content": prompt}]})
         )
         structured = result.get("structured_response") if isinstance(result, dict) else None
-        plan = structured if isinstance(structured, ScenarioPlanResult) else ScenarioPlanResult.model_validate(structured)
+        semantic_plan = structured if isinstance(structured, ScenarioPlanResult) else ScenarioPlanResult.model_validate(structured)
+        plan = compile_plan(semantic_plan, endpoint_context, environment_projection)
     except Exception as exc:
         raise api_error(503, "API_SCENARIO_AI_PLAN_FAILED", f"AI 编排计划生成失败：{exc}") from exc
 
@@ -2322,12 +2344,18 @@ def create_api_scenario_ai_plan(project_id: str, payload: ApiScenarioAiPlanIn, a
         validation["errors"].extend(existing_validation["errors"])
         validation["warnings"].extend(existing_validation["warnings"])
         validation["valid"] = not validation["errors"]
+    if plan.unresolved_items:
+        validation["errors"].extend(f"未解决：{item}" for item in plan.unresolved_items)
+        validation["valid"] = False
     plan_id = f"aiplan-{secrets.token_hex(8)}"
     expires_at = datetime.now(UTC) + timedelta(minutes=30)
     response = {
         "plan_id": plan_id,
-        "plan_version": 1,
-        "graph_version": 1,
+        "plan_version": 2,
+        "status": "preview",
+        "compiler_version": COMPILER_VERSION,
+        "asset_fingerprint": assets_hash,
+        "environment_schema": environment_projection,
         **plan.model_dump(),
         "validation": validation,
         "expected_revision": expected_revision,
@@ -2346,12 +2374,14 @@ def create_api_scenario_ai_plan(project_id: str, payload: ApiScenarioAiPlanIn, a
                 project_id,
                 payload.scenario_id,
                 expected_revision,
-                payload.goal,
+                _redact_orchestration_text(payload.goal),
                 api_automation_repo.dumps_json(
                     {
                         **payload.model_dump(),
                         "scenario_updated_at": scenario["updated_at"] if scenario else None,
                         "scenario_draft_hash": scenario_draft_hash,
+                        "asset_fingerprint": assets_hash,
+                        "environment_schema": environment_projection,
                     }
                 ),
                 api_automation_repo.dumps_json(response),
@@ -2363,6 +2393,22 @@ def create_api_scenario_ai_plan(project_id: str, payload: ApiScenarioAiPlanIn, a
             ),
         )
     return response
+
+
+def get_api_scenario_ai_plan(project_id: str, plan_id: str, actor) -> dict:
+    """Recover a persisted preview without replaying an AI request after page refresh."""
+    with connect() as db:
+        _require_visible_project(db, project_id, actor)
+        row = db.execute("SELECT * FROM api_scenario_ai_plans WHERE id = ? AND project_id = ?", (plan_id, project_id)).fetchone()
+        if not row:
+            raise api_error(404, "API_SCENARIO_AI_PLAN_NOT_FOUND", "AI 编排计划不存在。")
+        status = str(row["status"])
+        if status == "preview" and datetime.fromisoformat(row["expires_at"].replace("Z", "+00:00")) <= datetime.now(UTC):
+            db.execute("UPDATE api_scenario_ai_plans SET status = 'expired' WHERE id = ?", (plan_id,))
+            status = "expired"
+        plan = api_automation_repo.loads_json(row["plan_json"], {})
+        plan["status"] = status
+        return plan
 
 
 def apply_api_scenario_ai_plan(project_id: str, plan_id: str, payload: ApiScenarioAiPlanApplyIn, actor) -> dict:
@@ -2417,6 +2463,19 @@ def _redact_orchestration_assets(endpoints: list[dict]) -> list[dict]:
     ]
 
 
+def _redact_orchestration_text(value: str) -> str:
+    """Keep intent while ensuring header-like credentials do not enter model or plan storage."""
+    patterns = (
+        r"(?i)(authorization\s*[:=]\s*(?:bearer\s+)?)\S+",
+        r"(?i)(cookie\s*[:=]\s*)\S+",
+        r"(?i)((?:token|secret|password|api[_-]?key)\s*[:=]\s*)\S+",
+    )
+    redacted = value
+    for pattern in patterns:
+        redacted = re.sub(pattern, r"\1[REDACTED]", redacted)
+    return redacted
+
+
 def _scenario_draft_hash(db, scenario: Row) -> str:
     steps = [_serialize_scenario_step(row) for row in _list_scenario_step_rows(db, scenario["id"])]
     payload = {
@@ -2448,6 +2507,29 @@ def _validate_ai_plan(project_id: str, plan: ScenarioPlanResult, endpoints: list
             errors.append(f"工具节点 {node.name or node.id} 不允许绑定接口资产。")
         if _contains_executable_url(node.request_overrides):
             errors.append(f"节点 {node.name or node.id} 不允许携带 AI 生成的 URL。")
+    prior_outputs: dict[str, set[str]] = {}
+    all_ids = {node.id for node in plan.nodes}
+    for node in plan.nodes:
+        output_names = {extractor.name for extractor in node.extractors}
+        if node.type == "assign":
+            name = str(node.control_config.get("name") or "")
+            if name:
+                output_names.add(name)
+        sources = [binding.source for binding in node.bindings]
+        if node.type in {"condition", "assign"} and isinstance(node.control_config.get("source"), dict):
+            sources.append(node.control_config["source"])
+        for source in sources:
+            source_type = source.type if hasattr(source, "type") else source.get("type") if isinstance(source, dict) else None
+            if source_type != "step_output":
+                continue
+            source_step_id = str(source.step_id if hasattr(source, "step_id") else source.get("step_id", ""))
+            variable = str(source.variable if hasattr(source, "variable") else source.get("variable", ""))
+            if source_step_id not in prior_outputs:
+                detail = "引用了后续步骤输出" if source_step_id in all_ids else "引用了不存在的步骤"
+                errors.append(f"节点 {node.id} 的变量来源 {detail}：{source_step_id}.{variable}。")
+            elif variable not in prior_outputs[source_step_id]:
+                errors.append(f"节点 {node.id} 引用了步骤 {source_step_id} 未输出的变量 {variable}。")
+        prior_outputs[node.id] = output_names
     adjacency: dict[str, set[str]] = {node_id: set() for node_id in node_ids}
     indegree = {node_id: 0 for node_id in node_ids}
     for edge in plan.edges:
@@ -2507,7 +2589,11 @@ def _ai_plan_node_to_step(node: dict, step_order: int) -> ApiScenarioStepIn:
 def _ai_plan_node_to_step_dict(node: dict, step_order: int, project_id: str, scenario_id: str) -> dict:
     step = _ai_plan_node_to_step(node, step_order)
     return {
-        **step.model_dump(),
+        **step.model_dump(exclude={"bindings", "extractors", "assertions", "control_config"}),
+        "bindings": [binding_to_runtime(binding) for binding in step.bindings],
+        "extractors": [extractor_to_runtime(extractor) for extractor in step.extractors],
+        "assertions": [assertion.model_dump(exclude_none=True) for assertion in step.assertions],
+        "control_config": control_config_to_runtime(step.step_type, step.control_config),
         "id": step.id or f"ai-step-{step_order}",
         "project_id": project_id,
         "scenario_id": scenario_id,
@@ -2821,7 +2907,9 @@ def _serialize_api_environment(row: Row) -> dict:
         "api_base_url": row["api_base_url"],
         "username": row["username"],
         "auth_type": row["auth_type"],
-        "auth_config": _mask_auth_config(api_automation_repo.loads_json(row["auth_config_json"], {})),
+        "auth_config": _serialize_auth_config(
+            row["auth_type"], api_automation_repo.loads_json(row["auth_config_json"], {})
+        ),
         "variables": api_automation_repo.loads_json(row["variables_json"], {}),
         "default_headers": api_automation_repo.loads_json(row["default_headers_json"], {}),
         "timeout_seconds": row["timeout_seconds"],
@@ -3170,10 +3258,10 @@ def _prepare_scenario_step(db, project_id: str, payload: ApiScenarioStepIn, step
         "step_order": step_order,
         "name": payload.name or (str(endpoint["summary"]) if endpoint else str(case["title"]) if case else payload.step_type),
         "request_overrides": payload.request_overrides,
-        "bindings": payload.bindings,
-        "extractors": payload.extractors,
-        "assertions": payload.assertions,
-        "control_config": payload.control_config,
+        "bindings": [binding_to_runtime(binding) for binding in payload.bindings],
+        "extractors": [extractor_to_runtime(extractor) for extractor in payload.extractors],
+        "assertions": [assertion.model_dump(exclude_none=True) for assertion in payload.assertions],
+        "control_config": control_config_to_runtime(payload.step_type, payload.control_config),
         "on_failure": payload.on_failure,
         "enabled": payload.enabled,
     }
@@ -3542,14 +3630,6 @@ def _validate_auth_config(auth_type: str, auth_config: dict) -> None:
     if auth_type in {"none", "account_password"}:
         return
     if auth_type == "cybertron_agent":
-        required = ["cybertron_robot_key", "cybertron_robot_token", "username"]
-        missing = [
-            key
-            for key in required
-            if not auth_config.get(key) and not auth_config.get(f"{key}_encrypted")
-        ]
-        if missing:
-            raise api_error(400, "API_AUTH_CYBERTRON_CONFIG_REQUIRED", f"塞伯坦智能体缺少配置：{', '.join(missing)}。")
         return
     if auth_type == "static_bearer" and not (auth_config.get("token") or auth_config.get("token_encrypted")):
         raise api_error(400, "API_AUTH_TOKEN_REQUIRED", "Bearer 鉴权必须填写 token。")
@@ -3577,17 +3657,20 @@ def _prepare_auth_config_for_storage(auth_type: str, auth_config: dict) -> dict:
     if auth_type != "cybertron_agent":
         return stored
     for key in ("cybertron_robot_key", "cybertron_robot_token"):
-        if stored.get(key):
-            stored[f"{key}_encrypted"] = encrypt_api_environment_secret(str(stored.pop(key)))
+        value = str(stored.pop(key, "") or "")
+        stored.pop(f"{key}_encrypted", None)
+        if value:
+            stored[f"{key}_encrypted"] = encrypt_api_environment_secret(value)
     return stored
 
 
-def _mask_auth_config(auth_config: dict) -> dict:
+def _serialize_auth_config(auth_type: str, auth_config: dict) -> dict:
     masked = dict(auth_config)
-    if masked.pop("cybertron_robot_key_encrypted", ""):
-        masked["cybertron_robot_key_saved"] = True
-    if masked.pop("cybertron_robot_token_encrypted", ""):
-        masked["cybertron_robot_token_saved"] = True
+    if auth_type == "cybertron_agent":
+        for key in ("cybertron_robot_key", "cybertron_robot_token"):
+            encrypted = masked.pop(f"{key}_encrypted", "")
+            masked[key] = decrypt_api_environment_secret(encrypted) or ""
+            masked[f"{key}_saved"] = bool(encrypted)
     if masked.pop("token_encrypted", ""):
         masked["token_saved"] = True
     if masked.pop("cookie_value_encrypted", ""):
@@ -3595,19 +3678,6 @@ def _mask_auth_config(auth_config: dict) -> dict:
     if "headers_encrypted" in masked:
         masked["headers_saved"] = sorted(masked.pop("headers_encrypted").keys())
     return masked
-
-
-def _merge_auth_config_for_update(existing: Row, payload: ApiEnvironmentIn) -> dict:
-    auth_config = dict(payload.auth_config)
-    if payload.auth_type != existing["auth_type"]:
-        return auth_config
-    existing_config = api_automation_repo.loads_json(existing["auth_config_json"], {})
-    if payload.auth_type == "cybertron_agent":
-        for key in ("cybertron_robot_key", "cybertron_robot_token"):
-            encrypted_key = f"{key}_encrypted"
-            if not auth_config.get(key) and existing_config.get(encrypted_key):
-                auth_config[encrypted_key] = existing_config[encrypted_key]
-    return auth_config
 
 
 def _apply_cybertron_headers(headers: dict[str, str], auth_config: dict) -> None:

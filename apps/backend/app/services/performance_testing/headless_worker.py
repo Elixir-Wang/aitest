@@ -341,6 +341,59 @@ def _read_locust_events(path: Path) -> list[dict[str, Any]]:
     return events
 
 
+def summarize_sse_measurements(path: Path) -> dict[str, Any]:
+    """Return independent SSE timing aggregates without touching Locust HTTP stats."""
+    buckets: dict[str, dict[str, Any]] = {}
+    attempts = 0
+    if not path.exists():
+        return {"attempt_count": 0, "metrics": []}
+    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        try:
+            measurement = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(measurement, dict):
+            continue
+        attempts += 1
+        values = measurement.get("metrics") if isinstance(measurement.get("metrics"), dict) else {}
+        missing = {str(item) for item in measurement.get("missing_metric_ids", []) if isinstance(item, str)}
+        failed = bool(measurement.get("failure_reason"))
+        for metric_id in set(values) | missing:
+            bucket = buckets.setdefault(metric_id, {"metric_id": metric_id, "values": [], "missing_count": 0, "failure_count": 0})
+            if metric_id in missing:
+                bucket["missing_count"] += 1
+            if failed:
+                bucket["failure_count"] += 1
+            value = values.get(metric_id)
+            if isinstance(value, (int, float)):
+                bucket["values"].append(float(value))
+
+    metrics = []
+    for bucket in sorted(buckets.values(), key=lambda item: item["metric_id"]):
+        values = sorted(bucket.pop("values"))
+        metrics.append(
+            {
+                "metric_id": bucket["metric_id"],
+                "attempt_count": attempts,
+                "matched_count": len(values),
+                "missing_count": bucket["missing_count"],
+                "failure_count": bucket["failure_count"],
+                "average_ms": round(sum(values) / len(values), 4) if values else None,
+                "p50_ms": _percentile(values, 0.5),
+                "p95_ms": _percentile(values, 0.95),
+                "p99_ms": _percentile(values, 0.99),
+            }
+        )
+    return {"attempt_count": attempts, "metrics": metrics}
+
+
+def _percentile(values: list[float], quantile: float) -> float | None:
+    if not values:
+        return None
+    index = max(0, min(len(values) - 1, int((len(values) - 1) * quantile)))
+    return round(values[index], 4)
+
+
 def _matching_failure_event(
     events: list[dict[str, Any]],
     *,

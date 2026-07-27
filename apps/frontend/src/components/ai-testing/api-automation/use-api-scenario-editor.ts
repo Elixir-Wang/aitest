@@ -20,6 +20,7 @@ import {
   createApiScenarioAiPlan,
   executeApiAutomationScenario,
   getApiAutomationRun,
+  getApiScenarioAiPlan,
   getApiAutomationScenario,
   getApiAutomationScenarioRunResult,
   listApiAutomationEndpoints,
@@ -48,6 +49,10 @@ type ScenarioDraft = {
 };
 
 const emptyDraft: ScenarioDraft = { name: "", description: "", variables: {}, steps: [] };
+
+function aiPlanStorageKey(projectId: string, scenarioId: string) {
+  return `api-scenario-ai-plan:${projectId}:${scenarioId}`;
+}
 
 export function useApiScenarioEditor(projectId: string, scenarioId?: string) {
   const router = useRouter();
@@ -118,6 +123,26 @@ export function useApiScenarioEditor(projectId: string, scenarioId?: string) {
       cancelled = true;
     };
   }, [applyScenario, projectId, scenarioId]);
+
+  useEffect(() => {
+    if (!scenario?.id || aiPlan) return;
+    const storageKey = aiPlanStorageKey(projectId, scenario.id);
+    const planId = window.sessionStorage.getItem(storageKey);
+    if (!planId) return;
+    let cancelled = false;
+    void getApiScenarioAiPlan(projectId, planId)
+      .then((plan) => {
+        if (cancelled) return;
+        if (plan.status === "preview") setAiPlan(plan);
+        else window.sessionStorage.removeItem(storageKey);
+      })
+      .catch(() => {
+        if (!cancelled) window.sessionStorage.removeItem(storageKey);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [aiPlan, projectId, scenario?.id]);
 
   const refreshRevisions = useCallback(
     async (targetScenarioId: string) => {
@@ -330,6 +355,7 @@ export function useApiScenarioEditor(projectId: string, scenarioId?: string) {
         },
       });
       setAiPlan(plan);
+      window.sessionStorage.setItem(aiPlanStorageKey(projectId, saved.id), plan.plan_id);
       return plan;
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "AI 编排失败");
@@ -350,6 +376,7 @@ export function useApiScenarioEditor(projectId: string, scenarioId?: string) {
       });
       applyScenario(applied);
       setAiPlan(null);
+      window.sessionStorage.removeItem(aiPlanStorageKey(projectId, scenario.id));
       setValidation(null);
       toast.success("AI 编排已应用到场景草稿");
     } catch (error) {
@@ -413,7 +440,10 @@ export function useApiScenarioEditor(projectId: string, scenarioId?: string) {
       restoreRevision: handleRestoreRevision,
       generateAiPlan,
       applyAiPlan,
-      discardAiPlan: () => setAiPlan(null),
+      discardAiPlan: () => {
+        if (scenario?.id) window.sessionStorage.removeItem(aiPlanStorageKey(projectId, scenario.id));
+        setAiPlan(null);
+      },
     },
   };
 }

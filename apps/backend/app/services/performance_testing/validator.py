@@ -9,7 +9,7 @@ from pathlib import Path
 from app.agents.performance_testing.script_generation.schemas import LocustScriptPlan, ScriptValidationResult
 
 
-ALLOWED_IMPORTS = {"json", "math", "random", "time", "uuid", "locust"}
+ALLOWED_IMPORTS = {"json", "math", "random", "re", "time", "uuid", "locust"}
 FORBIDDEN_CALLS = {"eval", "exec", "compile", "open", "__import__", "input"}
 
 
@@ -38,7 +38,7 @@ def validate_locust_script(plan: LocustScriptPlan, source: str) -> ScriptValidat
             has_task = any(_name(decorator) == "task" for decorator in node.decorator_list)
         elif isinstance(node, ast.Call):
             call_name = _name(node.func)
-            if call_name in FORBIDDEN_CALLS:
+            if isinstance(node.func, ast.Name) and call_name in FORBIDDEN_CALLS:
                 errors.append(f"禁止调用：{call_name}")
             if call_name == "request":
                 catch_response = next((keyword.value for keyword in node.keywords if keyword.arg == "catch_response"), None)

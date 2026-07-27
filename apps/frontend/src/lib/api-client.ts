@@ -1098,8 +1098,21 @@ export type ApiScenarioAiPlanNode = Partial<ApiAutomationScenarioStep> & {
 export type ApiScenarioAiPlan = {
   plan_id: string;
   plan_version: number;
+  status: "preview" | "applied" | "discarded" | "expired";
+  compiler_version: number;
+  asset_fingerprint: string;
+  environment_schema: Record<string, unknown>;
   graph_version: number;
   scenario_name: string;
+  description: string;
+  inputs: Array<{
+    name: string;
+    label: string;
+    value_type: string;
+    required: boolean;
+    sensitive: boolean;
+    description: string;
+  }>;
   nodes: ApiScenarioAiPlanNode[];
   edges: Array<{ source: string; target: string; condition: string }>;
   assumptions: string[];
@@ -1157,6 +1170,30 @@ export type PerformanceRequestConfig = {
   headers: Record<string, unknown>;
   body: unknown;
   random_seed: number | null;
+  transport: "http" | "sse";
+  sse: PerformanceSseConfig | null;
+};
+
+export type PerformanceSseMatch = {
+  event_name: string;
+  source: "data_json" | "data_text" | "event_name";
+  path: string;
+  operator: "exists" | "non_empty" | "equals" | "contains" | "matches";
+  expected?: unknown;
+};
+
+export type PerformanceSseMetric = {
+  id: string;
+  name: string;
+  match: PerformanceSseMatch;
+  occurrence: "first";
+  missing_policy: "record_null" | "fail_request" | "ignore";
+};
+
+export type PerformanceSseConfig = {
+  max_stream_seconds: number;
+  end_rule: PerformanceSseMatch | null;
+  metrics: PerformanceSseMetric[];
 };
 
 export type PerformanceLoadConfig = {
@@ -1380,6 +1417,20 @@ export type PerformanceRunStats = {
   failures: PerformanceRunFailure[];
   exceptions: PerformanceRunException[];
   events: Array<Record<string, unknown>>;
+  sse_metrics: {
+    attempt_count: number;
+    metrics: Array<{
+      metric_id: string;
+      attempt_count: number;
+      matched_count: number;
+      missing_count: number;
+      failure_count: number;
+      average_ms: number | null;
+      p50_ms: number | null;
+      p95_ms: number | null;
+      p99_ms: number | null;
+    }>;
+  };
 };
 
 export type PerformanceRunCharts = {
@@ -2137,6 +2188,10 @@ export function applyApiScenarioAiPlan(
     method: "POST",
     body: JSON.stringify(payload),
   });
+}
+
+export function getApiScenarioAiPlan(projectId: string, planId: string) {
+  return apiRequest<ApiScenarioAiPlan>(`/projects/${projectId}/api-scenarios/ai-plans/${planId}`);
 }
 
 export function getApiAutomationScenario(projectId: string, scenarioId: string) {

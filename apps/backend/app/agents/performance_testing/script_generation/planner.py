@@ -25,6 +25,8 @@ def build_default_plan(performance_test: dict[str, Any]) -> LocustScriptPlan:
                 "headers": headers,
                 "body": request_config.get("body"),
                 "timeout_seconds": load_config.get("request_timeout_seconds", 30),
+                "transport": request_config.get("transport", "http"),
+                "sse": request_config.get("sse"),
             },
             "load": {
                 "mode": load_config.get("mode", "fixed"),

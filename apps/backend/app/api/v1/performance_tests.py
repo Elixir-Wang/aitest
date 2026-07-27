@@ -4,6 +4,7 @@ from app.dependencies.auth import current_user, require_admin
 from app.schemas.performance_test import (
     PerformanceRequestPreviewIn,
     PerformanceRequestPreviewOut,
+    PerformanceSseRulePreviewIn,
     PerformanceScriptConfigurationIn,
     PerformanceScriptOut,
     PerformanceTestCreateIn,
@@ -23,6 +24,15 @@ def preview_performance_request(
     actor=Depends(current_user),
 ) -> dict:
     return service.preview_performance_request(project_id, payload, actor)
+
+
+@router.post("/sse-rule-preview")
+def preview_sse_rule(
+    project_id: str,
+    payload: PerformanceSseRulePreviewIn,
+    actor=Depends(current_user),
+) -> dict:
+    return service.preview_sse_rules(project_id, payload, actor)
 
 
 @router.post("", response_model=PerformanceTestOut)

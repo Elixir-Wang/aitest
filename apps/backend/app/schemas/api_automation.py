@@ -3,6 +3,16 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from app.agents.api_automation.orchestration.schemas import (
+    ScenarioAssertion,
+    ScenarioBinding,
+    ScenarioExtractor,
+    ScenarioPlanInput,
+    normalize_legacy_assertion,
+    normalize_legacy_binding,
+    normalize_legacy_extractor,
+)
+
 
 AuthType = Literal["none", "account_password", "cybertron_agent"]
 GenerationStatus = Literal["queued", "running", "completed", "failed", "cancelled", "interrupted"]
@@ -381,12 +391,27 @@ class ApiScenarioStepIn(_StrippedModel):
     step_order: int = Field(default=0, ge=0)
     name: str = ""
     request_overrides: dict[str, Any] = Field(default_factory=dict)
-    bindings: list[dict[str, Any]] = Field(default_factory=list)
-    extractors: list[dict[str, Any]] = Field(default_factory=list)
-    assertions: list[dict[str, Any]] = Field(default_factory=list)
+    bindings: list[ScenarioBinding] = Field(default_factory=list)
+    extractors: list[ScenarioExtractor] = Field(default_factory=list)
+    assertions: list[ScenarioAssertion] = Field(default_factory=list)
     control_config: dict[str, Any] = Field(default_factory=dict)
     on_failure: Literal["stop", "continue", "always_run"] = "stop"
     enabled: bool = True
+
+    @field_validator("bindings", mode="before")
+    @classmethod
+    def _normalize_bindings(cls, value: object) -> object:
+        return [normalize_legacy_binding(item) for item in value] if isinstance(value, list) else value
+
+    @field_validator("extractors", mode="before")
+    @classmethod
+    def _normalize_extractors(cls, value: object) -> object:
+        return [normalize_legacy_extractor(item) for item in value] if isinstance(value, list) else value
+
+    @field_validator("assertions", mode="before")
+    @classmethod
+    def _normalize_assertions(cls, value: object) -> object:
+        return [normalize_legacy_assertion(item) for item in value] if isinstance(value, list) else value
 
 
 class ApiScenarioStepsReplaceIn(_StrippedModel):
@@ -416,11 +441,12 @@ class ApiScenarioAiPlanNode(_StrippedModel):
     id: str = Field(min_length=1, max_length=100)
     type: Literal["api_request", "condition", "wait", "poll", "assign"]
     endpoint_id: str | None = None
+    phase: Literal["setup", "main", "verify", "cleanup"] = "main"
     name: str = ""
     request_overrides: dict[str, Any] = Field(default_factory=dict)
-    bindings: list[dict[str, Any]] = Field(default_factory=list)
-    extractors: list[dict[str, Any]] = Field(default_factory=list)
-    assertions: list[dict[str, Any]] = Field(default_factory=list)
+    bindings: list[ScenarioBinding] = Field(default_factory=list)
+    extractors: list[ScenarioExtractor] = Field(default_factory=list)
+    assertions: list[ScenarioAssertion] = Field(default_factory=list)
     control_config: dict[str, Any] = Field(default_factory=dict)
     on_failure: Literal["stop", "continue", "always_run"] = "stop"
     enabled: bool = True
@@ -434,9 +460,16 @@ class ApiScenarioAiPlanEdge(_StrippedModel):
 
 class ApiScenarioAiPlanOut(_StrippedModel):
     plan_id: str
-    plan_version: int = 1
+    plan_version: int = 2
+    status: Literal["preview", "applied", "discarded", "expired"] = "preview"
+    compiler_version: int = 1
+    asset_fingerprint: str = ""
+    environment_schema: dict[str, Any] = Field(default_factory=dict)
+    schema_version: int = 2
     graph_version: int = 1
     scenario_name: str
+    description: str = ""
+    inputs: list[ScenarioPlanInput] = Field(default_factory=list)
     nodes: list[ApiScenarioAiPlanNode] = Field(default_factory=list)
     edges: list[ApiScenarioAiPlanEdge] = Field(default_factory=list)
     assumptions: list[str] = Field(default_factory=list)

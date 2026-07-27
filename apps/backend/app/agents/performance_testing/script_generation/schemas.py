@@ -16,6 +16,16 @@ class LocustRequestPlan(BaseModel):
     headers: dict[str, Any] = Field(default_factory=dict)
     body: Any = None
     timeout_seconds: float = Field(gt=0, le=600)
+    transport: Literal["http", "sse"] = "http"
+    sse: dict[str, Any] | None = None
+
+    @model_validator(mode="after")
+    def validate_sse(self) -> "LocustRequestPlan":
+        if self.transport == "sse" and not self.sse:
+            raise ValueError("SSE 请求必须包含 sse 配置")
+        if self.transport == "http" and self.sse is not None:
+            raise ValueError("HTTP 请求不能包含 sse 配置")
+        return self
 
 
 class LocustLoadPlan(BaseModel):

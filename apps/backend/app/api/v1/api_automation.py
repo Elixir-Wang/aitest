@@ -501,6 +501,11 @@ def create_api_scenario_ai_plan(
     return service.create_api_scenario_ai_plan(project_id, payload, actor)
 
 
+@router.get("/api-scenarios/ai-plans/{plan_id}", response_model=ApiScenarioAiPlanOut)
+def get_api_scenario_ai_plan(project_id: str, plan_id: str, actor=Depends(current_user)) -> dict:
+    return service.get_api_scenario_ai_plan(project_id, plan_id, actor)
+
+
 @router.post("/api-scenarios/ai-plans/{plan_id}/apply")
 def apply_api_scenario_ai_plan(
     project_id: str,

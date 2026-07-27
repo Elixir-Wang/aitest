@@ -11,6 +11,64 @@ class PerformanceRequestConfig(BaseModel):
     headers: dict[str, Any] = Field(default_factory=dict)
     body: Any = None
     random_seed: int | None = None
+    transport: Literal["http", "sse"] = "http"
+    sse: "PerformanceSseConfig | None" = None
+
+    @model_validator(mode="after")
+    def validate_sse(self) -> "PerformanceRequestConfig":
+        if self.transport == "sse" and self.sse is None:
+            raise ValueError("SSE 请求必须配置 sse")
+        if self.transport == "http" and self.sse is not None:
+            raise ValueError("HTTP 请求不能配置 sse")
+        return self
+
+
+class PerformanceSseMatch(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    event_name: str = Field(default="", max_length=120)
+    source: Literal["data_json", "data_text", "event_name"]
+    path: str = Field(default="", max_length=512)
+    operator: Literal["exists", "non_empty", "equals", "contains", "matches"]
+    expected: Any = None
+
+    @model_validator(mode="after")
+    def validate_match(self) -> "PerformanceSseMatch":
+        from app.services.performance_testing.sse import validate_metric_rule
+
+        validate_metric_rule({"id": "rule", "match": self.model_dump(mode="json")})
+        return self
+
+
+class PerformanceSseMetric(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: str = Field(min_length=1, max_length=64)
+    name: str = Field(min_length=1, max_length=80)
+    match: PerformanceSseMatch
+    occurrence: Literal["first"] = "first"
+    missing_policy: Literal["record_null", "fail_request", "ignore"] = "record_null"
+
+    @model_validator(mode="after")
+    def validate_metric(self) -> "PerformanceSseMetric":
+        from app.services.performance_testing.sse import validate_metric_rule
+
+        validate_metric_rule(self.model_dump(mode="json"))
+        return self
+
+
+class PerformanceSseConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    max_stream_seconds: float = Field(default=60, gt=0, le=600)
+    end_rule: PerformanceSseMatch | None = None
+    metrics: list[PerformanceSseMetric] = Field(min_length=1, max_length=20)
+
+    @model_validator(mode="after")
+    def validate_metric_ids(self) -> "PerformanceSseConfig":
+        if len({metric.id for metric in self.metrics}) != len(self.metrics):
+            raise ValueError("SSE 指标 ID 不能重复")
+        return self
 
 
 class PerformanceLoadStage(BaseModel):
@@ -178,6 +236,13 @@ class PerformanceRequestPreviewIn(BaseModel):
 
     endpoint_id: str = Field(min_length=1)
     api_environment_id: str | None = None
+
+
+class PerformanceSseRulePreviewIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    sample: str = Field(min_length=1, max_length=65_536)
+    sse: PerformanceSseConfig
 
 
 class PerformanceEndpointSummary(BaseModel):

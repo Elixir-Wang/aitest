@@ -12,7 +12,12 @@ from app.core.db import connect
 from app.core.environment_credentials import decrypt_api_environment_secret
 from app.core.exceptions import api_error
 from app.repositories import api_automation_repo, performance_script_repo, performance_test_repo, project_repo
-from app.schemas.performance_test import PerformanceRequestPreviewIn, PerformanceTestCreateIn, PerformanceTestUpdateIn
+from app.schemas.performance_test import (
+    PerformanceRequestPreviewIn,
+    PerformanceSseRulePreviewIn,
+    PerformanceTestCreateIn,
+    PerformanceTestUpdateIn,
+)
 from app.services import operation_log_service
 
 
@@ -61,6 +66,34 @@ def preview_performance_request(
         )
         positive_case = _select_positive_case(db, project_id, endpoint["id"])
         return _build_request_preview(endpoint, environment, positive_case)
+
+
+def preview_sse_rules(project_id: str, payload: PerformanceSseRulePreviewIn, actor) -> dict[str, Any]:
+    """Validate parsing and matching locally; the sample is never persisted."""
+    from app.services.performance_testing.sse import event_matches, parse_sse_events
+
+    with connect() as db:
+        _require_visible_project(db, project_id, actor)
+    events = parse_sse_events(payload.sample.splitlines(), max_frame_bytes=262_144)
+    if len(events) > 500:
+        raise api_error(400, "PERFORMANCE_SSE_SAMPLE_LIMIT", "SSE 样例事件数不能超过 500。")
+    matches: list[dict[str, Any]] = []
+    for metric in payload.sse.metrics:
+        index = next(
+            (index + 1 for index, event in enumerate(events) if event_matches(event, metric.match.model_dump(mode="json"))),
+            None,
+        )
+        matches.append({"metric_id": metric.id, "event_index": index, "matched": index is not None})
+    end_index = None
+    if payload.sse.end_rule is not None:
+        end_rule = payload.sse.end_rule.model_dump(mode="json")
+        end_index = next((index + 1 for index, event in enumerate(events) if event_matches(event, end_rule)), None)
+    return {
+        "event_count": len(events),
+        "events": [{"index": index + 1, "event_name": event.event_name, "data_length": len(event.data_text)} for index, event in enumerate(events)],
+        "metrics": matches,
+        "end_rule_event_index": end_index,
+    }
 
 
 def create_performance_test(project_id: str, payload: PerformanceTestCreateIn, actor) -> dict[str, Any]:
