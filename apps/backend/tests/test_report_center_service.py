@@ -34,9 +34,8 @@ def _seed_report(db, *, project_id: str, project_name: str, suffix: str, verdict
     db.execute(
         """
         INSERT INTO performance_test_scripts (
-          id, performance_test_id, project_id, version, generation_source,
-          template_version, input_hash, code, validation_status
-        ) VALUES (?, ?, ?, 1, 'default_plan', 'v1', 'hash', 'pass', 'confirmed')
+          id, performance_test_id, project_id, generation_source, code, validation_status
+        ) VALUES (?, ?, ?, 'default_plan', 'pass', 'confirmed')
         """,
         (f"script-{suffix}", f"test-{suffix}", project_id),
     )

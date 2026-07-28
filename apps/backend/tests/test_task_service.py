@@ -1,4 +1,4 @@
-import pytest
+﻿import pytest
 
 from app.core import db as core_db
 from app.seed.init_db import init_db
@@ -511,7 +511,37 @@ def test_is_active_task_status_matches_running_indicator_contract() -> None:
     assert task_service.is_active_task_status("requirement_analysis_run", "cancelled") is False
     assert task_service.is_active_task_status("requirement_analysis_run", "needs_clarification") is False
     assert task_service.is_active_task_status("requirement_analysis_run", "completed") is False
+    assert task_service.is_active_task_status("api_scenario_ai_plan", "generating") is True
+    assert task_service.is_active_task_status("api_scenario_ai_plan", "completed") is False
+    assert task_service.is_active_task_status("api_scenario_ai_plan", "failed") is False
+
+
+def test_ai_scenario_plan_is_registered_as_running_task(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    with core_db.connect() as db:
+        _seed_project(db)
+        db.execute(
+            "INSERT INTO api_scenarios (id, project_id, name, created_by) VALUES (?, ?, ?, ?)",
+            ("apiscn-1", "project-1", "登录场景", "u-admin"),
+        )
+        db.execute(
+            """
+            INSERT INTO api_scenario_ai_plans
+              (id, project_id, scenario_id, goal, status, lifecycle_status, created_by, expires_at)
+            VALUES ('aiplan-1', 'project-1', 'apiscn-1', '编排登录场景', 'preview', 'generating', 'u-admin', '2099-01-01T00:00:00+00:00')
+            """
+        )
+
+    tasks = task_service.list_running_tasks(ACTOR)
+
+    assert len(tasks) == 1
+    assert tasks[0]["source_type"] == "api_scenario_ai_plan"
+    assert tasks[0]["status_label"] == "编排中"
+    assert tasks[0]["title"] == "编排登录场景"
+    assert tasks[0]["detail_url"] == "/projects/project-1/automation/api/scenarios/apiscn-1"
 
 
 def test_interrupted_exploration_run_is_restartable_for_admin() -> None:
     assert True
+
+

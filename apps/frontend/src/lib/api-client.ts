@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useAuthStore } from "@/stores/auth-store";
 
@@ -7,7 +7,9 @@ function normalizeApiBaseUrl(value: string) {
   return trimmed.endsWith("/api/v1") ? trimmed : `${trimmed}/api/v1`;
 }
 
-export const API_BASE_URL = normalizeApiBaseUrl(process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000/api/v1");
+export const API_BASE_URL = normalizeApiBaseUrl(
+  process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:18000/api/v1",
+);
 
 type ApiEnvelope<T> = {
   data: T;
@@ -1095,6 +1097,11 @@ export type ApiScenarioAiPlanNode = Partial<ApiAutomationScenarioStep> & {
   endpoint_id: string | null;
 };
 
+export type ApiScenarioAiPlanAccepted = {
+  plan_id: string;
+  scenario_id: string | null;
+  lifecycle_status: "generating" | "completed" | "failed" | "expired";
+};
 export type ApiScenarioAiPlan = {
   plan_id: string;
   plan_version: number;
@@ -1297,12 +1304,9 @@ export type PerformanceScript = {
   id: string;
   performance_test_id: string;
   project_id: string;
-  version: number;
   generation_source: "ai_plan" | "default_plan" | "user_edited";
   model_id: string;
   prompt_version: string;
-  template_version: string;
-  input_hash: string;
   plan: {
     schema_version: "v1";
     test_id: string;
@@ -1315,11 +1319,12 @@ export type PerformanceScript = {
   code: string;
   assumptions: unknown[];
   required_runtime_variables: string[];
-  validation_status: "generating" | "validation_failed" | "pending_confirmation" | "confirmed" | "superseded";
+  validation_status: "generating" | "validation_failed" | "pending_confirmation" | "confirmed";
   validation_result: { valid?: boolean; errors?: string[]; warnings?: string[]; code_hash?: string };
   confirmed_by: string | null;
   confirmed_at: string | null;
   created_at: string;
+  updated_at: string;
   runtime_preview?: {
     request: { method: string; path: string; name: string; headers: Record<string, unknown>; body: unknown };
     success_rules: PerformanceSuccessRule[];
@@ -1692,12 +1697,8 @@ export function generatePerformanceScript(projectId: string, testId: string) {
   });
 }
 
-export function listPerformanceScripts(projectId: string, testId: string) {
-  return apiRequest<PerformanceScript[]>(`/projects/${projectId}/performance-tests/${testId}/scripts`);
-}
-
-export function getPerformanceScript(projectId: string, testId: string, scriptId: string) {
-  return apiRequest<PerformanceScript>(`/projects/${projectId}/performance-tests/${testId}/scripts/${scriptId}`);
+export function getPerformanceScript(projectId: string, testId: string) {
+  return apiRequest<PerformanceScript>(`/projects/${projectId}/performance-tests/${testId}/script`);
 }
 
 export function updatePerformanceScriptConfiguration(
@@ -2166,14 +2167,12 @@ export function createApiScenarioAiPlan(
     source_scope?: { endpoint_ids?: string[]; tags?: string[] };
     constraints?: {
       environment_id?: string | null;
-      max_steps?: number;
-      allow_write?: boolean;
       require_cleanup?: boolean;
     };
     scenario_id?: string | null;
   },
 ) {
-  return apiRequest<ApiScenarioAiPlan>(`/projects/${projectId}/api-scenarios/ai-plan`, {
+  return apiRequest<ApiScenarioAiPlanAccepted>(`/projects/${projectId}/api-scenarios/ai-plan`, {
     method: "POST",
     body: JSON.stringify(payload),
   });

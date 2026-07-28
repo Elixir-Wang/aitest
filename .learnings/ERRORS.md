@@ -26,6 +26,117 @@ Use a working apply_patch executable or allow the Codex wrapper to launch.
 
 ---
 
+## [ERR-20260728-003] frontend-biome-preexisting-formatting
+
+**Logged**: 2026-07-28T00:00:00+08:00
+**Priority**: low
+**Status**: open
+**Area**: frontend
+
+### Summary
+Targeted Biome checking reports formatting differences in the existing API scenario model and test files; this change did not modify those frontend files.
+
+### Error
+```text
+Checked 2 files ... Found 2 errors.
+```
+
+### Context
+- `node --test tests/api-scenario-model.test.mjs` passes.
+- `npx biome check src/components/ai-testing/api-automation/api-scenario-model.mjs tests/api-scenario-model.test.mjs` fails on formatting only.
+- The files already had unrelated working-tree modifications before this task.
+
+### Suggested Fix
+Review and format the frontend files in a separate cleanup change; do not mix unrelated formatting into the V2 backend fix.
+
+### Metadata
+- Reproducible: yes
+- Related Files: `apps/frontend/src/components/ai-testing/api-automation/api-scenario-model.mjs`, `apps/frontend/tests/api-scenario-model.test.mjs`
+
+---
+
+## [ERR-20260728-002] nonexistent-backend-test-path
+
+**Logged**: 2026-07-28T00:00:00+08:00
+**Priority**: low
+**Status**: resolved
+**Area**: testing
+
+### Summary
+A backend verification command referenced `apps/backend/tests/test_api_automation.py`, which is not present in the repository.
+
+### Error
+```text
+ERROR: file or directory not found: apps/backend/tests/test_api_automation.py
+```
+
+### Suggested Fix
+Enumerate test files with `rg --files apps/backend/tests` before composing the test command.
+
+### Metadata
+- Reproducible: yes
+- Related Files: `apps/backend/tests`
+
+---
+
+## [ERR-20260728-001] assumed-design-spec-filename
+
+**Logged**: 2026-07-28T00:00:00+08:00
+**Priority**: low
+**Status**: resolved
+**Area**: tooling
+
+### Summary
+Repository design-document inspection assumed a filename from a plan listing without verifying that the corresponding spec file existed.
+
+### Error
+```text
+Get-Content: Cannot find path 'docs/superpowers/specs/2026-07-14-api-orchestration-editor-redesign-spec.md'
+because it does not exist.
+```
+
+### Context
+- The plan directory contained `2026-07-14-api-orchestration-editor-redesign.md`.
+- The spec directory did not contain a matching `-spec.md` file.
+
+### Suggested Fix
+Enumerate the target directory with `Get-ChildItem` or `rg --files` before opening a guessed documentation path.
+
+### Metadata
+- Reproducible: yes
+- Related Files: `docs/superpowers/specs`
+
+---
+
+## [ERR-20260728-001] rtk-windows-shell-proxy-compatibility
+
+**Logged**: 2026-07-28T00:00:00+08:00
+**Priority**: low
+**Status**: resolved
+**Area**: tooling
+
+### Summary
+On Windows, `rtk` could not resolve Unix commands, and wrapping PowerShell through `rtk proxy` expanded the outer shell variables before the inner command ran.
+
+### Error
+```text
+Failed to resolve 'sed' via PATH
+The term '=apps/frontend/...' is not recognized
+```
+
+### Context
+- Commands used `rtk sed`, `rtk ls`, and `rtk proxy pwsh -Command`.
+- The workspace shell is PowerShell on Windows.
+
+### Suggested Fix
+Use `rtk` directly for supported cross-platform tools such as `rg`, `git`, and `npm`; use native PowerShell cmdlets directly for file slicing and directory inspection.
+
+### Metadata
+- Reproducible: yes
+- Related Files: none
+
+---
+
 ## [ERR-20260723-002] powershell-combined-regex-quoting
 
 **Logged**: 2026-07-23T00:00:00+08:00

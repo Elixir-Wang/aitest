@@ -1,4 +1,4 @@
-from fastapi import APIRouter, BackgroundTasks, Depends, Query, Request
+﻿from fastapi import APIRouter, BackgroundTasks, Depends, Query, Request
 
 from app.core.exceptions import api_error
 from app.dependencies.auth import current_user, require_admin
@@ -21,6 +21,7 @@ from app.schemas.api_automation import (
     ApiRepairRollbackIn,
     ApiRepairSessionCreateIn,
     ApiRunCreateIn,
+    ApiScenarioAiPlanAcceptedOut,
     ApiScenarioAiPlanApplyIn,
     ApiScenarioAiPlanIn,
     ApiScenarioAiPlanOut,
@@ -492,16 +493,26 @@ def list_api_scenarios(project_id: str, actor=Depends(current_user)) -> list[dic
     return service.list_api_scenarios(project_id, actor)
 
 
-@router.post("/api-scenarios/ai-plan", response_model=ApiScenarioAiPlanOut)
+@router.post("/api-scenarios/ai-plan", response_model=ApiScenarioAiPlanAcceptedOut, status_code=202)
 def create_api_scenario_ai_plan(
     project_id: str,
     payload: ApiScenarioAiPlanIn,
+    background_tasks: BackgroundTasks,
     actor=Depends(require_admin),
 ) -> dict:
-    return service.create_api_scenario_ai_plan(project_id, payload, actor)
+    accepted = service.enqueue_api_scenario_ai_plan(project_id, payload, actor)
+    if accepted.pop("created"):
+        background_tasks.add_task(
+            service.create_api_scenario_ai_plan,
+            project_id,
+            payload,
+            actor,
+            existing_plan_id=accepted["plan_id"],
+        )
+    return accepted
 
 
-@router.get("/api-scenarios/ai-plans/{plan_id}", response_model=ApiScenarioAiPlanOut)
+@router.get("/api-scenarios/ai-plans/{plan_id}", response_model=ApiScenarioAiPlanOut | ApiScenarioAiPlanAcceptedOut)
 def get_api_scenario_ai_plan(project_id: str, plan_id: str, actor=Depends(current_user)) -> dict:
     return service.get_api_scenario_ai_plan(project_id, plan_id, actor)
 
@@ -617,3 +628,7 @@ def create_api_scenario_step(
     actor=Depends(require_admin),
 ) -> dict:
     return service.create_api_scenario_step(project_id, scenario_id, payload, actor)
+
+
+
+

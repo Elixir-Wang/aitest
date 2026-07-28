@@ -300,12 +300,9 @@ class PerformanceScriptOut(BaseModel):
     id: str
     performance_test_id: str
     project_id: str
-    version: int
     generation_source: str
     model_id: str
     prompt_version: str
-    template_version: str
-    input_hash: str
     plan: dict[str, Any]
     code: str
     assumptions: list[Any]
@@ -315,4 +312,5 @@ class PerformanceScriptOut(BaseModel):
     confirmed_by: str | None
     confirmed_at: str | None
     created_at: str
+    updated_at: str
     runtime_preview: dict[str, Any] | None = None

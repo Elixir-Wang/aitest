@@ -5,7 +5,7 @@ from loguru import logger
 
 from app.api.v1 import v1_router
 from app.core.db import connect
-from app.core.logging import setup_logging, shutdown_logging
+from app.core.logging import setup_logging
 from app.core.response import ApiResponseMiddleware, ApiUnhandledExceptionMiddleware
 from app.seed.init_db import init_db
 from app.services import retention_cleanup_service, task_service, test_case_service, test_point_service
@@ -69,26 +69,32 @@ def startup() -> None:
 def shutdown() -> None:
     event_bus.close_all()
     retention_cleanup_service.shutdown_cleanup()
-    ui_automation_service.shutdown_background_tasks()
+    ui_automation_service.shutdown_background_tasks(
+        timeout=0,
+        process_grace_seconds=0,
+        live_view_join_timeout=0,
+    )
     # 杀掉所有 browser-session.mjs Node 子进程（正常路径由 runtime_context 关闭，
     # 但 Ctrl+C / kill 时 ContextVar 未执行，需要兜底）
-    import subprocess, sys
+    import subprocess
     try:
-        result = subprocess.run(
+        subprocess.run(
             [
-                sys.executable, "-c",
-                "import subprocess, sys; "
-                "procs = subprocess.run(['powershell', '-Command', "
-                "'Get-CimInstance Win32_Process | Where-Object { $_.Name -eq \"node.exe\" -and $_.CommandLine -like \"*browser-session*\" } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }'], "
-                "capture_output=True, text=True)"
+                "powershell",
+                "-NoProfile",
+                "-Command",
+                "Get-CimInstance Win32_Process | "
+                "Where-Object { $_.Name -eq 'node.exe' -and "
+                "$_.CommandLine -like '*browser-session*' } | "
+                "ForEach-Object { Stop-Process -Id $_.ProcessId -Force }",
             ],
             capture_output=True,
             text=True,
+            timeout=0.2,
         )
-    except Exception:
+    except (OSError, subprocess.SubprocessError):
         pass
     logger.info("Application shutdown signal handled")
-    shutdown_logging()
 
 
 app.add_middleware(ApiResponseMiddleware)

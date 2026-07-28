@@ -76,7 +76,6 @@ def list_performance_tests(db: Connection, project_id: str) -> list[Row]:
             SELECT id
             FROM performance_test_scripts
             WHERE performance_test_id = performance_tests.id
-            ORDER BY version DESC
             LIMIT 1
           ) AS latest_script_id,
           '' AS latest_run_status,
@@ -105,7 +104,6 @@ def find_performance_test(db: Connection, test_id: str) -> Row | None:
             SELECT id
             FROM performance_test_scripts
             WHERE performance_test_id = performance_tests.id
-            ORDER BY version DESC
             LIMIT 1
           ) AS latest_script_id,
           '' AS latest_run_status,

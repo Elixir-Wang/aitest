@@ -10,6 +10,11 @@ uv sync
 uv run python -m app.server
 ```
 
+The API listens on `http://127.0.0.1:18000` by default.
+The server exits without waiting for background work when you press `Ctrl+C`.
+For development hot reload, set `APP_RELOAD=1` before starting the server; hot
+reload uses a supervisor process that must also receive the interrupt signal.
+
 The server cancels active HTTP and SSE requests immediately on `Ctrl+C`.
 
 ## Test

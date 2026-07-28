@@ -1,4 +1,4 @@
-const API_TARGET = process.env.API_TARGET || "http://backend:8000";
+const API_TARGET = process.env.API_TARGET || "http://localhost:18000";
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {

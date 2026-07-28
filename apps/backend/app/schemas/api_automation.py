@@ -1,4 +1,4 @@
-import json
+﻿import json
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -425,8 +425,6 @@ class ApiScenarioAiSourceScope(_StrippedModel):
 
 class ApiScenarioAiConstraints(_StrippedModel):
     environment_id: str | None = None
-    max_steps: int = Field(default=8, ge=1, le=100)
-    allow_write: bool = False
     require_cleanup: bool = False
 
 
@@ -436,6 +434,11 @@ class ApiScenarioAiPlanIn(_StrippedModel):
     constraints: ApiScenarioAiConstraints = Field(default_factory=ApiScenarioAiConstraints)
     scenario_id: str | None = None
 
+
+class ApiScenarioAiPlanAcceptedOut(_StrippedModel):
+    plan_id: str
+    scenario_id: str | None = None
+    lifecycle_status: Literal["generating", "completed", "failed", "expired"] = "generating"
 
 class ApiScenarioAiPlanNode(_StrippedModel):
     id: str = Field(min_length=1, max_length=100)
@@ -494,3 +497,4 @@ class ApiScenarioPublishIn(_StrippedModel):
 class ApiScenarioExecuteIn(_StrippedModel):
     api_environment_id: str
     source: Literal["published", "draft"] = "published"
+

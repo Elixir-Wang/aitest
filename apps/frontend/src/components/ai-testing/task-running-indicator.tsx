@@ -1,6 +1,8 @@
-"use client";
+﻿"use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+
+import Link from "next/link";
 
 import { Activity, AlertCircle, CheckCircle2, Clock3, Loader2 } from "lucide-react";
 
@@ -19,6 +21,7 @@ const RUNNING_INDICATOR_SOURCE_TYPES = new Set([
   "test_case_generation_run",
   "test_point_generation_run",
   "api_automation_generation_run",
+  "api_scenario_ai_plan",
   "api_script_generation_run",
   "api_automation_run",
 ]);
@@ -34,6 +37,7 @@ type RunningTaskItem = {
   status: string;
   statusLabel: string;
   createdAt: string;
+  detailUrl: string;
 };
 
 function getTaskStatusLabel(task: RunningTaskItem) {
@@ -50,6 +54,7 @@ function toRunningTask(item: ApiTaskItem): RunningTaskItem {
     status: item.status,
     statusLabel: item.status_label,
     createdAt: item.created_at,
+    detailUrl: item.detail_url,
   };
 }
 
@@ -199,9 +204,16 @@ export function TaskRunningIndicator() {
                       {getTaskStatusLabel(task)}
                     </span>
                   </div>
-                  <div className="mt-2 flex items-center gap-2 text-muted-foreground text-xs">
-                    <Clock3 className="size-3.5" />
-                    <span>创建于 {formatDateTime(task.createdAt)}</span>
+                  <div className="mt-2 flex items-center justify-between gap-3 text-xs">
+                    <span className="flex items-center gap-2 text-muted-foreground">
+                      <Clock3 className="size-3.5" />
+                      <span>创建于 {formatDateTime(task.createdAt)}</span>
+                    </span>
+                    {task.detailUrl ? (
+                      <Link className="font-medium text-primary hover:underline" href={task.detailUrl}>
+                        查看任务
+                      </Link>
+                    ) : null}
                   </div>
                 </div>
               ))}

@@ -1,4 +1,4 @@
-import asyncio
+﻿import asyncio
 import hashlib
 import json
 import os
@@ -2270,7 +2270,75 @@ def get_api_scenario(project_id: str, scenario_id: str, actor) -> dict:
         return _serialize_scenario(row, serialized_steps, asset_changes=_list_scenario_asset_changes(db, row, serialized_steps))
 
 
-def create_api_scenario_ai_plan(project_id: str, payload: ApiScenarioAiPlanIn, actor) -> dict:
+def enqueue_api_scenario_ai_plan(project_id: str, payload: ApiScenarioAiPlanIn, actor) -> dict:
+    """Persist an AI orchestration task before its generation work starts."""
+    with connect() as db:
+        _require_visible_project(db, project_id, actor)
+        scenario = _require_scenario(db, project_id, payload.scenario_id) if payload.scenario_id else None
+        endpoints = api_automation_repo.list_endpoints(db, project_id)
+        allowed_ids = set(payload.source_scope.endpoint_ids)
+        if allowed_ids:
+            endpoints = [endpoint for endpoint in endpoints if endpoint["id"] in allowed_ids]
+        if payload.source_scope.tags:
+            wanted_tags = {tag.lower() for tag in payload.source_scope.tags}
+            endpoints = [
+                endpoint
+                for endpoint in endpoints
+                if wanted_tags.intersection({tag.lower() for tag in api_automation_repo.loads_json(endpoint["tags_json"], [])})
+            ]
+        if not endpoints:
+            raise api_error(422, "API_SCENARIO_AI_NO_ASSETS", "当前范围内没有可用的接口资产。")
+        if scenario:
+            active = db.execute(
+                """
+                SELECT id FROM api_scenario_ai_plans
+                WHERE project_id = ? AND scenario_id = ? AND lifecycle_status = 'generating'
+                ORDER BY created_at DESC LIMIT 1
+                """,
+                (project_id, payload.scenario_id),
+            ).fetchone()
+            if active:
+                return {
+                    "plan_id": active["id"],
+                    "scenario_id": payload.scenario_id,
+                    "lifecycle_status": "generating",
+                    "created": False,
+                }
+
+        plan_id = f"aiplan-{secrets.token_hex(8)}"
+        expires_at = datetime.now(UTC) + timedelta(minutes=30)
+        db.execute(
+            """
+            INSERT INTO api_scenario_ai_plans
+              (id, project_id, scenario_id, expected_revision, goal, request_json, status,
+               lifecycle_status, created_by, expires_at)
+            VALUES (?, ?, ?, ?, ?, ?, 'preview', 'generating', ?, ?)
+            """,
+            (
+                plan_id,
+                project_id,
+                payload.scenario_id,
+                int(scenario["revision"]) if scenario else None,
+                _redact_orchestration_text(payload.goal),
+                api_automation_repo.dumps_json(payload.model_dump()),
+                actor["id"],
+                expires_at.isoformat(),
+            ),
+        )
+    return {
+        "plan_id": plan_id,
+        "scenario_id": payload.scenario_id,
+        "lifecycle_status": "generating",
+        "created": True,
+    }
+
+def create_api_scenario_ai_plan(
+    project_id: str,
+    payload: ApiScenarioAiPlanIn,
+    actor,
+    *,
+    existing_plan_id: str | None = None,
+):
     """Generate a validated, non-executable scenario draft from project endpoint assets."""
     with connect() as db:
         _require_visible_project(db, project_id, actor)
@@ -2299,22 +2367,57 @@ def create_api_scenario_ai_plan(project_id: str, payload: ApiScenarioAiPlanIn, a
         scenario_draft_hash = _scenario_draft_hash(db, scenario) if scenario else None
         assets_hash = endpoint_fingerprint(endpoint_context)
 
+    plan_id = existing_plan_id or f"aiplan-{secrets.token_hex(8)}"
+    expires_at = datetime.now(UTC) + timedelta(minutes=30)
+    redacted_goal = _redact_orchestration_text(payload.goal)
+    request_data = {
+        **payload.model_dump(),
+        "scenario_updated_at": scenario["updated_at"] if scenario else None,
+        "scenario_draft_hash": scenario_draft_hash,
+        "asset_fingerprint": assets_hash,
+        "environment_schema": environment_projection,
+    }
+    if existing_plan_id is None:
+        with connect() as db:
+            db.execute(
+                """
+                INSERT INTO api_scenario_ai_plans
+                  (id, project_id, scenario_id, expected_revision, goal, request_json, status,
+                   lifecycle_status, created_by, expires_at)
+                VALUES (?, ?, ?, ?, ?, ?, 'preview', 'generating', ?, ?)
+                """,
+                (
+                    plan_id,
+                    project_id,
+                    payload.scenario_id,
+                    expected_revision,
+                    redacted_goal,
+                    api_automation_repo.dumps_json(request_data),
+                    actor["id"],
+                    expires_at.isoformat(),
+                ),
+            )
+
     try:
         selection = resolve_model_selection("api_scenario_orchestration")
     except (KeyError, ValueError):
-        selection = resolve_model_selection("api_test_generation")
-    prompt = json.dumps(
-        {
-            "goal": _redact_orchestration_text(payload.goal),
-            "constraints": payload.constraints.model_dump(),
-            "current_scenario_revision": expected_revision,
-            "endpoint_catalog": [endpoint_summary(endpoint) for endpoint in endpoint_context],
-            "environment_schema": environment_projection,
-            "instructions": "接口详情由服务端编译器核验。不要猜测字段路径；无法确定时写入 unresolved_items。",
-        },
-        ensure_ascii=False,
-    )
+        try:
+            selection = resolve_model_selection("api_test_generation")
+        except Exception as exc:
+            _fail_api_scenario_ai_plan(plan_id, exc)
+            raise api_error(503, "API_SCENARIO_AI_PLAN_FAILED", f"AI 编排计划生成失败：{exc}") from exc
     try:
+        prompt = json.dumps(
+            {
+                "goal": redacted_goal,
+                "constraints": payload.constraints.model_dump(),
+                "current_scenario_revision": expected_revision,
+                "endpoint_catalog": [endpoint_summary(endpoint) for endpoint in endpoint_context],
+                "environment_schema": environment_projection,
+                "instructions": "接口详情由服务端编译器核验。不要猜测字段路径；无法确定时写入 unresolved_items。",
+            },
+            ensure_ascii=False,
+        )
         result = asyncio.run(
             api_scenario_orchestration_agent(
                 build_agent_model(selection, extra_body=thinking_disabled_extra_body(selection))
@@ -2324,31 +2427,15 @@ def create_api_scenario_ai_plan(project_id: str, payload: ApiScenarioAiPlanIn, a
         semantic_plan = structured if isinstance(structured, ScenarioPlanResult) else ScenarioPlanResult.model_validate(structured)
         plan = compile_plan(semantic_plan, endpoint_context, environment_projection)
     except Exception as exc:
+        _fail_api_scenario_ai_plan(plan_id, exc)
         raise api_error(503, "API_SCENARIO_AI_PLAN_FAILED", f"AI 编排计划生成失败：{exc}") from exc
 
-    exceeds_step_limit = len(plan.nodes) > payload.constraints.max_steps
-    validation = _validate_ai_plan(project_id, plan, endpoint_context, payload.constraints.allow_write)
-    if exceeds_step_limit:
-        validation["errors"].append(
-            f"AI 生成了 {len(plan.nodes)} 个步骤，超过上限 {payload.constraints.max_steps}。"
-        )
-        validation["valid"] = False
-    if scenario:
-        with connect() as db:
-            current_scenario = _require_scenario(db, project_id, payload.scenario_id or "")
-            existing_validation = _validate_scenario_definition(
-                db,
-                current_scenario,
-                [_ai_plan_node_to_step_dict(node.model_dump(), index, project_id, payload.scenario_id or "") for index, node in enumerate(plan.nodes)],
-            )
-        validation["errors"].extend(existing_validation["errors"])
-        validation["warnings"].extend(existing_validation["warnings"])
-        validation["valid"] = not validation["errors"]
+    validation = _validate_ai_plan(project_id, plan, endpoint_context)
     if plan.unresolved_items:
-        validation["errors"].extend(f"未解决：{item}" for item in plan.unresolved_items)
-        validation["valid"] = False
-    plan_id = f"aiplan-{secrets.token_hex(8)}"
-    expires_at = datetime.now(UTC) + timedelta(minutes=30)
+        validation["warnings"].extend(f"未解决：{item}" for item in plan.unresolved_items)
+    validation["errors"] = _dedupe_validation_messages(validation["errors"])
+    validation["warnings"] = _dedupe_validation_messages(validation["warnings"])
+    validation["valid"] = not validation["errors"]
     response = {
         "plan_id": plan_id,
         "plan_version": 2,
@@ -2364,35 +2451,32 @@ def create_api_scenario_ai_plan(project_id: str, payload: ApiScenarioAiPlanIn, a
     with connect() as db:
         db.execute(
             """
-            INSERT INTO api_scenario_ai_plans
-              (id, project_id, scenario_id, expected_revision, goal, request_json, plan_json,
-               validation_json, model_provider, model_name, created_by, expires_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            UPDATE api_scenario_ai_plans
+            SET plan_json = ?, validation_json = ?, model_provider = ?, model_name = ?,
+                lifecycle_status = 'completed', updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
             """,
             (
-                plan_id,
-                project_id,
-                payload.scenario_id,
-                expected_revision,
-                _redact_orchestration_text(payload.goal),
-                api_automation_repo.dumps_json(
-                    {
-                        **payload.model_dump(),
-                        "scenario_updated_at": scenario["updated_at"] if scenario else None,
-                        "scenario_draft_hash": scenario_draft_hash,
-                        "asset_fingerprint": assets_hash,
-                        "environment_schema": environment_projection,
-                    }
-                ),
                 api_automation_repo.dumps_json(response),
                 api_automation_repo.dumps_json(validation),
                 selection.provider,
                 selection.model,
-                actor["id"],
-                expires_at.isoformat(),
+                plan_id,
             ),
         )
     return response
+
+
+def _fail_api_scenario_ai_plan(plan_id: str, error: Exception) -> None:
+    with connect() as db:
+        db.execute(
+            """
+            UPDATE api_scenario_ai_plans
+            SET lifecycle_status = 'failed', error_message = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+            """,
+            (str(error), plan_id),
+        )
 
 
 def get_api_scenario_ai_plan(project_id: str, plan_id: str, actor) -> dict:
@@ -2402,6 +2486,13 @@ def get_api_scenario_ai_plan(project_id: str, plan_id: str, actor) -> dict:
         row = db.execute("SELECT * FROM api_scenario_ai_plans WHERE id = ? AND project_id = ?", (plan_id, project_id)).fetchone()
         if not row:
             raise api_error(404, "API_SCENARIO_AI_PLAN_NOT_FOUND", "AI 编排计划不存在。")
+        lifecycle_status = str(row["lifecycle_status"])
+        if lifecycle_status != "completed":
+            return {
+                "plan_id": plan_id,
+                "scenario_id": row["scenario_id"],
+                "lifecycle_status": lifecycle_status,
+            }
         status = str(row["status"])
         if status == "preview" and datetime.fromisoformat(row["expires_at"].replace("Z", "+00:00")) <= datetime.now(UTC):
             db.execute("UPDATE api_scenario_ai_plans SET status = 'expired' WHERE id = ?", (plan_id,))
@@ -2488,7 +2579,7 @@ def _scenario_draft_hash(db, scenario: Row) -> str:
     return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
 
 
-def _validate_ai_plan(project_id: str, plan: ScenarioPlanResult, endpoints: list[dict], allow_write: bool) -> dict:
+def _validate_ai_plan(project_id: str, plan: ScenarioPlanResult, endpoints: list[dict]) -> dict:
     errors: list[str] = []
     warnings = list(plan.warnings)
     endpoint_by_id = {endpoint["id"]: endpoint for endpoint in endpoints}
@@ -2501,8 +2592,6 @@ def _validate_ai_plan(project_id: str, plan: ScenarioPlanResult, endpoints: list
         if node.type in {"api_request", "poll"}:
             if not node.endpoint_id or node.endpoint_id not in endpoint_by_id:
                 errors.append(f"节点 {node.name or node.id} 引用了无效接口资产。")
-            elif not allow_write and endpoint_by_id[node.endpoint_id]["method"] in {"POST", "PUT", "PATCH", "DELETE"}:
-                errors.append(f"节点 {node.name or node.id} 包含写操作，但当前约束禁止写操作。")
         elif node.endpoint_id:
             errors.append(f"工具节点 {node.name or node.id} 不允许绑定接口资产。")
         if _contains_executable_url(node.request_overrides):
@@ -3287,6 +3376,13 @@ def _insert_scenario_step(db, scenario_id: str, project_id: str, step: dict) -> 
     )
 
 
+def _dedupe_validation_messages(messages: list[str]) -> list[str]:
+    return list(dict.fromkeys(messages))
+
+
+SUPPORTED_SCENARIO_SOURCE_TYPES = {"environment", "scenario", "literal", "user_input", "secret", "generated"}
+
+
 def _validate_scenario_definition(db, scenario: Row, steps: list[dict]) -> dict:
     errors: list[str] = []
     warnings: list[str] = []
@@ -3355,6 +3451,8 @@ def _validate_scenario_definition(db, scenario: Row, steps: list[dict]) -> dict:
         legacy_assertions = api_automation_repo.loads_json(case["assertions_json"], []) if case else []
         if step_type == "api_request" and not step["assertions"] and not legacy_assertions:
             warnings.append(f"{prefix}没有断言。")
+    errors = _dedupe_validation_messages(errors)
+    warnings = _dedupe_validation_messages(warnings)
     return {"valid": not errors, "errors": errors, "warnings": warnings}
 
 
@@ -3374,7 +3472,7 @@ def _validate_scenario_source(
             errors.append(f"{prefix}的变量来源{suffix}")
         elif variable not in prior_outputs[source_step_id]:
             errors.append(f"{prefix}引用了前序步骤未输出的变量 {variable}。")
-    elif source_type not in {"environment", "scenario", "literal"}:
+    elif source_type not in SUPPORTED_SCENARIO_SOURCE_TYPES:
         errors.append(f"{prefix}存在不支持的变量来源 {source_type or '空'}。")
 
 
@@ -3739,3 +3837,8 @@ def _require_endpoint_ids(db, project_id: str, endpoint_ids: list[str]) -> None:
         endpoint = api_automation_repo.find_endpoint(db, endpoint_id)
         if not endpoint or endpoint["project_id"] != project_id:
             raise api_error(400, "API_ENDPOINT_INVALID", f"接口不存在或不属于当前项目：{endpoint_id}")
+
+
+
+
+

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import hashlib
 import json
 import secrets
 from datetime import datetime, timezone
@@ -26,7 +25,7 @@ from app.schemas.performance_test import (
 from app.services.performance_testing import headless_worker, run_repo, service
 from app.services.performance_testing.analysis_evidence import redact_sensitive
 from app.services.performance_testing.script_renderer import render_locust_script
-from app.services.performance_testing.script_service import TEMPLATE_VERSION, _environment_runtime_headers
+from app.services.performance_testing.script_service import _environment_runtime_headers
 from app.services.performance_testing.validator import validate_locust_script
 
 
@@ -129,7 +128,6 @@ def apply_and_rerun(project_id: str, analysis_id: str, change_ids: list[str], ac
                 performance_analysis_repo.find_analysis_session(db, analysis_id)
             )
 
-    script_id = f"perfscript-{secrets.token_hex(8)}"
     with connect() as db:
         latest = performance_analysis_repo.find_analysis_session(db, analysis_id)
         if not latest or latest["application_status"] != "preflighting":
@@ -144,15 +142,16 @@ def apply_and_rerun(project_id: str, analysis_id: str, change_ids: list[str], ac
                 "success_rules": candidate["success_rules"],
             },
         )
-        performance_script_repo.create_script(
+        current_script = performance_script_repo.find_script_by_test(db, candidate["id"])
+        script_id = str(current_script["id"]) if current_script else f"perfscript-{secrets.token_hex(8)}"
+        performance_script_repo.save_script(
             db,
             script_id=script_id,
             performance_test_id=candidate["id"],
             project_id=project_id,
-            version=performance_script_repo.next_version(db, candidate["id"]),
             generation_source="ai_plan",
-            template_version=TEMPLATE_VERSION,
-            input_hash=_plan_hash(plan.model_dump(mode="json")),
+            model_id="",
+            prompt_version="",
             plan=plan.model_dump(mode="json"),
             code=code,
             validation_status="pending_confirmation",
@@ -358,11 +357,6 @@ def _decode_json_literal(value: Any) -> Any:
         except json.JSONDecodeError:
             return value
     return value
-
-
-def _plan_hash(plan: dict[str, Any]) -> str:
-    raw = json.dumps(plan, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
-    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
 __all__ = ["apply_and_rerun", "is_supported_change"]

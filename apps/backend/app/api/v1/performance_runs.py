@@ -401,10 +401,7 @@ def _script_lookup(project_id: str, test_id: str, script_id: str, actor):
             raise api_error(404, "PERFORMANCE_SCRIPT_NOT_FOUND", "性能测试脚本不存在。")
         if script_row["validation_status"] != "confirmed":
             raise api_error(409, "PERFORMANCE_SCRIPT_NOT_CONFIRMED", "只有已确认脚本可以启动正式压测。")
-        endpoint = api_automation_repo.find_endpoint(db, test_row["endpoint_id"])
         environment = api_automation_repo.find_api_environment(db, test_row["api_environment_id"])
-        if not endpoint or endpoint["project_id"] != project_id:
-            raise api_error(409, "PERFORMANCE_ENDPOINT_INVALID", "接口引用已失效。")
         if not environment or environment["project_id"] != project_id:
             raise api_error(409, "PERFORMANCE_ENVIRONMENT_INVALID", "接口环境引用已失效。")
         yield {

@@ -162,12 +162,12 @@ export function validateScenarioDraft(draft) {
     }
   });
 
-  return { valid: errors.length === 0, errors, warnings };
+  return { valid: errors.length === 0, errors: [...new Set(errors)], warnings: [...new Set(warnings)] };
 }
 
 function validateSource(source, label, currentIndex, stepIndexes, stepOutputs, errors) {
   const sourceType = source?.type;
-  if (["literal", "scenario", "environment"].includes(sourceType)) return;
+  if (["literal", "scenario", "environment", "user_input", "secret", "generated"].includes(sourceType)) return;
   if (sourceType !== "step_output") {
     errors.push(`${label}存在不支持的变量来源。`);
     return;

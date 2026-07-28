@@ -822,30 +822,24 @@ CREATE INDEX IF NOT EXISTS idx_performance_tests_project_updated
 
 CREATE TABLE IF NOT EXISTS performance_test_scripts (
   id TEXT PRIMARY KEY,
-  performance_test_id TEXT NOT NULL,
+  performance_test_id TEXT NOT NULL UNIQUE,
   project_id TEXT NOT NULL,
-  version INTEGER NOT NULL,
   generation_source TEXT NOT NULL CHECK(generation_source IN ('ai_plan', 'default_plan', 'user_edited')),
   model_id TEXT NOT NULL DEFAULT '',
   prompt_version TEXT NOT NULL DEFAULT '',
-  template_version TEXT NOT NULL,
-  input_hash TEXT NOT NULL,
   plan_json TEXT NOT NULL DEFAULT '{}',
   code TEXT NOT NULL,
   assumptions_json TEXT NOT NULL DEFAULT '[]',
   required_runtime_variables_json TEXT NOT NULL DEFAULT '[]',
-  validation_status TEXT NOT NULL CHECK(validation_status IN ('generating', 'validation_failed', 'pending_confirmation', 'confirmed', 'superseded')),
+  validation_status TEXT NOT NULL CHECK(validation_status IN ('generating', 'validation_failed', 'pending_confirmation', 'confirmed')),
   validation_result_json TEXT NOT NULL DEFAULT '{}',
   confirmed_by TEXT,
   confirmed_at TEXT,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY(performance_test_id) REFERENCES performance_tests(id) ON DELETE CASCADE,
-  FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE,
-  UNIQUE(performance_test_id, version)
+  FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE
 );
-
-CREATE INDEX IF NOT EXISTS idx_performance_test_scripts_test_version
-  ON performance_test_scripts(performance_test_id, version);
 
 CREATE TABLE IF NOT EXISTS performance_test_runs (
   id TEXT PRIMARY KEY,
@@ -1111,11 +1105,14 @@ CREATE TABLE IF NOT EXISTS api_scenario_ai_plans (
   plan_json TEXT NOT NULL DEFAULT '{}',
   validation_json TEXT NOT NULL DEFAULT '{}',
   status TEXT NOT NULL CHECK(status IN ('preview', 'applied', 'discarded', 'expired')) DEFAULT 'preview',
+  lifecycle_status TEXT NOT NULL DEFAULT 'completed',
+  error_message TEXT NOT NULL DEFAULT '',
   model_provider TEXT NOT NULL DEFAULT '',
   model_name TEXT NOT NULL DEFAULT '',
   created_by TEXT NOT NULL,
   applied_by TEXT NOT NULL DEFAULT '',
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   expires_at TEXT NOT NULL,
   applied_at TEXT,
   FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE,

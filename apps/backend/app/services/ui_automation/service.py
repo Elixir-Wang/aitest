@@ -52,14 +52,19 @@ def schedule_execution_run(run_id: str) -> bool:
     return _schedule_background(execute_execution_run, run_id, name=f"ui-execution-{run_id}")
 
 
-def shutdown_background_tasks(*, timeout: float = 5) -> None:
+def shutdown_background_tasks(
+    *,
+    timeout: float = 5,
+    process_grace_seconds: float = 3,
+    live_view_join_timeout: float = 2,
+) -> None:
     global _BACKGROUND_SHUTTING_DOWN
     with _BACKGROUND_LOCK:
         _BACKGROUND_SHUTTING_DOWN = True
         threads = list(_BACKGROUND_THREADS)
 
-    live_view.shutdown_all()
-    runner.shutdown_all()
+    live_view.shutdown_all(join_timeout=live_view_join_timeout)
+    runner.shutdown_all(grace_seconds=process_grace_seconds)
 
     deadline = time.monotonic() + max(timeout, 0)
     for thread in threads:

@@ -1,11 +1,10 @@
-"use client";
+﻿"use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useRouter } from "next/navigation";
 
-import { toast } from "@/lib/toast";
-
+import { notifyAiTaskStarted } from "@/lib/ai-task-events";
 import {
   type ApiAutomationEndpoint,
   type ApiAutomationEnvironment,
@@ -20,9 +19,9 @@ import {
   createApiScenarioAiPlan,
   executeApiAutomationScenario,
   getApiAutomationRun,
-  getApiScenarioAiPlan,
   getApiAutomationScenario,
   getApiAutomationScenarioRunResult,
+  getApiScenarioAiPlan,
   listApiAutomationEndpoints,
   listApiAutomationEnvironments,
   listApiAutomationScenarioRevisions,
@@ -32,6 +31,7 @@ import {
   updateApiAutomationScenario,
   validateApiAutomationScenario,
 } from "@/lib/api-client";
+import { toast } from "@/lib/toast";
 
 import {
   createEndpointStep,
@@ -340,23 +340,22 @@ export function useApiScenarioEditor(projectId: string, scenarioId?: string) {
     });
   }
 
-  async function generateAiPlan(goal: string, allowWrite: boolean, maxSteps: number) {
+  async function generateAiPlan(goal: string) {
     setAiBusy(true);
     try {
       const saved = await saveScenario(false);
-      const plan = await createApiScenarioAiPlan(projectId, {
+      const accepted = await createApiScenarioAiPlan(projectId, {
         goal,
         scenario_id: saved.id,
         constraints: {
           environment_id: selectedEnvironmentId || null,
-          max_steps: maxSteps,
-          allow_write: allowWrite,
           require_cleanup: false,
         },
       });
-      setAiPlan(plan);
-      window.sessionStorage.setItem(aiPlanStorageKey(projectId, saved.id), plan.plan_id);
-      return plan;
+      window.sessionStorage.setItem(aiPlanStorageKey(projectId, saved.id), accepted.plan_id);
+      notifyAiTaskStarted();
+      toast.info("AI 编排任务已提交，可从顶部查看状态");
+      return accepted;
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "AI 编排失败");
       return null;

@@ -12,10 +12,10 @@ from app.agents.api_automation.orchestration.schemas import (
     ScenarioPlanResult,
     StatusCodeAssertion,
 )
-from app.services.api_automation.orchestration_asset_analysis import dependency_candidates, request_slots
+from app.services.api_automation.orchestration_asset_analysis import dependency_candidates, request_slots, response_slots
 
 
-COMPILER_VERSION = 1
+COMPILER_VERSION = 2
 _SUCCESS_METHODS = {"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD"}
 
 
@@ -41,6 +41,8 @@ def compile_plan(plan: ScenarioPlanResult, endpoints: list[dict[str, Any]], envi
             if status:
                 node.assertions = [StatusCodeAssertion(type="status_code", expected=status)]
                 warnings.append(f"步骤 {node.id} 已由编译器补充 {status} 状态码断言。")
+        node.bindings = _normalize_and_dedupe_bindings(node.bindings, endpoint)
+        node.extractors = _calibrate_extractors(node.extractors, endpoint)
         bound_targets = {(binding.target.location, binding.target.path) for binding in node.bindings}
         for target in request_slots(endpoint):
             key = (target.location, target.path)
@@ -109,6 +111,63 @@ def compile_plan(plan: ScenarioPlanResult, endpoints: list[dict[str, Any]], envi
 def _candidate_target(candidate: dict[str, Any]) -> tuple[str, str]:
     target = candidate["target"]
     return str(target["location"]), str(target["path"])
+
+
+def _normalize_and_dedupe_bindings(bindings: list[ScenarioBinding], endpoint: dict[str, Any]) -> list[ScenarioBinding]:
+    normalized: dict[tuple[str, str], ScenarioBinding] = {}
+    for binding in bindings:
+        target = _normalize_target(binding.target, endpoint)
+        candidate = binding.model_copy(update={"target": target})
+        key = (target.location, target.path)
+        previous = normalized.get(key)
+        if previous is None or _binding_priority(candidate) > _binding_priority(previous):
+            normalized[key] = candidate
+    return list(normalized.values())
+
+
+def _normalize_target(target, endpoint: dict[str, Any]):
+    slots = request_slots(endpoint)
+    matching = [slot for slot in slots if slot.path == target.path]
+    if not matching:
+        return target
+    if any(slot.location == target.location for slot in matching):
+        return target
+    aliases = {"form": "multipart", "multipart": "form"}
+    alias = aliases.get(target.location)
+    if alias and any(slot.location == alias for slot in matching):
+        return target.model_copy(update={"location": alias})
+    return target
+
+
+def _binding_priority(binding: ScenarioBinding) -> int:
+    source_type = binding.source.type
+    return {
+        "secret": 40,
+        "step_output": 30,
+        "environment": 20,
+        "scenario": 15,
+        "generated": 12,
+        "user_input": 10,
+        "literal": 5,
+    }.get(source_type, 0)
+
+
+def _calibrate_extractors(extractors: list[ScenarioExtractor], endpoint: dict[str, Any]) -> list[ScenarioExtractor]:
+    slots = response_slots(endpoint)
+    calibrated: list[ScenarioExtractor] = []
+    for extractor in extractors:
+        candidates = [
+            slot
+            for slot in slots
+            if slot.name == extractor.name
+            and slot.location == extractor.source
+            and (extractor.value_type == "any" or slot.value_type in {extractor.value_type, "any"})
+        ]
+        if len(candidates) == 1 and candidates[0].location != "sse_event_json":
+            slot = candidates[0]
+            extractor = extractor.model_copy(update={"path": slot.path, "value_type": slot.value_type})
+        calibrated.append(extractor)
+    return calibrated
 
 
 def _first_success_status(endpoint: dict[str, Any]) -> int | None:

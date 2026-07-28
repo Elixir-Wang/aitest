@@ -14,7 +14,7 @@ def allocate_loopback_port() -> int:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
         listener.bind(("127.0.0.1", 0))
         port = int(listener.getsockname()[1])
-        if port == 8000:
+        if port == 18000:
             return allocate_loopback_port()
         return port
 

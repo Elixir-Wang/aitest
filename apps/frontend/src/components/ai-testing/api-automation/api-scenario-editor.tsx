@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState } from "react";
 
@@ -14,10 +14,8 @@ import {
   Clock3,
   GitBranch,
   LayoutDashboard,
-  ListChecks,
   ListTree,
   Loader2,
-  LockKeyhole,
   PanelRightClose,
   PanelRightOpen,
   Play,
@@ -32,15 +30,7 @@ import {
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { Drawer, DrawerContent, DrawerFooter, DrawerHeader, DrawerTitle } from "@/components/ui/drawer";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -52,7 +42,12 @@ import {
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import type { ApiAutomationEndpoint, ApiAutomationScenarioStep, ApiScenarioAiPlan } from "@/lib/api-client";
+import type {
+  ApiAutomationEndpoint,
+  ApiAutomationScenarioStep,
+  ApiScenarioAiPlan,
+  ApiScenarioAiPlanAccepted,
+} from "@/lib/api-client";
 import { cn } from "@/lib/utils";
 
 import { ApiScenarioAssetPicker } from "./api-scenario-asset-picker";
@@ -81,7 +76,7 @@ export function ApiScenarioEditor({ projectId, scenarioId }: ApiScenarioEditorPr
   const [orchestrationMode, setOrchestrationMode] = useState<OrchestrationMode>("canvas");
   const [configPanelOpen, setConfigPanelOpen] = useState(false);
   const [assetPickerOpen, setAssetPickerOpen] = useState(false);
-  const [aiDialogOpen, setAiDialogOpen] = useState(false);
+  const [aiDrawerOpen, setAiDrawerOpen] = useState(false);
   const activeIndex = editor.draft.steps.findIndex((step) => step.id === editor.activeStepId);
   const precedingSteps = activeIndex < 0 ? [] : editor.draft.steps.slice(0, activeIndex);
 
@@ -145,7 +140,7 @@ export function ApiScenarioEditor({ projectId, scenarioId }: ApiScenarioEditorPr
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <Button onClick={() => setAiDialogOpen(true)} size="sm" variant="outline">
+          <Button onClick={() => setAiDrawerOpen(true)} size="sm" variant="outline">
             <Sparkles />
             AI 编排
           </Button>
@@ -454,13 +449,15 @@ export function ApiScenarioEditor({ projectId, scenarioId }: ApiScenarioEditorPr
         onOpenChange={setAssetPickerOpen}
         open={assetPickerOpen}
       />
-      <AiOrchestrationDialog
+      <AiOrchestrationDrawer
         busy={editor.aiBusy}
         onApply={() => void editor.actions.applyAiPlan()}
         onDiscard={editor.actions.discardAiPlan}
         onGenerate={editor.actions.generateAiPlan}
-        onOpenChange={setAiDialogOpen}
-        open={aiDialogOpen}
+        onOpenChange={(open) => {
+          if (open || !editor.aiBusy) setAiDrawerOpen(open);
+        }}
+        open={aiDrawerOpen}
         plan={editor.aiPlan}
       />
       <ApiScenarioRunDrawer
@@ -478,7 +475,7 @@ export function ApiScenarioEditor({ projectId, scenarioId }: ApiScenarioEditorPr
   );
 }
 
-function AiOrchestrationDialog({
+function AiOrchestrationDrawer({
   busy,
   onApply,
   onDiscard,
@@ -490,19 +487,17 @@ function AiOrchestrationDialog({
   busy: boolean;
   onApply: () => void;
   onDiscard: () => void;
-  onGenerate: (goal: string, allowWrite: boolean, maxSteps: number) => Promise<ApiScenarioAiPlan | null>;
+  onGenerate: (goal: string) => Promise<ApiScenarioAiPlanAccepted | null>;
   onOpenChange: (open: boolean) => void;
   open: boolean;
   plan: ApiScenarioAiPlan | null;
 }) {
   const [goal, setGoal] = useState("");
-  const [allowWrite, setAllowWrite] = useState(false);
-  const [maxSteps, setMaxSteps] = useState(8);
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="top-0 left-0 grid h-dvh max-h-dvh w-screen max-w-none translate-x-0 translate-y-0 grid-rows-[auto_minmax(0,1fr)_auto] gap-0 overflow-hidden rounded-none bg-background p-0 shadow-2xl sm:top-1/2 sm:left-1/2 sm:h-auto sm:max-h-[min(760px,calc(100vh-2rem))] sm:w-[calc(100vw-2rem)] sm:max-w-[760px] sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-xl">
-        <DialogHeader className="relative overflow-hidden border-b bg-muted/20 px-5 py-5 pr-14 sm:px-6">
+    <Drawer direction="right" modal={false} open={open} onOpenChange={onOpenChange}>
+      <DrawerContent className="grid h-full w-full grid-rows-[auto_minmax(0,1fr)_auto] gap-0 overflow-hidden bg-background p-0 data-[vaul-drawer-direction=right]:sm:max-w-[480px]">
+        <DrawerHeader className="relative overflow-hidden border-b bg-muted/20 px-5 py-5 pr-14 sm:px-6">
           <div className="flex items-start gap-3.5">
             <div className="relative grid size-10 shrink-0 place-items-center rounded-lg border border-primary/20 bg-primary/10 text-primary shadow-sm">
               <GitBranch className="size-5" />
@@ -510,7 +505,7 @@ function AiOrchestrationDialog({
             </div>
             <div className="min-w-0 space-y-1.5">
               <div className="flex flex-wrap items-center gap-2">
-                <DialogTitle className="font-semibold text-lg leading-6">AI 编排接口场景</DialogTitle>
+                <DrawerTitle className="font-semibold text-lg leading-6">AI 编排接口场景</DrawerTitle>
                 <Badge
                   className="h-5 border-primary/20 bg-primary/8 px-2 font-medium text-[10px] text-primary"
                   variant="outline"
@@ -518,12 +513,9 @@ function AiOrchestrationDialog({
                   生成草稿
                 </Badge>
               </div>
-              <DialogDescription className="max-w-xl leading-5">
-                描述业务目标，AI 将基于当前接口资产组织执行链路。
-              </DialogDescription>
             </div>
           </div>
-        </DialogHeader>
+        </DrawerHeader>
         {!plan ? (
           <div className="min-h-0 space-y-5 overflow-y-auto px-5 py-5 sm:px-6 sm:py-6">
             <div className="space-y-2.5">
@@ -541,52 +533,6 @@ function AiOrchestrationDialog({
                 rows={5}
                 value={goal}
               />
-            </div>
-            <div className="space-y-2.5">
-              <div className="font-semibold text-sm">生成设置</div>
-              <div className="grid overflow-hidden rounded-lg border bg-card sm:grid-cols-[240px_minmax(0,1fr)]">
-                <label
-                  className="flex min-h-20 items-center gap-3 border-b px-4 py-3.5 sm:border-r sm:border-b-0"
-                  htmlFor="ai-scenario-max-steps"
-                >
-                  <span className="grid size-8 shrink-0 place-items-center rounded-md bg-muted text-muted-foreground">
-                    <ListChecks className="size-4" />
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block whitespace-nowrap font-medium text-sm">最大步骤数</span>
-                    <span className="mt-0.5 block text-[11px] text-muted-foreground">限制链路复杂度</span>
-                  </span>
-                  <Input
-                    className="h-9 w-16 text-center font-semibold tabular-nums"
-                    id="ai-scenario-max-steps"
-                    max={100}
-                    min={1}
-                    onChange={(event) => setMaxSteps(Number(event.target.value) || 1)}
-                    type="number"
-                    value={maxSteps}
-                  />
-                </label>
-                <label
-                  className="group flex min-h-20 cursor-pointer items-center gap-3 px-4 py-3.5 transition-colors hover:bg-muted/25 has-focus-visible:bg-muted/25"
-                  htmlFor="ai-scenario-allow-write"
-                >
-                  <span className="grid size-8 shrink-0 place-items-center rounded-md bg-amber-50 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300">
-                    <LockKeyhole className="size-4" />
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block font-medium text-sm">允许写操作</span>
-                    <span className="mt-0.5 block text-[11px] text-muted-foreground leading-4">
-                      可编排 POST、PUT、PATCH、DELETE 接口
-                    </span>
-                  </span>
-                  <Checkbox
-                    checked={allowWrite}
-                    className="size-5"
-                    id="ai-scenario-allow-write"
-                    onCheckedChange={(checked) => setAllowWrite(checked === true)}
-                  />
-                </label>
-              </div>
             </div>
           </div>
         ) : (
@@ -641,7 +587,7 @@ function AiOrchestrationDialog({
             </div>
             {[...plan.validation.errors, ...plan.validation.warnings].length ? (
               <div className="space-y-1.5 rounded-lg border border-amber-300/60 bg-amber-50/60 p-3.5 text-amber-900 text-xs dark:bg-amber-500/10 dark:text-amber-200">
-                {[...plan.validation.errors, ...plan.validation.warnings].map((item) => (
+                {[...new Set([...plan.validation.errors, ...plan.validation.warnings])].map((item) => (
                   <div className="flex gap-2" key={item}>
                     <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
                     <span>{item}</span>
@@ -651,7 +597,7 @@ function AiOrchestrationDialog({
             ) : null}
           </div>
         )}
-        <DialogFooter className="mx-0 mb-0 min-h-16 items-center rounded-none border-t bg-background px-5 py-3 sm:justify-between sm:px-6">
+        <DrawerFooter className="mx-0 mb-0 min-h-16 items-center rounded-none border-t bg-background px-5 py-3 sm:justify-between sm:px-6">
           <div className="hidden items-center gap-2 text-[11px] text-muted-foreground sm:flex">
             <ShieldCheck className="size-3.5 text-primary" />
             应用前可预览并校验全部步骤
@@ -669,7 +615,10 @@ function AiOrchestrationDialog({
               <Button
                 className="flex-1 px-4 shadow-sm sm:flex-none"
                 disabled={busy || !goal.trim()}
-                onClick={() => void onGenerate(goal.trim(), allowWrite, maxSteps)}
+                onClick={async () => {
+                  const accepted = await onGenerate(goal.trim());
+                  if (accepted) onOpenChange(false);
+                }}
               >
                 {busy ? <Loader2 className="animate-spin" /> : <Sparkles />}
                 {busy ? "正在生成" : "生成编排草稿"}
@@ -686,9 +635,9 @@ function AiOrchestrationDialog({
               </Button>
             </div>
           )}
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </DrawerFooter>
+      </DrawerContent>
+    </Drawer>
   );
 }
 
@@ -912,8 +861,8 @@ function IssueBox({ title, items, tone }: { title: string; items: string[]; tone
     >
       <div className="font-semibold">{title}</div>
       <ul className="mt-2 space-y-1">
-        {items.map((item) => (
-          <li key={item}>• {item}</li>
+        {[...new Set(items)].map((item) => (
+          <li key={`${tone}-${item}`}>• {item}</li>
         ))}
       </ul>
     </div>

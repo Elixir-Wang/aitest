@@ -83,9 +83,8 @@ def _seed_evidence_run(report_directory: Path) -> None:
         db.execute(
             """
             INSERT INTO performance_test_scripts (
-              id, performance_test_id, project_id, version, generation_source,
-              template_version, input_hash, code, validation_status
-            ) VALUES (?, ?, ?, 1, 'default_plan', 'v1', 'hash', ?, 'confirmed')
+              id, performance_test_id, project_id, generation_source, code, validation_status
+            ) VALUES (?, ?, ?, 'default_plan', ?, 'confirmed')
             """,
             ("perfscript-1", "perftest-1", "project-1", "class PerformanceUser: pass"),
         )

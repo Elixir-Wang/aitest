@@ -54,14 +54,9 @@ def generate_performance_script(project_id: str, test_id: str, actor=Depends(req
     return script_service.generate_script(project_id, test_id, actor)
 
 
-@router.get("/{test_id}/scripts", response_model=list[PerformanceScriptOut])
-def list_performance_scripts(project_id: str, test_id: str, actor=Depends(current_user)) -> list[dict]:
-    return script_service.list_scripts(project_id, test_id, actor)
-
-
-@router.get("/{test_id}/scripts/{script_id}", response_model=PerformanceScriptOut)
-def get_performance_script(project_id: str, test_id: str, script_id: str, actor=Depends(current_user)) -> dict:
-    return script_service.get_script(project_id, test_id, script_id, actor)
+@router.get("/{test_id}/script", response_model=PerformanceScriptOut)
+def get_current_performance_script(project_id: str, test_id: str, actor=Depends(current_user)) -> dict:
+    return script_service.get_current_script(project_id, test_id, actor)
 
 
 @router.patch("/{test_id}/scripts/{script_id}/configuration", response_model=PerformanceScriptOut)

@@ -10,6 +10,7 @@ from app.core.environment_credentials import encrypt_api_environment_secret
 from app.repositories import api_automation_repo
 from app.schemas.performance_test import PerformanceTestCreateIn
 from app.seed.init_db import init_db
+from app.api.v1 import performance_runs
 from app.services.performance_testing import script_service, service
 
 
@@ -80,7 +81,7 @@ def _create_test(project_id: str = "project-1") -> dict:
     )
 
 
-def test_script_generation_versions_and_confirmation(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_script_generation_overwrites_single_current_script(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     _use_temp_db(monkeypatch, tmp_path)
     performance_test = _create_test()
 
@@ -88,30 +89,38 @@ def test_script_generation_versions_and_confirmation(monkeypatch: pytest.MonkeyP
     confirmed = script_service.confirm_script("project-1", performance_test["id"], first["id"], ADMIN)
     second = script_service.generate_script("project-1", performance_test["id"], ADMIN)
 
-    assert first["version"] == 1
     assert first["validation_status"] == "pending_confirmation"
     assert confirmed["validation_status"] == "confirmed"
     assert confirmed["confirmed_by"] == "u-admin"
-    assert second["version"] == 2
-    assert [item["version"] for item in script_service.list_scripts("project-1", performance_test["id"], ADMIN)] == [2, 1]
+    assert second["id"] == first["id"]
+    assert "version" not in second
+    assert script_service.get_current_script("project-1", performance_test["id"], ADMIN)["id"] == first["id"]
+    with connect() as db:
+        rows = db.execute(
+            "SELECT id FROM performance_test_scripts WHERE performance_test_id = ?",
+            (performance_test["id"],),
+        ).fetchall()
+    assert [row["id"] for row in rows] == [first["id"]]
 
 
-def test_confirmed_script_is_immutable(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_confirmed_script_can_be_edited_in_place(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     _use_temp_db(monkeypatch, tmp_path)
     performance_test = _create_test()
     generated = script_service.generate_script("project-1", performance_test["id"], ADMIN)
     script_service.confirm_script("project-1", performance_test["id"], generated["id"], ADMIN)
 
-    with pytest.raises(HTTPException) as exc_info:
-        script_service.update_script_configuration(
-            "project-1",
-            performance_test["id"],
-            generated["id"],
-            {"request": {"headers": {"X-Test": "changed"}}},
-            ADMIN,
-        )
+    updated = script_service.update_script_configuration(
+        "project-1",
+        performance_test["id"],
+        generated["id"],
+        {"request": {"headers": {"X-Test": "changed"}}},
+        ADMIN,
+    )
 
-    assert exc_info.value.detail["code"] == "PERFORMANCE_SCRIPT_IMMUTABLE"
+    assert updated["id"] == generated["id"]
+    assert updated["validation_status"] == "pending_confirmation"
+    assert updated["confirmed_by"] is None
+    assert updated["confirmed_at"] is None
 
 
 def test_pending_script_edit_rerenders_and_revalidates(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -198,6 +207,33 @@ def test_script_lookup_is_project_isolated(monkeypatch: pytest.MonkeyPatch, tmp_
     generated = script_service.generate_script("project-1", performance_test["id"], ADMIN)
 
     with pytest.raises(HTTPException) as exc_info:
-        script_service.get_script("project-2", performance_test["id"], generated["id"], ADMIN)
+        script_service.get_current_script("project-2", performance_test["id"], ADMIN)
 
     assert exc_info.value.status_code == 404
+
+
+def test_create_run_does_not_require_source_endpoint(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    performance_test = _create_test()
+    generated = script_service.generate_script("project-1", performance_test["id"], ADMIN)
+    script_service.confirm_script("project-1", performance_test["id"], generated["id"], ADMIN)
+    with connect() as db:
+        api_automation_repo.delete_endpoint(db, "endpoint-project-1")
+
+    captured = {}
+
+    def create_run_session(**kwargs):
+        captured.update(kwargs)
+        return "perfrun-1"
+
+    monkeypatch.setattr(performance_runs.headless_worker, "create_run_session", create_run_session)
+
+    result = performance_runs.create_performance_run(
+        "project-1",
+        performance_test["id"],
+        {"script_id": generated["id"]},
+        ADMIN,
+    )
+
+    assert result == {"id": "perfrun-1", "status": "created"}
+    assert captured["script_code"] == generated["code"]

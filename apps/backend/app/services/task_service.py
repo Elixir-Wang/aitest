@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+﻿from datetime import datetime, timedelta, timezone
 
 from app.core.db import connect
 from app.repositories import document_repo, requirement_analysis_run_repo
@@ -20,6 +20,7 @@ RUNNING_INDICATOR_SOURCE_TYPES = {
     "test_case_generation_run",
     "test_point_generation_run",
     "api_automation_generation_run",
+    "api_scenario_ai_plan",
     "api_script_generation_run",
     "api_automation_run",
 }
@@ -83,6 +84,12 @@ API_AUTOMATION_GENERATION_STATUS = {
     "interrupted": (COMPLETED_GROUP, "已中断"),
 }
 
+API_SCENARIO_AI_PLAN_STATUS = {
+    "generating": (RUNNING_GROUP, "编排中"),
+    "completed": (COMPLETED_GROUP, "编排完成"),
+    "failed": (FAILED_GROUP, "编排失败"),
+}
+
 API_AUTOMATION_RUN_STATUS = {
     "queued": (RUNNING_GROUP, "排队中"),
     "running": (RUNNING_GROUP, "执行中"),
@@ -110,6 +117,7 @@ STATUS_META_BY_SOURCE_TYPE = {
     "test_case_generation_run": TEST_CASE_GENERATION_STATUS,
     "test_point_generation_run": TEST_POINT_GENERATION_STATUS,
     "api_automation_generation_run": API_AUTOMATION_GENERATION_STATUS,
+    "api_scenario_ai_plan": API_SCENARIO_AI_PLAN_STATUS,
     "api_script_generation_run": API_SCRIPT_GENERATION_STATUS,
     "api_automation_run": API_AUTOMATION_RUN_STATUS,
 }
@@ -175,6 +183,7 @@ def get_task_by_source_for_event(*, source_type: str, source_id: str) -> dict | 
             *_test_case_generation_tasks(db, project_names),
             *_test_point_generation_tasks(db, project_names),
             *_api_automation_generation_tasks(db, project_names),
+            *_api_scenario_ai_plan_tasks(db, project_names),
             *_api_script_generation_tasks(db, project_names),
             *_api_automation_run_tasks(db, project_names),
         ]:
@@ -299,6 +308,7 @@ def _collect_visible_tasks(actor) -> list[dict]:
             *_test_case_generation_tasks(db, project_names),
             *_test_point_generation_tasks(db, project_names),
             *_api_automation_generation_tasks(db, project_names),
+            *_api_scenario_ai_plan_tasks(db, project_names),
             *_api_script_generation_tasks(db, project_names),
             *_api_automation_run_tasks(db, project_names),
         ]
@@ -539,6 +549,38 @@ def _api_automation_generation_tasks(db, project_names: dict[str, str]) -> list[
     ]
 
 
+def _api_scenario_ai_plan_tasks(db, project_names: dict[str, str]) -> list[dict]:
+    if not project_names or not _table_exists(db, "api_scenario_ai_plans"):
+        return []
+    rows = db.execute(
+        """
+        SELECT id, project_id, scenario_id, goal, lifecycle_status, error_message, created_at, updated_at
+        FROM api_scenario_ai_plans
+        WHERE project_id IN ({})
+        """.format(_placeholders(project_names)),
+        tuple(project_names),
+    ).fetchall()
+    return [
+        _task(
+            task_id=row["id"],
+            source_type="api_scenario_ai_plan",
+            source_id=row["id"],
+            project_id=row["project_id"],
+            project_name=project_names[row["project_id"]],
+            module="api_automation",
+            module_label="接口自动化",
+            title=row["goal"] or "AI 场景编排",
+            status=row["lifecycle_status"],
+            status_meta=API_SCENARIO_AI_PLAN_STATUS,
+            summary=row["error_message"],
+            created_at=row["created_at"],
+            updated_at=row["updated_at"] or row["created_at"],
+            detail_url=f"/projects/{row['project_id']}/automation/api/scenarios/{row['scenario_id']}" if row["scenario_id"] else f"/projects/{row['project_id']}/automation/api?tab=scenarios",
+        )
+        for row in rows
+    ]
+
+
 def _api_automation_run_tasks(db, project_names: dict[str, str]) -> list[dict]:
     if not project_names or not _table_exists(db, "api_automation_runs"):
         return []
@@ -693,3 +735,4 @@ def _placeholders(values: dict) -> str:
 
 def _table_exists(db, table: str) -> bool:
     return db.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?", (table,)).fetchone() is not None
+

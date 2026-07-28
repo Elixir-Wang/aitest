@@ -44,7 +44,7 @@ export function ScriptReview({ projectId, testId, scriptId }: { projectId: strin
   const loadScript = useCallback(() => {
     setLoadError(false);
     setScript(null);
-    return getPerformanceScript(projectId, testId, scriptId)
+    return getPerformanceScript(projectId, testId)
       .then((result) => {
         setScript(result);
         const preview = result.runtime_preview;
@@ -60,7 +60,7 @@ export function ScriptReview({ projectId, testId, scriptId }: { projectId: strin
         setLoadError(true);
         toast.error(apiErrorMessage(error));
       });
-  }, [projectId, scriptId, testId]);
+  }, [projectId, testId]);
 
   useEffect(() => {
     void loadScript();
@@ -74,7 +74,7 @@ export function ScriptReview({ projectId, testId, scriptId }: { projectId: strin
         </div>
         <h2 className="font-semibold text-sm">脚本加载失败</h2>
         <p className="mt-1 max-w-sm text-muted-foreground text-xs leading-5">
-          无法获取当前脚本版本，请检查网络后重试。
+          无法获取当前脚本，请检查网络后重试。
         </p>
         <Button className="mt-5" onClick={() => void loadScript()} variant="outline">
           <RefreshCw className="size-4" />
@@ -103,9 +103,6 @@ export function ScriptReview({ projectId, testId, scriptId }: { projectId: strin
       </div>
     );
   }
-  const editable =
-    script.validation_status === "pending_confirmation" || script.validation_status === "validation_failed";
-
   async function saveConfiguration() {
     setSaving(true);
     try {
@@ -162,7 +159,7 @@ export function ScriptReview({ projectId, testId, scriptId }: { projectId: strin
             </div>
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
-                <h1 className="font-semibold text-base">脚本版本 v{script.version}</h1>
+                <h1 className="font-semibold text-base">当前脚本</h1>
                 <Badge
                   className={
                     script.validation_result.valid
@@ -175,18 +172,14 @@ export function ScriptReview({ projectId, testId, scriptId }: { projectId: strin
                   {statusLabel(script.validation_status)}
                 </Badge>
               </div>
-              <p className="mt-1 truncate text-muted-foreground text-xs">
-                模板 {script.template_version} <span className="px-1 text-border">/</span> {script.generation_source}
-              </p>
+              <p className="mt-1 truncate text-muted-foreground text-xs">生成来源：{script.generation_source}</p>
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2 sm:justify-end">
-            {editable ? (
-              <Button disabled={saving || !script.validation_result.valid} onClick={confirm}>
-                {saving ? <LoaderCircle className="size-4 animate-spin" /> : <ShieldCheck className="size-4" />}
-                确认脚本
-              </Button>
-            ) : null}
+            <Button disabled={saving || !script.validation_result.valid} onClick={confirm}>
+              {saving ? <LoaderCircle className="size-4 animate-spin" /> : <ShieldCheck className="size-4" />}
+              确认脚本
+            </Button>
             {script.validation_status === "confirmed" ? (
               <Button disabled={saving} onClick={startRun}>
                 {saving ? <LoaderCircle className="size-4 animate-spin" /> : <Play className="size-4 fill-current" />}
@@ -219,22 +212,18 @@ export function ScriptReview({ projectId, testId, scriptId }: { projectId: strin
                 <h2 className="font-semibold text-sm">结构化请求配置</h2>
               </div>
               <p className="mt-1 text-muted-foreground text-xs leading-5">
-                {editable ? "可调整请求数据与成功规则。" : "当前版本已确认，配置保持只读。"}
+                已确认脚本也可直接调整；保存后需要重新确认才能运行。
               </p>
             </div>
-            {editable ? (
-              <Button disabled={saving} onClick={saveConfiguration} size="sm" variant="outline">
-                {saving ? <LoaderCircle className="size-3.5 animate-spin" /> : <Save className="size-3.5" />}
-                保存并校验
-              </Button>
-            ) : (
-              <Badge variant="outline">只读</Badge>
-            )}
+            <Button disabled={saving} onClick={saveConfiguration} size="sm" variant="outline">
+              {saving ? <LoaderCircle className="size-3.5 animate-spin" /> : <Save className="size-3.5" />}
+              保存并校验
+            </Button>
           </div>
           <div className="min-h-0 flex-1 divide-y overflow-y-auto">
-            <JsonField disabled={!editable} label="Headers" onChange={setHeaders} value={headers} />
-            <JsonField disabled={!editable} label="Body" onChange={setBody} value={body} />
-            <JsonField disabled={!editable} label="成功规则" onChange={setSuccessRules} rows={9} value={successRules} />
+            <JsonField disabled={false} label="Headers" onChange={setHeaders} value={headers} />
+            <JsonField disabled={false} label="Body" onChange={setBody} value={body} />
+            <JsonField disabled={false} label="成功规则" onChange={setSuccessRules} rows={9} value={successRules} />
           </div>
           {(script.validation_result.errors ?? []).length > 0 ? (
             <div className="space-y-1 border-t bg-destructive/5 px-4 py-3">
@@ -387,7 +376,6 @@ function statusLabel(status: PerformanceScript["validation_status"]) {
     validation_failed: "校验失败",
     pending_confirmation: "待确认",
     confirmed: "已确认",
-    superseded: "已替代",
   }[status];
 }
 

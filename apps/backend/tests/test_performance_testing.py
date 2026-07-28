@@ -1,3 +1,4 @@
+import sqlite3
 from pathlib import Path
 
 import pytest
@@ -19,10 +20,32 @@ from app.schemas.performance_test import (
     PerformanceTestUpdateIn,
 )
 from app.seed.init_db import init_db
-from app.services.performance_testing import headless_worker, run_repo, service
+from app.seed import seeds
+from app.services.performance_testing import headless_worker, run_repo, runner, service
 
 
 ADMIN = {"id": "u-admin", "role": "admin", "project_scope": "全部项目"}
+
+
+def test_allocate_loopback_port_avoids_backend_default_port(monkeypatch: pytest.MonkeyPatch) -> None:
+    ports = iter([18000, 19000])
+
+    class FakeSocket:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc_value, traceback):
+            return False
+
+        def bind(self, address) -> None:
+            return None
+
+        def getsockname(self):
+            return "127.0.0.1", next(ports)
+
+    monkeypatch.setattr(runner.socket, "socket", lambda *args, **kwargs: FakeSocket())
+
+    assert runner.allocate_loopback_port() == 19000
 
 
 def _use_temp_db(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -278,9 +301,8 @@ def test_delete_performance_test_stops_active_run_and_removes_all_related_data(
         db.execute(
             """
             INSERT INTO performance_test_scripts (
-              id, performance_test_id, project_id, version, generation_source,
-              template_version, input_hash, code, validation_status
-            ) VALUES (?, ?, ?, 1, 'default_plan', 'v1', 'hash', 'code', 'confirmed')
+              id, performance_test_id, project_id, generation_source, code, validation_status
+            ) VALUES (?, ?, ?, 'default_plan', 'code', 'confirmed')
             """,
             ("perfscript-1", created["id"], "project-1"),
         )
@@ -320,9 +342,8 @@ def test_delete_performance_test_removes_all_run_artifacts(monkeypatch: pytest.M
         db.execute(
             """
             INSERT INTO performance_test_scripts (
-              id, performance_test_id, project_id, version, generation_source,
-              template_version, input_hash, code, validation_status
-            ) VALUES (?, ?, ?, 1, 'default_plan', 'v1', 'hash', 'code', 'confirmed')
+              id, performance_test_id, project_id, generation_source, code, validation_status
+            ) VALUES (?, ?, ?, 'default_plan', 'code', 'confirmed')
             """,
             ("perfscript-1", created["id"], "project-1"),
         )
@@ -585,7 +606,77 @@ def test_performance_script_state_excludes_running(monkeypatch: pytest.MonkeyPat
         table = db.execute(
             "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'performance_test_scripts'"
         ).fetchone()
+        columns = {row["name"] for row in db.execute("PRAGMA table_info(performance_test_scripts)")}
 
     assert table is not None
     assert "pending_confirmation" in table["sql"]
     assert "'running'" not in table["sql"]
+    assert "superseded" not in table["sql"]
+    assert "version" not in columns
+    assert "template_version" not in columns
+    assert "input_hash" not in columns
+
+
+def test_migrate_performance_scripts_keeps_only_latest_record(tmp_path: Path) -> None:
+    database_path = tmp_path / "legacy.db"
+    db = sqlite3.connect(database_path)
+    db.row_factory = sqlite3.Row
+    db.executescript(
+        """
+        PRAGMA foreign_keys = ON;
+        CREATE TABLE projects (id TEXT PRIMARY KEY);
+        CREATE TABLE performance_tests (id TEXT PRIMARY KEY, project_id TEXT NOT NULL);
+        CREATE TABLE performance_test_scripts (
+          id TEXT PRIMARY KEY,
+          performance_test_id TEXT NOT NULL,
+          project_id TEXT NOT NULL,
+          version INTEGER NOT NULL,
+          generation_source TEXT NOT NULL,
+          model_id TEXT NOT NULL DEFAULT '',
+          prompt_version TEXT NOT NULL DEFAULT '',
+          template_version TEXT NOT NULL,
+          input_hash TEXT NOT NULL,
+          plan_json TEXT NOT NULL DEFAULT '{}',
+          code TEXT NOT NULL,
+          assumptions_json TEXT NOT NULL DEFAULT '[]',
+          required_runtime_variables_json TEXT NOT NULL DEFAULT '[]',
+          validation_status TEXT NOT NULL,
+          validation_result_json TEXT NOT NULL DEFAULT '{}',
+          confirmed_by TEXT,
+          confirmed_at TEXT,
+          created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE(performance_test_id, version)
+        );
+        CREATE TABLE performance_test_runs (
+          id TEXT PRIMARY KEY,
+          performance_test_id TEXT NOT NULL,
+          script_id TEXT NOT NULL,
+          FOREIGN KEY(script_id) REFERENCES performance_test_scripts(id)
+        );
+        INSERT INTO projects (id) VALUES ('project-1');
+        INSERT INTO performance_tests (id, project_id) VALUES ('perftest-1', 'project-1');
+        INSERT INTO performance_test_scripts (
+          id, performance_test_id, project_id, version, generation_source,
+          template_version, input_hash, code, validation_status
+        ) VALUES
+          ('perfscript-old', 'perftest-1', 'project-1', 1, 'default_plan', 'v1', 'old', 'old code', 'confirmed'),
+          ('perfscript-current', 'perftest-1', 'project-1', 2, 'user_edited', 'v1', 'new', 'new code', 'pending_confirmation');
+        INSERT INTO performance_test_runs (id, performance_test_id, script_id)
+        VALUES ('perfrun-1', 'perftest-1', 'perfscript-old');
+        """
+    )
+
+    seeds._migrate_performance_scripts_to_single_record(db)
+
+    columns = {row["name"] for row in db.execute("PRAGMA table_info(performance_test_scripts)")}
+    scripts = db.execute("SELECT id, code FROM performance_test_scripts").fetchall()
+    run = db.execute("SELECT script_id FROM performance_test_runs WHERE id = 'perfrun-1'").fetchone()
+    violations = db.execute("PRAGMA foreign_key_check").fetchall()
+    db.close()
+
+    assert "version" not in columns
+    assert "template_version" not in columns
+    assert "input_hash" not in columns
+    assert [dict(row) for row in scripts] == [{"id": "perfscript-current", "code": "new code"}]
+    assert run["script_id"] == "perfscript-current"
+    assert violations == []

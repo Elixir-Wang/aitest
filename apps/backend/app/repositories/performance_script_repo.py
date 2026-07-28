@@ -16,24 +16,15 @@ def _loads(value: str | None, default: Any) -> Any:
         return default
 
 
-def next_version(db: Connection, performance_test_id: str) -> int:
-    row = db.execute(
-        "SELECT COALESCE(MAX(version), 0) + 1 AS next_version FROM performance_test_scripts WHERE performance_test_id = ?",
-        (performance_test_id,),
-    ).fetchone()
-    return int(row["next_version"])
-
-
-def create_script(
+def save_script(
     db: Connection,
     *,
     script_id: str,
     performance_test_id: str,
     project_id: str,
-    version: int,
     generation_source: str,
-    template_version: str,
-    input_hash: str,
+    model_id: str,
+    prompt_version: str,
     plan: dict[str, Any],
     code: str,
     validation_status: str,
@@ -42,19 +33,28 @@ def create_script(
     db.execute(
         """
         INSERT INTO performance_test_scripts (
-          id, performance_test_id, project_id, version, generation_source,
-          template_version, input_hash, plan_json, code, validation_status,
-          validation_result_json
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          id, performance_test_id, project_id, generation_source, model_id,
+          prompt_version, plan_json, code, validation_status, validation_result_json
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(performance_test_id) DO UPDATE SET
+          generation_source = excluded.generation_source,
+          model_id = excluded.model_id,
+          prompt_version = excluded.prompt_version,
+          plan_json = excluded.plan_json,
+          code = excluded.code,
+          validation_status = excluded.validation_status,
+          validation_result_json = excluded.validation_result_json,
+          confirmed_by = NULL,
+          confirmed_at = NULL,
+          updated_at = CURRENT_TIMESTAMP
         """,
         (
             script_id,
             performance_test_id,
             project_id,
-            version,
             generation_source,
-            template_version,
-            input_hash,
+            model_id,
+            prompt_version,
             _dumps(plan),
             code,
             validation_status,
@@ -63,11 +63,11 @@ def create_script(
     )
 
 
-def list_scripts(db: Connection, performance_test_id: str) -> list[Row]:
+def find_script_by_test(db: Connection, performance_test_id: str) -> Row | None:
     return db.execute(
-        "SELECT * FROM performance_test_scripts WHERE performance_test_id = ? ORDER BY version DESC",
+        "SELECT * FROM performance_test_scripts WHERE performance_test_id = ?",
         (performance_test_id,),
-    ).fetchall()
+    ).fetchone()
 
 
 def find_script(db: Connection, script_id: str) -> Row | None:
@@ -80,37 +80,27 @@ def update_pending_script(
     *,
     plan: dict[str, Any],
     code: str,
-    input_hash: str,
     validation_status: str,
     validation_result: dict[str, Any],
 ) -> None:
     db.execute(
         """
         UPDATE performance_test_scripts
-        SET generation_source = 'user_edited', plan_json = ?, code = ?, input_hash = ?,
-            validation_status = ?, validation_result_json = ?
+        SET generation_source = 'user_edited', plan_json = ?, code = ?,
+            validation_status = ?, validation_result_json = ?, confirmed_by = NULL,
+            confirmed_at = NULL, updated_at = CURRENT_TIMESTAMP
         WHERE id = ?
         """,
-        (_dumps(plan), code, input_hash, validation_status, _dumps(validation_result), script_id),
+        (_dumps(plan), code, validation_status, _dumps(validation_result), script_id),
     )
 
 
 def confirm_script(db: Connection, script_id: str, actor_id: str) -> None:
-    row = find_script(db, script_id)
-    if not row:
-        return
     db.execute(
         """
         UPDATE performance_test_scripts
-        SET validation_status = 'superseded'
-        WHERE performance_test_id = ? AND validation_status = 'confirmed' AND id <> ?
-        """,
-        (row["performance_test_id"], script_id),
-    )
-    db.execute(
-        """
-        UPDATE performance_test_scripts
-        SET validation_status = 'confirmed', confirmed_by = ?, confirmed_at = CURRENT_TIMESTAMP
+        SET validation_status = 'confirmed', confirmed_by = ?, confirmed_at = CURRENT_TIMESTAMP,
+            updated_at = CURRENT_TIMESTAMP
         WHERE id = ?
         """,
         (actor_id, script_id),
@@ -122,12 +112,9 @@ def serialize_script(row: Row) -> dict[str, Any]:
         "id": row["id"],
         "performance_test_id": row["performance_test_id"],
         "project_id": row["project_id"],
-        "version": row["version"],
         "generation_source": row["generation_source"],
         "model_id": row["model_id"],
         "prompt_version": row["prompt_version"],
-        "template_version": row["template_version"],
-        "input_hash": row["input_hash"],
         "plan": _loads(row["plan_json"], {}),
         "code": row["code"],
         "assumptions": _loads(row["assumptions_json"], []),
@@ -137,10 +124,10 @@ def serialize_script(row: Row) -> dict[str, Any]:
         "confirmed_by": row["confirmed_by"],
         "confirmed_at": row["confirmed_at"],
         "created_at": row["created_at"],
+        "updated_at": row["updated_at"],
     }
 
 
 def delete_scripts_by_test(db: Connection, performance_test_id: str) -> None:
     """Delete all scripts for a performance test."""
     db.execute("DELETE FROM performance_test_scripts WHERE performance_test_id = ?", (performance_test_id,))
-

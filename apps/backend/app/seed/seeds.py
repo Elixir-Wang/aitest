@@ -8,6 +8,7 @@ def seed_system_defaults(db: sqlite3.Connection) -> None:
     _ensure_ui_automation_video_column(db)
     _drop_legacy_performance_run_tables(db)
     _ensure_performance_test_columns(db)
+    _migrate_performance_scripts_to_single_record(db)
     _ensure_performance_analysis_columns(db)
     _ensure_api_test_script_columns(db)
     _ensure_api_automation_run_columns(db)
@@ -237,6 +238,79 @@ def _ensure_performance_test_columns(db: sqlite3.Connection) -> None:
             db.execute(statement)
 
 
+def _migrate_performance_scripts_to_single_record(db: sqlite3.Connection) -> None:
+    columns = {str(column["name"]) for column in db.execute("PRAGMA table_info(performance_test_scripts)")}
+    if "version" not in columns:
+        db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_performance_test_scripts_project_updated "
+            "ON performance_test_scripts(project_id, updated_at)"
+        )
+        return
+
+    db.commit()
+    db.execute("PRAGMA foreign_keys = OFF")
+    db.executescript(
+        """
+        CREATE TABLE performance_test_scripts_single (
+          id TEXT PRIMARY KEY,
+          performance_test_id TEXT NOT NULL UNIQUE,
+          project_id TEXT NOT NULL,
+          generation_source TEXT NOT NULL CHECK(generation_source IN ('ai_plan', 'default_plan', 'user_edited')),
+          model_id TEXT NOT NULL DEFAULT '',
+          prompt_version TEXT NOT NULL DEFAULT '',
+          plan_json TEXT NOT NULL DEFAULT '{}',
+          code TEXT NOT NULL,
+          assumptions_json TEXT NOT NULL DEFAULT '[]',
+          required_runtime_variables_json TEXT NOT NULL DEFAULT '[]',
+          validation_status TEXT NOT NULL CHECK(validation_status IN ('generating', 'validation_failed', 'pending_confirmation', 'confirmed')),
+          validation_result_json TEXT NOT NULL DEFAULT '{}',
+          confirmed_by TEXT,
+          confirmed_at TEXT,
+          created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY(performance_test_id) REFERENCES performance_tests(id) ON DELETE CASCADE,
+          FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE
+        );
+        INSERT INTO performance_test_scripts_single (
+          id, performance_test_id, project_id, generation_source, model_id, prompt_version,
+          plan_json, code, assumptions_json, required_runtime_variables_json,
+          validation_status, validation_result_json, confirmed_by, confirmed_at, created_at, updated_at
+        )
+        SELECT
+          legacy.id, legacy.performance_test_id, legacy.project_id, legacy.generation_source,
+          legacy.model_id, legacy.prompt_version, legacy.plan_json, legacy.code,
+          legacy.assumptions_json, legacy.required_runtime_variables_json,
+          CASE WHEN legacy.validation_status = 'superseded' THEN 'pending_confirmation' ELSE legacy.validation_status END,
+          legacy.validation_result_json, legacy.confirmed_by, legacy.confirmed_at,
+          legacy.created_at, legacy.created_at
+        FROM performance_test_scripts AS legacy
+        WHERE legacy.id = (
+          SELECT current.id
+          FROM performance_test_scripts AS current
+          WHERE current.performance_test_id = legacy.performance_test_id
+          ORDER BY current.version DESC
+          LIMIT 1
+        );
+        UPDATE performance_test_runs
+        SET script_id = (
+          SELECT current.id
+          FROM performance_test_scripts_single AS current
+          WHERE current.performance_test_id = performance_test_runs.performance_test_id
+        )
+        WHERE EXISTS (
+          SELECT 1
+          FROM performance_test_scripts_single AS current
+          WHERE current.performance_test_id = performance_test_runs.performance_test_id
+        );
+        DROP TABLE performance_test_scripts;
+        ALTER TABLE performance_test_scripts_single RENAME TO performance_test_scripts;
+        CREATE INDEX idx_performance_test_scripts_project_updated
+          ON performance_test_scripts(project_id, updated_at);
+        """
+    )
+    db.execute("PRAGMA foreign_keys = ON")
+
+
 def _ensure_performance_analysis_columns(db: sqlite3.Connection) -> None:
     row = db.execute(
         "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'performance_analysis_sessions'"
@@ -422,11 +496,14 @@ def _ensure_api_scenario_ai_plan_table(db: sqlite3.Connection) -> None:
           plan_json TEXT NOT NULL DEFAULT '{}',
           validation_json TEXT NOT NULL DEFAULT '{}',
           status TEXT NOT NULL CHECK(status IN ('preview', 'applied', 'discarded', 'expired')) DEFAULT 'preview',
+          lifecycle_status TEXT NOT NULL DEFAULT 'completed',
+          error_message TEXT NOT NULL DEFAULT '',
           model_provider TEXT NOT NULL DEFAULT '',
           model_name TEXT NOT NULL DEFAULT '',
           created_by TEXT NOT NULL,
           applied_by TEXT NOT NULL DEFAULT '',
           created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
           expires_at TEXT NOT NULL,
           applied_at TEXT,
           FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE,
@@ -436,6 +513,15 @@ def _ensure_api_scenario_ai_plan_table(db: sqlite3.Connection) -> None:
           ON api_scenario_ai_plans(project_id, created_at DESC);
         """
     )
+    columns = {str(column["name"]) for column in db.execute("PRAGMA table_info(api_scenario_ai_plans)").fetchall()}
+    for column, definition in {
+        "lifecycle_status": "TEXT NOT NULL DEFAULT 'completed'",
+        "error_message": "TEXT NOT NULL DEFAULT ''",
+        "updated_at": "TEXT NOT NULL DEFAULT ''",
+    }.items():
+        if column not in columns:
+            db.execute(f"ALTER TABLE api_scenario_ai_plans ADD COLUMN {column} {definition}")
+    db.execute("UPDATE api_scenario_ai_plans SET updated_at = created_at WHERE updated_at = ''")
 
 
 def _backfill_legacy_api_scenario_endpoints(db: sqlite3.Connection) -> None:

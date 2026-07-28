@@ -237,7 +237,7 @@ export function PerformanceAiAnalysisDrawer({
               <AlertDialogTitle>应用 AI 修复并重新压测？</AlertDialogTitle>
               <AlertDialogDescription>
                 将应用 {selectedChangeIds.length}{" "}
-                项已选配置，先发送一次预检请求。预检通过后保存新脚本版本并自动启动压测；失败时保留原配置。
+                项已选配置，先发送一次预检请求。预检通过后覆盖当前脚本并自动启动压测；失败时保留原配置。
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>

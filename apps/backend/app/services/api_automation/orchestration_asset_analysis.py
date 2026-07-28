@@ -64,6 +64,8 @@ def endpoint_summary(endpoint: dict[str, Any]) -> dict[str, Any]:
         "tags": list(endpoint.get("tags", []))[:20],
         "request_slot_count": len(request_slots(endpoint)),
         "response_slot_count": len(response_slots(endpoint)),
+        "request_slots": [slot.public() for slot in request_slots(endpoint)],
+        "response_slots": [slot.public() for slot in response_slots(endpoint)],
     }
 
 

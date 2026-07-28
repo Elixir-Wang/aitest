@@ -120,7 +120,7 @@ def stream_mjpeg(run_id: str, token: str) -> Iterator[bytes]:
         )
 
 
-def shutdown_all() -> None:
+def shutdown_all(*, join_timeout: float = 2) -> None:
     with _sessions_lock:
         sessions = list(_sessions.values())
         _sessions.clear()
@@ -130,7 +130,7 @@ def shutdown_all() -> None:
             session.frame_condition.notify_all()
     for session in sessions:
         if session.watcher and session.watcher is not threading.current_thread():
-            session.watcher.join(timeout=2)
+            session.watcher.join(timeout=max(join_timeout, 0))
 
 
 def _capture_screencast(session: LiveViewSession) -> None:

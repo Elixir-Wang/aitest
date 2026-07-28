@@ -22,21 +22,27 @@ test("official employee route renders the dedicated visual dashboard", () => {
 
 test("office preview renders the dedicated visual dashboard", () => {
   assert.match(pageSource, /SiliconOfficeDashboard/);
-  assert.match(dashboardSource, /硅基员工总数/);
+  assert.match(dashboardSource, /员工总数/);
   assert.match(dashboardSource, /在线人数/);
   assert.match(dashboardSource, /运行中/);
   assert.match(dashboardSource, /空闲/);
   assert.match(dashboardSource, /异常/);
 });
 
-test("office overview uses standalone cards and reuses the application theme preference", () => {
+test("office overview matches the target five-card composition", () => {
   assert.match(dashboardSource, /metricsSection/);
-  assert.match(dashboardSource, /usePreferencesStore/);
-  assert.match(dashboardSource, /persistPreference\("theme_mode", nextTheme\)/);
-  assert.match(dashboardSource, /切换为深色模式/);
-  assert.match(dashboardStyles, /\.metricsSection[\s\S]*?margin-bottom: 14px/);
+  for (const label of ["员工总数", "在线人数", "专注工作", "会议中", "离线/休息"]) {
+    assert.match(dashboardSource, new RegExp(label));
+  }
+  assert.match(dashboardStyles, /\.metrics[\s\S]*?border: 1px solid #e4e9f0/);
+  assert.match(dashboardStyles, /\.metricCard[\s\S]*?min-height: 68px/);
   assert.match(dashboardStyles, /\.metricCard[\s\S]*?background: #fff/);
-  assert.match(dashboardStyles, /\.dark \.metricCard/);
+  assert.match(dashboardStyles, /\.metricCard:not\(:last-child\)[\s\S]*?border-right: 1px solid #e8edf3/);
+  assert.match(dashboardStyles, /\.metricCopy[\s\S]*?grid-template-areas:[^;]*"label hint"[^;]*"value hint"/);
+  assert.match(dashboardStyles, /\.metricHint[\s\S]*?grid-area: hint/);
+  assert.match(dashboardStyles, /\.workspace[\s\S]*?360px/);
+  assert.ok(dashboardStyles.includes("  height: calc(100dvh - 24px);"));
+  assert.match(dashboardStyles, /\.officeFloor[\s\S]*?flex: 1/);
 });
 
 test("office dashboard keeps the six-room composition and fixed employee detail panel", () => {
@@ -54,7 +60,11 @@ test("employee detail uses photographic assets and the reference action layout",
   assert.match(dashboardSource, /profileAvatarImage/);
   assert.match(dashboardSource, /roomImage\(employee\.room\)/);
   assert.match(dashboardSource, /专注工作/);
+  assert.match(dashboardSource, /今日专注/);
+  assert.match(dashboardSource, /完成任务/);
   assert.match(dashboardSource, /查看日程/);
+  assert.match(dashboardStyles, /\.detailSnapshot[\s\S]*?grid-template-columns: repeat\(3, minmax\(0, 1fr\)\)/);
+  assert.match(dashboardStyles, /\.detailActions button:first-child[\s\S]*?background: #2f6bff/);
   assert.ok(dashboardStyles.includes("flex-direction: column"));
   assert.ok(dashboardStyles.includes("border-right: 1px solid #edf1f6"));
 });
@@ -70,6 +80,21 @@ test("office visual has only the three confirmed employee statuses", () => {
   assert.ok(dashboardSource.includes('type EmployeeStatus = "idle" | "running" | "error";'));
   assert.doesNotMatch(dashboardSource, /human-waiting|EmptyWorkstation|emptyLabel/);
   assert.doesNotMatch(dashboardSource, /筛选|视图切换|viewMode|filterMode/);
+  assert.match(dashboardSource, /employee\.status !== "idle" \? <Nameplate/);
+});
+
+test("office rooms use standardized desk scenes and a centered CEO office", () => {
+  for (const asset of [
+    "requirement-room-standardized.png",
+    "test-design-room-standardized.png",
+    "automation-room-standardized.png",
+    "operations-room-standardized.png",
+    "ai-center-room-standardized.png",
+    "ceo-office-centered.png",
+  ]) {
+    assert.match(dashboardSource, new RegExp(asset.replaceAll(".", "\\.")));
+  }
+  assert.match(dashboardStyles, /\.executiveHotspot[\s\S]*?top: 38%/);
 });
 
 test("office visual uses complete generated room scenes with interactive DOM overlays", () => {
@@ -77,12 +102,12 @@ test("office visual uses complete generated room scenes with interactive DOM ove
   assert.match(dashboardSource, /Workstation/);
   assert.match(dashboardSource, /next\/image/);
   for (const asset of [
-    "requirement-room-enterprise-portrait.png",
-    "test-design-room-enterprise-portrait.png",
-    "automation-room-enterprise-portrait.png",
-    "operations-room-enterprise-portrait.png",
-    "ai-center-room-enterprise-portrait.png",
-    "ceo-office-enterprise-portrait.png",
+    "requirement-room-standardized.png",
+    "test-design-room-standardized.png",
+    "automation-room-standardized.png",
+    "operations-room-standardized.png",
+    "ai-center-room-standardized.png",
+    "ceo-office-centered.png",
   ]) {
     assert.match(dashboardSource, new RegExp(asset.replaceAll(".", "\\.")));
   }
