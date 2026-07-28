@@ -26,7 +26,7 @@ export async function WorkspaceShell({ children }: Readonly<{ children: ReactNod
       defaultOpen={defaultOpen}
       style={
         {
-          "--sidebar-width": "calc(var(--spacing) * 68)",
+          "--sidebar-width": "calc(var(--spacing) * 64)",
         } as React.CSSProperties
       }
     >

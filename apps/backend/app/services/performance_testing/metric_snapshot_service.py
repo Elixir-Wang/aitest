@@ -3,10 +3,13 @@ from __future__ import annotations
 import hashlib
 import json
 import statistics
+from datetime import datetime
 from typing import Any
 
+from app.services.performance_testing.analysis_metrics import build_analysis_metrics
 
-CALCULATOR_VERSION = "performance-metrics-v1"
+
+CALCULATOR_VERSION = "performance-metrics-v2"
 
 
 def build_metric_snapshot(evidence: dict[str, Any]) -> dict[str, Any]:
@@ -29,9 +32,10 @@ def build_metric_snapshot(evidence: dict[str, Any]) -> dict[str, Any]:
     source_fingerprint = "sha256:" + hashlib.sha256(
         json.dumps(snapshot_source, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
     ).hexdigest()
-    evidence_index = _evidence_index(summary, objectives, quality)
+    analysis_metrics = build_analysis_metrics(evidence)
+    evidence_index = _evidence_index(summary, objectives, quality) + _analysis_evidence_index(analysis_metrics)
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "calculator_version": CALCULATOR_VERSION,
         "run_id": str(run.get("id") or ""),
         "source_fingerprint": source_fingerprint,
@@ -46,6 +50,7 @@ def build_metric_snapshot(evidence: dict[str, Any]) -> dict[str, Any]:
         "objectives": objectives,
         "verdict": verdict,
         "series": series,
+        **analysis_metrics,
         "evidence_index": evidence_index,
     }
 
@@ -131,7 +136,9 @@ def _quality(run: dict[str, Any], summary: dict[str, Any], stats: list[dict[str,
         issues.append("time_series_missing")
     if summary["p95_response_time_ms"] is None:
         issues.append("p95_response_time_missing")
-    if run.get("status") != "completed":
+    if run.get("status") == "stopped":
+        issues.append("run_manually_stopped")
+    elif run.get("status") not in {"completed", ""}:
         issues.append(f"run_terminal_status:{run.get('status') or 'unknown'}")
     if summary["request_count"] <= 0:
         status = "invalid"
@@ -139,13 +146,48 @@ def _quality(run: dict[str, Any], summary: dict[str, Any], stats: list[dict[str,
         status = "partial"
     else:
         status = "complete"
+    actual_duration = _duration_seconds(run.get("started_at"), run.get("finished_at"))
+    configured_duration = _configured_duration_seconds(run)
     return {
         "status": status,
         "coverage": round(max(0.0, 1.0 - min(len(issues), 10) * 0.08), 2),
         "issues": issues,
         "diagnostic_missing_evidence": [str(item) for item in missing],
         "sample_count": len(stats),
+        "termination_reason": run.get("termination_reason") or (
+            "manual_stop" if run.get("status") == "stopped" else run.get("status") or "unknown"
+        ),
+        "termination_label": run.get("termination_label") or (
+            "人工停止" if run.get("status") == "stopped" else "正常完成" if run.get("status") == "completed" else "未知"
+        ),
+        "actual_duration_seconds": actual_duration,
+        "configured_duration_seconds": configured_duration,
+        "duration_complete": (
+            actual_duration is not None
+            and configured_duration is not None
+            and actual_duration >= configured_duration
+        ) if actual_duration is not None and configured_duration is not None else None,
     }
+
+
+def _duration_seconds(started_at: Any, finished_at: Any) -> int | None:
+    if not started_at or not finished_at:
+        return None
+    try:
+        start = datetime.fromisoformat(str(started_at).replace("Z", "+00:00"))
+        finish = datetime.fromisoformat(str(finished_at).replace("Z", "+00:00"))
+        return max(0, round((finish - start).total_seconds()))
+    except (TypeError, ValueError):
+        return None
+
+
+def _configured_duration_seconds(run: dict[str, Any]) -> int | None:
+    load_config = run.get("load_config") if isinstance(run.get("load_config"), dict) else {}
+    value = load_config.get("measurement_duration_seconds")
+    try:
+        return int(value) if value is not None else None
+    except (TypeError, ValueError):
+        return None
 
 
 def _objectives(goal: dict[str, Any], summary: dict[str, Any], quality_status: str) -> list[dict[str, Any]]:
@@ -218,18 +260,76 @@ def _evidence_index(summary: dict[str, Any], objectives: list[dict[str, Any]], q
     ]
 
 
+def _analysis_evidence_index(analysis: dict[str, Any]) -> list[dict[str, Any]]:
+    result = [
+        {
+            "evidence_id": "validity:summary",
+            "kind": "test_validity",
+            "value": analysis.get("test_validity", {}),
+        },
+        {
+            "evidence_id": "capacity:summary",
+            "kind": "capacity",
+            "value": analysis.get("capacity_analysis", {}),
+        },
+        {
+            "evidence_id": "latency:summary",
+            "kind": "latency",
+            "value": analysis.get("latency_analysis", {}),
+        },
+    ]
+    result.extend(
+        {
+            "evidence_id": f"stage:{index + 1}",
+            "kind": "load_stage",
+            "value": stage,
+        }
+        for index, stage in enumerate(analysis.get("stage_analysis", []))
+    )
+    result.extend(
+        {
+            "evidence_id": f"failure:{item.get('kind', index + 1)}",
+            "kind": "failure_class",
+            "value": item,
+        }
+        for index, item in enumerate(analysis.get("failure_analysis", []))
+    )
+    return result
+
+
 def _executive_summary(snapshot: dict[str, Any]) -> str:
     labels = {"pass": "通过", "conditional_pass": "有条件通过", "fail": "不通过", "indeterminate": "无法判断"}
     aggregate = snapshot.get("aggregate") or {}
-    return (
+    summary = (
         f"本次压测结论为{labels.get(snapshot.get('verdict'), '无法判断')}。"
         f"共执行 {aggregate.get('request_count', 0)} 次请求，失败率 "
         f"{float(aggregate.get('failure_rate') or 0) * 100:.2f}%，观测吞吐 "
         f"{float(aggregate.get('requests_per_second') or 0):.2f} RPS。"
     )
+    quality = snapshot.get("quality") or {}
+    if quality.get("termination_reason") == "manual_stop":
+        summary += "本次运行由测试人员手动停止，指标反映实际运行窗口内的表现，不代表运行异常。"
+    actual = quality.get("actual_duration_seconds")
+    configured = quality.get("configured_duration_seconds")
+    if actual is not None and configured is not None:
+        summary += f"实际运行 {actual} 秒，配置时长 {configured} 秒。"
+    return summary
 
 
 def _capacity_summary(snapshot: dict[str, Any]) -> str:
+    analysis = snapshot.get("capacity_analysis") or {}
+    observed = analysis.get("observed_stable_capacity")
+    if observed:
+        text = (
+            f"观测到的稳定容量约为 {int(observed.get('users') or 0)} 并发、"
+            f"{float(observed.get('requests_per_second') or 0):.2f} RPS。"
+        )
+        knee = analysis.get("knee_point") or {}
+        if knee.get("between_users"):
+            text += f"性能拐点区间约为 {knee['between_users'][0]} ~ {knee['between_users'][1]} 并发。"
+        return text
+    if analysis.get("reason"):
+        return str(analysis["reason"])
     capacity = snapshot.get("capacity") or {}
     stable = capacity.get("stable_throughput")
     if stable is None:

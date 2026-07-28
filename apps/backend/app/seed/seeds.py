@@ -4,6 +4,7 @@ from app.core.security import hash_secret
 
 
 def seed_system_defaults(db: sqlite3.Connection) -> None:
+    _ensure_exploration_loop_mode(db)
     _migrate_ui_automation_case_sources(db)
     _ensure_ui_automation_video_column(db)
     _drop_legacy_performance_run_tables(db)
@@ -27,6 +28,67 @@ def seed_system_defaults(db: sqlite3.Connection) -> None:
     _migrate_legacy_site_exploration_assignment(db)
     _seed_operation_log_retention_policy(db)
     _ensure_all_projects_conversation_scope(db)
+
+
+def _ensure_exploration_loop_mode(db: sqlite3.Connection) -> None:
+    """Migrate existing exploration_runs CHECK constraint to include loop mode."""
+    table = db.execute(
+        "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'exploration_runs'"
+    ).fetchone()
+    if not table:
+        return
+    try:
+        table_sql = table["sql"]
+    except (IndexError, KeyError, TypeError):
+        table_sql = table[0]
+    if "'loop'" in str(table_sql or ""):
+        return
+
+    db.execute("PRAGMA foreign_keys = OFF")
+    db.execute("ALTER TABLE exploration_runs RENAME TO exploration_runs_legacy_loop_mode")
+    db.executescript(
+        """
+        CREATE TABLE exploration_runs (
+          id TEXT PRIMARY KEY,
+          project_id TEXT NOT NULL,
+          environment_id TEXT NOT NULL,
+          requirement_doc_id TEXT NOT NULL DEFAULT '',
+          title TEXT NOT NULL,
+          status TEXT NOT NULL CHECK(status IN ('pending', 'queued', 'running', 'stopping', 'cancelled', 'interrupted', 'completed', 'blocked', 'failed')) DEFAULT 'pending',
+          exploration_mode TEXT NOT NULL DEFAULT 'goal' CHECK(exploration_mode IN ('goal', 'autonomous', 'loop')),
+          scope TEXT NOT NULL DEFAULT '',
+          forbidden_paths TEXT NOT NULL DEFAULT '',
+          login_strategy TEXT NOT NULL DEFAULT 'skip_login',
+          goal TEXT NOT NULL DEFAULT '',
+          notes TEXT NOT NULL DEFAULT '',
+          max_pages INTEGER NOT NULL DEFAULT 50,
+          max_actions INTEGER NOT NULL DEFAULT 1000,
+          timeout_minutes INTEGER NOT NULL DEFAULT 120,
+          artifact_root TEXT NOT NULL DEFAULT '',
+          result_summary TEXT NOT NULL DEFAULT '',
+          created_by TEXT NOT NULL,
+          created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          started_at TEXT,
+          finished_at TEXT,
+          FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE,
+          FOREIGN KEY(environment_id) REFERENCES project_environments(id) ON DELETE RESTRICT
+        );
+        INSERT INTO exploration_runs (
+          id, project_id, environment_id, requirement_doc_id, title, status,
+          exploration_mode, scope, forbidden_paths, login_strategy, goal, notes,
+          max_pages, max_actions, timeout_minutes, artifact_root, result_summary,
+          created_by, created_at, updated_at, started_at, finished_at
+        )
+        SELECT id, project_id, environment_id, requirement_doc_id, title, status,
+          exploration_mode, scope, forbidden_paths, login_strategy, goal, notes,
+          max_pages, max_actions, timeout_minutes, artifact_root, result_summary,
+          created_by, created_at, updated_at, started_at, finished_at
+        FROM exploration_runs_legacy_loop_mode;
+        DROP TABLE exploration_runs_legacy_loop_mode;
+        """
+    )
+    db.execute("PRAGMA foreign_keys = ON")
 
 
 def _migrate_ui_automation_case_sources(db: sqlite3.Connection) -> None:
@@ -240,18 +302,23 @@ def _ensure_performance_test_columns(db: sqlite3.Connection) -> None:
 
 def _migrate_performance_scripts_to_single_record(db: sqlite3.Connection) -> None:
     columns = {str(column["name"]) for column in db.execute("PRAGMA table_info(performance_test_scripts)")}
-    if "version" not in columns:
+    table = db.execute(
+        "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'performance_test_scripts'"
+    ).fetchone()
+    table_sql = str(table["sql"] or "") if table else ""
+    if "version" not in columns and "confirmed_by" not in columns and "'valid'" in table_sql:
         db.execute(
             "CREATE INDEX IF NOT EXISTS idx_performance_test_scripts_project_updated "
             "ON performance_test_scripts(project_id, updated_at)"
         )
         return
 
+    has_versions = "version" in columns
     db.commit()
     db.execute("PRAGMA foreign_keys = OFF")
     db.executescript(
         """
-        CREATE TABLE performance_test_scripts_single (
+        CREATE TABLE performance_test_scripts_validated (
           id TEXT PRIMARY KEY,
           performance_test_id TEXT NOT NULL UNIQUE,
           project_id TEXT NOT NULL,
@@ -262,53 +329,68 @@ def _migrate_performance_scripts_to_single_record(db: sqlite3.Connection) -> Non
           code TEXT NOT NULL,
           assumptions_json TEXT NOT NULL DEFAULT '[]',
           required_runtime_variables_json TEXT NOT NULL DEFAULT '[]',
-          validation_status TEXT NOT NULL CHECK(validation_status IN ('generating', 'validation_failed', 'pending_confirmation', 'confirmed')),
+          validation_status TEXT NOT NULL CHECK(validation_status IN ('generating', 'validation_failed', 'valid')),
           validation_result_json TEXT NOT NULL DEFAULT '{}',
-          confirmed_by TEXT,
-          confirmed_at TEXT,
           created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
           updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
           FOREIGN KEY(performance_test_id) REFERENCES performance_tests(id) ON DELETE CASCADE,
           FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE
         );
-        INSERT INTO performance_test_scripts_single (
+        """
+    )
+    latest_filter = (
+        "WHERE legacy.id = (SELECT current.id FROM performance_test_scripts AS current "
+        "WHERE current.performance_test_id = legacy.performance_test_id "
+        "ORDER BY current.version DESC LIMIT 1)"
+        if has_versions
+        else ""
+    )
+    updated_at_expression = "legacy.created_at" if "updated_at" not in columns else "legacy.updated_at"
+    db.execute(
+        f"""
+        INSERT INTO performance_test_scripts_validated (
           id, performance_test_id, project_id, generation_source, model_id, prompt_version,
           plan_json, code, assumptions_json, required_runtime_variables_json,
-          validation_status, validation_result_json, confirmed_by, confirmed_at, created_at, updated_at
+          validation_status, validation_result_json, created_at, updated_at
         )
         SELECT
           legacy.id, legacy.performance_test_id, legacy.project_id, legacy.generation_source,
           legacy.model_id, legacy.prompt_version, legacy.plan_json, legacy.code,
           legacy.assumptions_json, legacy.required_runtime_variables_json,
-          CASE WHEN legacy.validation_status = 'superseded' THEN 'pending_confirmation' ELSE legacy.validation_status END,
-          legacy.validation_result_json, legacy.confirmed_by, legacy.confirmed_at,
-          legacy.created_at, legacy.created_at
+          CASE
+            WHEN legacy.validation_status IN ('confirmed', 'pending_confirmation', 'superseded') THEN 'valid'
+            ELSE legacy.validation_status
+          END,
+          legacy.validation_result_json, legacy.created_at, {updated_at_expression}
         FROM performance_test_scripts AS legacy
-        WHERE legacy.id = (
-          SELECT current.id
-          FROM performance_test_scripts AS current
-          WHERE current.performance_test_id = legacy.performance_test_id
-          ORDER BY current.version DESC
-          LIMIT 1
-        );
-        UPDATE performance_test_runs
-        SET script_id = (
-          SELECT current.id
-          FROM performance_test_scripts_single AS current
-          WHERE current.performance_test_id = performance_test_runs.performance_test_id
-        )
-        WHERE EXISTS (
-          SELECT 1
-          FROM performance_test_scripts_single AS current
-          WHERE current.performance_test_id = performance_test_runs.performance_test_id
-        );
-        DROP TABLE performance_test_scripts;
-        ALTER TABLE performance_test_scripts_single RENAME TO performance_test_scripts;
-        CREATE INDEX idx_performance_test_scripts_project_updated
-          ON performance_test_scripts(project_id, updated_at);
+        {latest_filter}
         """
     )
+    if has_versions:
+        db.execute(
+            """
+            UPDATE performance_test_runs
+            SET script_id = (
+              SELECT current.id FROM performance_test_scripts_validated AS current
+              WHERE current.performance_test_id = performance_test_runs.performance_test_id
+            )
+            WHERE EXISTS (
+              SELECT 1 FROM performance_test_scripts_validated AS current
+              WHERE current.performance_test_id = performance_test_runs.performance_test_id
+            )
+            """
+        )
+    db.execute("DROP TABLE performance_test_scripts")
+    db.execute("ALTER TABLE performance_test_scripts_validated RENAME TO performance_test_scripts")
+    db.execute(
+        "CREATE INDEX idx_performance_test_scripts_project_updated "
+        "ON performance_test_scripts(project_id, updated_at)"
+    )
+    db.commit()
     db.execute("PRAGMA foreign_keys = ON")
+    violations = db.execute("PRAGMA foreign_key_check").fetchall()
+    if violations:
+        raise RuntimeError(f"Performance script migration has foreign key violations: {violations}")
 
 
 def _ensure_performance_analysis_columns(db: sqlite3.Connection) -> None:

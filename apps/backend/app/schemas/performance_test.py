@@ -309,8 +309,6 @@ class PerformanceScriptOut(BaseModel):
     required_runtime_variables: list[str]
     validation_status: str
     validation_result: dict[str, Any]
-    confirmed_by: str | None
-    confirmed_at: str | None
     created_at: str
     updated_at: str
     runtime_preview: dict[str, Any] | None = None

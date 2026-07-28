@@ -14,17 +14,14 @@ import {
   Play,
   RefreshCw,
   Save,
-  ShieldCheck,
 } from "lucide-react";
 import { codeToTokens } from "shiki";
 
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { OneClipboard } from "@/components/ui/one-clipboard";
 import { Textarea } from "@/components/ui/textarea";
 import {
   ApiRequestError,
-  confirmPerformanceScript,
   createPerformanceRun,
   getPerformanceScript,
   type PerformanceScript,
@@ -73,9 +70,7 @@ export function ScriptReview({ projectId, testId, scriptId }: { projectId: strin
           <AlertCircle className="size-5" />
         </div>
         <h2 className="font-semibold text-sm">脚本加载失败</h2>
-        <p className="mt-1 max-w-sm text-muted-foreground text-xs leading-5">
-          无法获取当前脚本，请检查网络后重试。
-        </p>
+        <p className="mt-1 max-w-sm text-muted-foreground text-xs leading-5">无法获取当前脚本，请检查网络后重试。</p>
         <Button className="mt-5" onClick={() => void loadScript()} variant="outline">
           <RefreshCw className="size-4" />
           重新加载
@@ -124,19 +119,6 @@ export function ScriptReview({ projectId, testId, scriptId }: { projectId: strin
     }
   }
 
-  async function confirm() {
-    setSaving(true);
-    try {
-      const updated = await confirmPerformanceScript(projectId, testId, scriptId);
-      setScript(updated);
-      toast.success("脚本已确认，可用于正式压测");
-    } catch (error) {
-      toast.error(apiErrorMessage(error));
-    } finally {
-      setSaving(false);
-    }
-  }
-
   async function startRun() {
     setSaving(true);
     try {
@@ -151,59 +133,45 @@ export function ScriptReview({ projectId, testId, scriptId }: { projectId: strin
 
   return (
     <div className="space-y-4">
-      <section className="overflow-hidden rounded-lg border bg-card">
-        <div className="flex flex-col gap-4 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
-          <div className="flex min-w-0 items-center gap-3">
-            <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-              <FileCode2 className="size-5" />
-            </div>
-            <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-2">
-                <h1 className="font-semibold text-base">当前脚本</h1>
-                <Badge
-                  className={
-                    script.validation_result.valid
-                      ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300"
-                      : undefined
-                  }
-                  variant={script.validation_result.valid ? "secondary" : "destructive"}
-                >
-                  {script.validation_result.valid ? <CheckCircle2 className="size-3" /> : null}
-                  {statusLabel(script.validation_status)}
-                </Badge>
-              </div>
-              <p className="mt-1 truncate text-muted-foreground text-xs">生成来源：{script.generation_source}</p>
-            </div>
+      <section className="flex flex-col gap-3 border-b pb-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex min-w-0 items-center gap-3">
+          <div className="flex size-9 shrink-0 items-center justify-center rounded-md border bg-card text-muted-foreground">
+            <FileCode2 className="size-4" />
           </div>
-          <div className="flex flex-wrap items-center gap-2 sm:justify-end">
-            <Button disabled={saving || !script.validation_result.valid} onClick={confirm}>
-              {saving ? <LoaderCircle className="size-4 animate-spin" /> : <ShieldCheck className="size-4" />}
-              确认脚本
-            </Button>
-            {script.validation_status === "confirmed" ? (
-              <Button disabled={saving} onClick={startRun}>
-                {saving ? <LoaderCircle className="size-4 animate-spin" /> : <Play className="size-4 fill-current" />}
-                进入 Locust 控制台
-                <ChevronRight className="size-4" />
-              </Button>
-            ) : null}
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <h1 className="font-semibold text-sm">当前脚本</h1>
+              <span
+                className={
+                  script.validation_result.valid
+                    ? "inline-flex items-center gap-1 text-emerald-700 text-xs dark:text-emerald-400"
+                    : "inline-flex items-center gap-1 text-destructive text-xs"
+                }
+              >
+                {script.validation_result.valid ? (
+                  <CheckCircle2 className="size-3.5" />
+                ) : (
+                  <AlertCircle className="size-3.5" />
+                )}
+                {script.validation_result.valid ? "校验通过" : "校验失败"}
+              </span>
+            </div>
+            <p className="mt-1 truncate text-muted-foreground text-xs">生成来源：{script.generation_source}</p>
           </div>
         </div>
-        <div className="flex items-start gap-2 border-t bg-muted/35 px-4 py-2.5 text-xs sm:items-center sm:px-5">
-          {script.validation_result.valid ? (
-            <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-emerald-600 sm:mt-0 dark:text-emerald-400" />
-          ) : (
-            <AlertCircle className="mt-0.5 size-4 shrink-0 text-destructive sm:mt-0" />
-          )}
-          <span className={script.validation_result.valid ? "text-foreground" : "text-destructive"}>
-            {script.validation_result.valid
-              ? "结构、语法和安全校验均已通过，脚本可以进入执行阶段。"
-              : "当前脚本未通过校验，请修正左侧配置后重新校验。"}
-          </span>
+        <div className="flex items-center gap-3 sm:justify-end">
+          {!script.validation_result.valid ? (
+            <span className="hidden text-destructive text-xs lg:inline">修正配置并通过校验后可运行</span>
+          ) : null}
+          <Button disabled={saving || !script.validation_result.valid} onClick={startRun}>
+            {saving ? <LoaderCircle className="size-4 animate-spin" /> : <Play className="size-4 fill-current" />}
+            进入 Locust 控制台
+            <ChevronRight className="size-4" />
+          </Button>
         </div>
       </section>
 
-      <div className="grid gap-4 xl:h-[calc(100dvh-14rem)] xl:max-h-[52rem] xl:min-h-[36rem] xl:grid-cols-[minmax(19rem,0.78fr)_minmax(0,1.22fr)]">
+      <div className="grid gap-4 xl:h-[calc(100dvh-12rem)] xl:max-h-[54rem] xl:min-h-[36rem] xl:grid-cols-[minmax(19rem,0.78fr)_minmax(0,1.22fr)]">
         <section className="flex min-h-0 flex-col overflow-hidden rounded-lg border bg-card">
           <div className="flex items-start justify-between gap-4 border-b px-4 py-3.5">
             <div>
@@ -212,7 +180,7 @@ export function ScriptReview({ projectId, testId, scriptId }: { projectId: strin
                 <h2 className="font-semibold text-sm">结构化请求配置</h2>
               </div>
               <p className="mt-1 text-muted-foreground text-xs leading-5">
-                已确认脚本也可直接调整；保存后需要重新确认才能运行。
+                调整请求参数后保存，系统会重新生成脚本并执行校验。
               </p>
             </div>
             <Button disabled={saving} onClick={saveConfiguration} size="sm" variant="outline">
@@ -368,15 +336,6 @@ function JsonField({
       />
     </div>
   );
-}
-
-function statusLabel(status: PerformanceScript["validation_status"]) {
-  return {
-    generating: "生成中",
-    validation_failed: "校验失败",
-    pending_confirmation: "待确认",
-    confirmed: "已确认",
-  }[status];
 }
 
 function apiErrorMessage(error: unknown) {

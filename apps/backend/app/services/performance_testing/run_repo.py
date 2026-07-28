@@ -209,6 +209,13 @@ def list_stats(db: Connection, run_id: str) -> list[Row]:
     ).fetchall()
 
 
+def get_latest_stat(db: Connection, run_id: str) -> Row | None:
+    return db.execute(
+        "SELECT * FROM performance_test_run_stats WHERE run_id = ? ORDER BY sampled_at DESC, id DESC LIMIT 1",
+        (run_id,),
+    ).fetchone()
+
+
 def upsert_failure(
     db: Connection,
     *,

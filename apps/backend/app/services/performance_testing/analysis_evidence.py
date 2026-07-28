@@ -297,12 +297,28 @@ def _endpoint_payload(row) -> dict[str, Any]:
 
 
 def _run_summary(row) -> dict[str, Any]:
+    status = str(row["status"] or "")
+    termination_reason = {
+        "completed": "completed",
+        "stopped": "manual_stop",
+        "failed": "engine_error",
+        "cancelled": "cancelled",
+    }.get(status, "unknown")
     return {
         "id": row["id"],
         "project_id": row["project_id"],
         "performance_test_id": row["performance_test_id"],
         "script_id": row["script_id"],
         "status": row["status"],
+        "termination_reason": termination_reason,
+        "termination_label": {
+            "completed": "正常完成",
+            "manual_stop": "人工停止",
+            "engine_error": "运行失败",
+            "cancelled": "已取消",
+            "unknown": "未知",
+        }[termination_reason],
+        "load_config": _json_value(row["load_config_json"], {}),
         "created_at": row["created_at"],
         "started_at": row["started_at"],
         "finished_at": row["finished_at"],

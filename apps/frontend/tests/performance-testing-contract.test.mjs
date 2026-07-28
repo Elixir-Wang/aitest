@@ -172,15 +172,15 @@ test("deleting a performance test confirms all history will be removed", () => {
   assert.match(allListSource, /window\.confirm/);
 });
 
-test("performance script API and review route support generation, edits, and confirmation", () => {
+test("performance script API and review route support generation, edits, and validation", () => {
   assert.match(apiClientSource, /export function generatePerformanceScript/);
   assert.match(apiClientSource, /export function updatePerformanceScriptConfiguration/);
-  assert.match(apiClientSource, /export function confirmPerformanceScript/);
+  assert.doesNotMatch(apiClientSource, /confirmPerformanceScript/);
   assert.match(scriptPageSource, /<ScriptReview/);
   assert.match(scriptReviewSource, /结构化请求配置/);
   assert.match(scriptReviewSource, /只读 Locust 脚本/);
-  assert.match(scriptReviewSource, /validation_status/);
-  assert.match(scriptReviewSource, /确认脚本/);
+  assert.match(scriptReviewSource, /校验通过/);
+  assert.doesNotMatch(scriptReviewSource, /确认脚本|已确认|重新确认/);
   assert.match(scriptReviewSource, /preview\?\.request\?\.headers \?\? planRequest\.headers/);
 });
 
@@ -190,7 +190,7 @@ test("performance script review reuses the clipboard control and keeps JSON edit
   assert.match(scriptReviewSource, /className="bg-white font-mono text-xs dark:bg-\[#24292e\]"/);
 });
 
-test("confirmed performance script explicitly enters the Locust console", () => {
+test("validated performance script explicitly enters the Locust console", () => {
   assert.match(apiClientSource, /export function createPerformanceRun/);
   assert.match(apiClientSource, /export function getPerformanceRun/);
   assert.match(scriptReviewSource, /进入 Locust 控制台/);

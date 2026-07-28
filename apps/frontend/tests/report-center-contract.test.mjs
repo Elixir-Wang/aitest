@@ -16,8 +16,22 @@ test("report center loads generated performance reports from the backend index",
 test("report center defaults to performance and opens the frozen report detail", () => {
   assert.match(pageSource, /useState\("性能"\)/);
   assert.match(pageSource, /href: report\.href/);
-  assert.match(pageSource, /分析版本 V\{report\.analysis_version\}/);
   assert.match(pageSource, /verdictLabel\(report\.verdict\)/);
   assert.match(pageSource, /qualityLabel\(report\.quality_status\)/);
-  assert.doesNotMatch(pageSource, /useLocalTableSelection|deleteSelected|新建报告/);
+  assert.doesNotMatch(pageSource, /新建报告/);
+});
+
+test("report center hides project, analysis version, and archive description", () => {
+  assert.doesNotMatch(pageSource, /<TableHead>项目<\/TableHead>/);
+  assert.doesNotMatch(pageSource, /\{report\.project_name\}<\/TableCell>/);
+  assert.doesNotMatch(pageSource, /分析版本 V\{report\.analysis_version\}/);
+  assert.doesNotMatch(pageSource, /报告由测试运行自动生成并按更新时间归档。/);
+});
+
+test("report center supports confirmed multi-select deletion", () => {
+  assert.match(apiClientSource, /export function deleteReportCenterItem/);
+  assert.match(pageSource, /选择全部性能报告/);
+  assert.match(pageSource, /onBatchDelete/);
+  assert.match(pageSource, /删除选中的报告/);
+  assert.match(pageSource, /deleteReportCenterItem/);
 });

@@ -136,7 +136,7 @@ export type ApiExplorationRun = {
   title: string;
   test_description: string;
   status: string;
-  exploration_mode: "goal" | "autonomous";
+  exploration_mode: "goal" | "autonomous" | "loop";
   scope: string;
   forbidden_paths: string;
   login_strategy: string;
@@ -1012,6 +1012,24 @@ export type ApiAutomationScenarioBinding = {
   };
 };
 
+export type ApiScenarioAiPlanBinding = {
+  target: {
+    location: "path" | "query" | "header" | "cookie" | "json_body" | "form" | "multipart" | "raw_body";
+    path: string;
+  };
+  source: {
+    type: "literal" | "user_input" | "environment" | "secret" | "scenario" | "step_output" | "generated";
+    value?: unknown;
+    name?: string;
+    key?: string;
+    generator?: string;
+    step_id?: string;
+    variable?: string;
+  };
+  required?: boolean;
+  transform?: "string" | "integer" | "number" | "boolean" | "json_encode" | "url_encode" | null;
+};
+
 export type ApiAutomationScenarioExtractor = {
   name: string;
   source?: "response.body" | "response.header" | "response.status";
@@ -1091,10 +1109,11 @@ export type ApiAutomationScenarioValidation = {
   warnings: string[];
 };
 
-export type ApiScenarioAiPlanNode = Partial<ApiAutomationScenarioStep> & {
+export type ApiScenarioAiPlanNode = Omit<Partial<ApiAutomationScenarioStep>, "bindings"> & {
   id: string;
   type: ApiAutomationScenarioStepType;
   endpoint_id: string | null;
+  bindings?: ApiScenarioAiPlanBinding[];
 };
 
 export type ApiScenarioAiPlanAccepted = {
@@ -1102,6 +1121,7 @@ export type ApiScenarioAiPlanAccepted = {
   scenario_id: string | null;
   lifecycle_status: "generating" | "completed" | "failed" | "expired";
 };
+export type ApiScenarioAiPlanResponse = ApiScenarioAiPlan | ApiScenarioAiPlanAccepted;
 export type ApiScenarioAiPlan = {
   plan_id: string;
   plan_version: number;
@@ -1319,10 +1339,8 @@ export type PerformanceScript = {
   code: string;
   assumptions: unknown[];
   required_runtime_variables: string[];
-  validation_status: "generating" | "validation_failed" | "pending_confirmation" | "confirmed";
+  validation_status: "generating" | "validation_failed" | "valid";
   validation_result: { valid?: boolean; errors?: string[]; warnings?: string[]; code_hash?: string };
-  confirmed_by: string | null;
-  confirmed_at: string | null;
   created_at: string;
   updated_at: string;
   runtime_preview?: {
@@ -1482,6 +1500,11 @@ export type PerformanceMetricSnapshot = {
     issues?: string[];
     diagnostic_missing_evidence?: string[];
     sample_count?: number;
+    termination_reason?: string;
+    termination_label?: string;
+    actual_duration_seconds?: number | null;
+    configured_duration_seconds?: number | null;
+    duration_complete?: boolean | null;
   };
   aggregate?: {
     request_count?: number;
@@ -1499,6 +1522,36 @@ export type PerformanceMetricSnapshot = {
     knee_point?: number | null;
     knee_point_reason?: string;
   };
+  test_validity?: {
+    status?: "complete" | "partial" | "invalid";
+    issues?: string[];
+    sample_count?: number;
+    coverage?: number;
+    termination_reason?: string;
+  };
+  stage_analysis?: Array<{
+    name: string;
+    target_users: number;
+    actual_users?: number;
+    sample_count?: number;
+    requests_per_second?: number;
+    p95_response_time_ms?: number | null;
+    failure_rate?: number;
+    status?: string;
+  }>;
+  latency_analysis?: Record<string, number | null>;
+  capacity_analysis?: {
+    observed_stable_capacity?: {
+      users?: number;
+      requests_per_second?: number;
+      p95_response_time_ms?: number | null;
+    } | null;
+    knee_point?: { between_users?: number[]; reason?: string } | null;
+    can_claim_stable_capacity?: boolean;
+    reason?: string;
+    sample_count?: number;
+  };
+  failure_analysis?: Array<{ kind: string; count: number; ratio: number; example?: string }>;
   objectives?: PerformanceMetricObjective[];
   series?: Array<Record<string, unknown>>;
   evidence_index?: Array<Record<string, unknown>>;
@@ -1530,6 +1583,7 @@ export type PerformanceReportSnapshot = {
     expected_effect?: string;
     cost?: string;
     verification?: string;
+    acceptance_criteria?: string[];
     finding_refs?: string[];
     proposed_change_id?: string;
   }>;
@@ -1717,13 +1771,6 @@ export function updatePerformanceScriptConfiguration(
   );
 }
 
-export function confirmPerformanceScript(projectId: string, testId: string, scriptId: string) {
-  return apiRequest<PerformanceScript>(
-    `/projects/${projectId}/performance-tests/${testId}/scripts/${scriptId}/confirm`,
-    { method: "POST" },
-  );
-}
-
 export function createPerformanceRun(projectId: string, testId: string, scriptId: string) {
   return apiRequest<{ id: string; status: string }>(`/projects/${projectId}/performance-tests/${testId}/runs`, {
     method: "POST",
@@ -1797,6 +1844,11 @@ export function listPerformanceRunReports(projectId: string, runId: string) {
 export function listReportCenterItems(projectId = "all", reportType = "performance") {
   const params = new URLSearchParams({ project_id: projectId, report_type: reportType });
   return apiRequest<ReportCenterItem[]>(`/reports?${params.toString()}`);
+}
+
+export function deleteReportCenterItem(reportId: string, reportType = "performance") {
+  const params = new URLSearchParams({ report_type: reportType });
+  return apiRequest<void>(`/reports/${reportId}?${params.toString()}`, { method: "DELETE" });
 }
 
 export function downloadPerformanceRunReport(projectId: string, runId: string, filename: string) {
@@ -2190,7 +2242,7 @@ export function applyApiScenarioAiPlan(
 }
 
 export function getApiScenarioAiPlan(projectId: string, planId: string) {
-  return apiRequest<ApiScenarioAiPlan>(`/projects/${projectId}/api-scenarios/ai-plans/${planId}`);
+  return apiRequest<ApiScenarioAiPlanResponse>(`/projects/${projectId}/api-scenarios/ai-plans/${planId}`);
 }
 
 export function getApiAutomationScenario(projectId: string, scenarioId: string) {

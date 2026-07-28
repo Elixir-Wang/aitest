@@ -29,6 +29,18 @@ def list_reports(report_type: str, project_id: str, actor: Row) -> list[dict[str
         return [_serialize_performance_report(row) for row in rows]
 
 
+def delete_report(report_type: str, report_id: str, actor: Row) -> None:
+    if report_type not in SUPPORTED_REPORT_TYPES:
+        raise api_error(400, "REPORT_TYPE_INVALID", "暂不支持该报告类型。")
+
+    with connect() as db:
+        report = report_center_repo.find_performance_report(db, report_id)
+        visible_project_ids = {str(project["id"]) for project in project_repo.list_visible(db, actor)}
+        if not report or str(report["project_id"]) not in visible_project_ids:
+            raise api_error(404, "REPORT_NOT_FOUND", "报告不存在或无权访问。")
+        report_center_repo.delete_performance_report(db, report_id)
+
+
 def _serialize_performance_report(row: Row) -> dict[str, Any]:
     report_snapshot = _loads(row["report_snapshot_json"])
     metric_snapshot = _loads(row["metric_snapshot_json"])

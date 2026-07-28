@@ -5,17 +5,20 @@ import { type ReactNode, useMemo, useState } from "react";
 import Image from "next/image";
 
 import {
+  Building2,
   CalendarDays,
-  Clock3,
+  CircleAlert,
   Ellipsis,
   Mail,
+  MapPin,
   MessageSquare,
-  Phone,
   PlayCircle,
-  UserRound,
   UsersRound,
   X,
 } from "lucide-react";
+
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { usePreferencesStore } from "@/stores/preferences/preferences-provider";
 
 import styles from "./office-dashboard.module.css";
 
@@ -34,7 +37,6 @@ type OfficeEmployee = {
   top: number;
   skills: string[];
   email: string;
-  phone: string;
 };
 
 type OfficeRoomData = {
@@ -49,13 +51,28 @@ type OfficeRoomData = {
 
 const ASSET_ROOT = "/assets/silicon-office-v2";
 const EMPLOYEE_PORTRAITS: Record<WorkstationVariant, string> = {
-  "male-gray": `${ASSET_ROOT}/workstations/workstation-male-gray.png`,
-  "male-white": `${ASSET_ROOT}/workstations/workstation-male-white.png`,
-  "female-cream": `${ASSET_ROOT}/workstations/workstation-female-cream.png`,
+  "male-gray": `${ASSET_ROOT}/workstations/workstation-male-gray-front-clean.png`,
+  "male-white": `${ASSET_ROOT}/workstations/workstation-male-white-front-clean.png`,
+  "female-cream": `${ASSET_ROOT}/workstations/workstation-female-cream-front-clean.png`,
 };
 
 const DETAIL_PORTRAITS: Partial<Record<string, string>> = {
-  "zhang-wei": `${ASSET_ROOT}/portraits/zhang-wei.png`,
+  "li-ming": `${ASSET_ROOT}/portraits/male-handsome-charcoal.png`,
+  "wang-fang": `${ASSET_ROOT}/portraits/female-yujie-red.png`,
+  "liu-yang": `${ASSET_ROOT}/portraits/male-handsome-camel.png`,
+  "zhang-wei": `${ASSET_ROOT}/portraits/male-handsome-charcoal.png`,
+  "zhou-yan": `${ASSET_ROOT}/portraits/female-yujie-emerald.png`,
+  "zhou-jie": `${ASSET_ROOT}/portraits/male-handsome-green.png`,
+  "chen-yan": `${ASSET_ROOT}/portraits/female-yujie-plum.png`,
+  "sun-na": `${ASSET_ROOT}/portraits/female-yujie-red.png`,
+  "zheng-kai": `${ASSET_ROOT}/portraits/male-handsome-camel.png`,
+  "tang-yu": `${ASSET_ROOT}/portraits/male-handsome-charcoal.png`,
+  "lin-yue": `${ASSET_ROOT}/portraits/male-handsome-green.png`,
+  "peng-yu": `${ASSET_ROOT}/portraits/male-handsome-camel.png`,
+  "xu-jing": `${ASSET_ROOT}/portraits/female-yujie-emerald.png`,
+  "yang-fan": `${ASSET_ROOT}/portraits/male-handsome-green.png`,
+  "he-li": `${ASSET_ROOT}/portraits/female-yujie-plum.png`,
+  ceo: `${ASSET_ROOT}/portraits/ceo-wang-avatar.png`,
 };
 
 const STATUS_META: Record<EmployeeStatus, { label: string; detail: string }> = {
@@ -127,38 +144,39 @@ const EMPLOYEES: OfficeEmployee[] = [
     "模型路由",
     "智能分析",
   ]),
-  employee("ceo", "CEO 李总", "AI 测试负责人", "ceo", "CEO-01", "running", "male-gray", 50, 72, [
-    "战略规划",
-    "团队管理",
-  ]),
+  employee("ceo", "王总", "AI 测试负责人", "ceo", "CEO-01", "running", "male-gray", 50, 72, ["战略规划", "团队管理"]),
 ];
 
 const ROOMS: OfficeRoomData[] = [
-  room("requirement", "需求工程组", 6, 7, ASSET_ROOT + "/rooms/requirement-room-standardized.png"),
-  room("test-design", "测试设计组", 8, 8, ASSET_ROOT + "/rooms/test-design-room-standardized.png"),
-  room("automation", "自动化工程组", 7, 7, ASSET_ROOT + "/rooms/automation-room-standardized.png"),
-  room("operations", "运行与分析组", 5, 6, ASSET_ROOT + "/rooms/operations-room-standardized.png"),
-  room("ai-center", "AI能力中枢", 4, 4, ASSET_ROOT + "/rooms/ai-center-room-standardized.png"),
-  room("ceo", "CEO办公室", 1, 1, ASSET_ROOT + "/rooms/ceo-office-centered.png", true),
+  room("requirement", "需求工程组", 6, 7, `${ASSET_ROOT}/rooms/requirement-room-unified.png`),
+  room("test-design", "测试设计组", 8, 8, `${ASSET_ROOT}/rooms/test-design-room-unified.png`),
+  room("automation", "自动化工程组", 7, 7, `${ASSET_ROOT}/rooms/automation-room-unified.png`),
+  room("operations", "运行与分析组", 5, 6, `${ASSET_ROOT}/rooms/operations-room-unified.png`),
+  room("ai-center", "AI能力中枢", 4, 4, `${ASSET_ROOT}/rooms/ai-center-room-unified.png`),
+  room("ceo", "CEO办公室", 1, 1, `${ASSET_ROOT}/rooms/ceo-office-unified.png`, true),
 ];
 
 const METRICS = [
   { label: "员工总数", value: 32, suffix: "人", hint: "较昨日 +2", tone: "blue", icon: UsersRound },
-  { label: "在线人数", value: 28, suffix: "人", hint: "87.5%", tone: "blue", icon: UserRound },
-  { label: "专注工作", value: 24, suffix: "人", hint: "75.0%", tone: "green", icon: PlayCircle },
-  { label: "会议中", value: 3, suffix: "人", hint: "9.4%", tone: "amber", icon: MessageSquare },
-  { label: "离线/休息", value: 4, suffix: "人", hint: "12.5%", tone: "red", icon: Clock3 },
+  { label: "工作中", value: 24, suffix: "人", hint: "75.0%", tone: "green", icon: PlayCircle },
+  { label: "异常", value: 1, suffix: "人", hint: "3.1%", tone: "red", icon: CircleAlert },
 ] as const;
 
 export function SiliconOfficeDashboard({ embedded = false }: { embedded?: boolean }) {
   const [selectedId, setSelectedId] = useState("zhang-wei");
+  const [expandedRoomId, setExpandedRoomId] = useState<string | null>(null);
+  const isDarkMode = usePreferencesStore((state) => state.themeMode === "dark");
   const selectedEmployee = useMemo(
     () => EMPLOYEES.find((employeeItem) => employeeItem.id === selectedId) ?? EMPLOYEES[3],
     [selectedId],
   );
+  const expandedRoom = useMemo(
+    () => ROOMS.find((roomItem) => roomItem.id === expandedRoomId) ?? null,
+    [expandedRoomId],
+  );
 
   return (
-    <main className={[styles.dashboard, embedded ? styles.embedded : ""].join(" ")}>
+    <main className={[styles.dashboard, embedded ? styles.embedded : "", isDarkMode ? styles.darkTheme : ""].join(" ")}>
       <section className={styles.workspace}>
         <div className={styles.leftColumn}>
           <section aria-label="硅基员工状态概览" className={styles.metricsSection}>
@@ -174,6 +192,7 @@ export function SiliconOfficeDashboard({ embedded = false }: { embedded?: boolea
                 <OfficeRoom
                   key={roomItem.id}
                   onSelect={setSelectedId}
+                  onOpenRoom={setExpandedRoomId}
                   room={roomItem}
                   selectedId={selectedEmployee.id}
                 />
@@ -184,6 +203,58 @@ export function SiliconOfficeDashboard({ embedded = false }: { embedded?: boolea
         </div>
         <EmployeeDetailPanel employee={selectedEmployee} onClose={() => setSelectedId("")} />
       </section>
+      <Dialog open={expandedRoom !== null} onOpenChange={(open) => !open && setExpandedRoomId(null)}>
+        <DialogContent className={styles.roomDialog} showCloseButton>
+          {expandedRoom ? (
+            <>
+              <DialogHeader className={styles.roomDialogHeader}>
+                <DialogTitle>{expandedRoom.name}</DialogTitle>
+                <DialogDescription>
+                  {expandedRoom.occupied}/{expandedRoom.capacity} 个工位已占用 · 点击工位查看员工详情
+                </DialogDescription>
+              </DialogHeader>
+              <div className={styles.roomPreviewScene}>
+                <Image
+                  alt={`${expandedRoom.name}工位实景`}
+                  className={styles.roomBackground}
+                  fill
+                  sizes="(max-width: 760px) calc(100vw - 40px), 900px"
+                  src={expandedRoom.image}
+                />
+                {!expandedRoom.executive
+                  ? expandedRoom.employees.map((employeeItem) => (
+                      <Workstation
+                        employee={employeeItem}
+                        key={employeeItem.id}
+                        onSelect={(employeeId) => {
+                          setSelectedId(employeeId);
+                          setExpandedRoomId(null);
+                        }}
+                        selected={employeeItem.id === selectedEmployee.id}
+                      />
+                    ))
+                  : null}
+                {expandedRoom.executive ? (
+                  <button
+                    aria-label="查看王总"
+                    className={[styles.executiveHotspot, selectedEmployee.id === "ceo" ? styles.selected : ""].join(
+                      " ",
+                    )}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      setSelectedId("ceo");
+                      setExpandedRoomId(null);
+                    }}
+                    type="button"
+                  >
+                    <Nameplate employee={expandedRoom.employees[0]} />
+                  </button>
+                ) : null}
+              </div>
+            </>
+          ) : null}
+        </DialogContent>
+      </Dialog>
     </main>
   );
 }
@@ -230,47 +301,61 @@ function OfficeRoom({
   room,
   selectedId,
   onSelect,
+  onOpenRoom,
 }: {
   room: OfficeRoomData;
   selectedId: string;
   onSelect: (employeeId: string) => void;
+  onOpenRoom: (roomId: string) => void;
 }) {
   return (
     <article className={styles.room} data-executive={room.executive ? "true" : "false"}>
-      <Image
-        alt=""
-        className={styles.roomBackground}
-        fill
-        priority={room.id === "requirement" || room.id === "test-design"}
-        sizes="(max-width: 1200px) 24vw, 280px"
-        src={room.image}
-      />
       <header className={styles.roomHeader}>
         <h2>{room.name}</h2>
         <span>
           <UsersRound aria-hidden="true" /> {room.occupied}/{room.capacity}
         </span>
       </header>
-      {!room.executive
-        ? room.employees.map((employeeItem) => (
-            <Workstation
-              employee={employeeItem}
-              key={employeeItem.id}
-              onSelect={onSelect}
-              selected={employeeItem.id === selectedId}
-            />
-          ))
-        : null}
-      {room.executive ? (
+      <div className={styles.roomScene}>
+        <Image
+          alt=""
+          className={styles.roomBackground}
+          fill
+          priority={room.id === "requirement" || room.id === "test-design"}
+          sizes="(max-width: 1200px) 24vw, 280px"
+          src={room.image}
+        />
         <button
-          aria-label="查看 CEO 李总"
-          className={[styles.executiveHotspot, selectedId === "ceo" ? styles.selected : ""].join(" ")}
-          onClick={() => onSelect("ceo")}
+          aria-label={`放大查看${room.name}`}
+          className={styles.roomExpandHotspot}
+          onClick={() => onOpenRoom(room.id)}
+          title="点击空白区域放大查看"
           type="button"
-        >
-          <Nameplate employee={room.employees[0]} />
-        </button>
-      ) : null}
+        />
+        {!room.executive
+          ? room.employees.map((employeeItem) => (
+              <Workstation
+                employee={employeeItem}
+                key={employeeItem.id}
+                onSelect={onSelect}
+                selected={employeeItem.id === selectedId}
+              />
+            ))
+          : null}
+        {room.executive ? (
+          <button
+            aria-label="查看王总"
+            className={[styles.executiveHotspot, selectedId === "ceo" ? styles.selected : ""].join(" ")}
+            onClick={(event) => {
+              event.stopPropagation();
+              onSelect("ceo");
+            }}
+            type="button"
+          >
+            <Nameplate employee={room.employees[0]} />
+          </button>
+        ) : null}
+      </div>
     </article>
   );
 }
@@ -286,11 +371,14 @@ function Workstation({
 }) {
   return (
     <button
-      aria-label={employee.name + "，" + STATUS_META[employee.status].label}
+      aria-label={`${employee.name}，${STATUS_META[employee.status].label}`}
       className={[styles.workstation, styles[employee.status], selected ? styles.selected : ""].join(" ")}
       data-variant={employee.workstation}
-      onClick={() => onSelect(employee.id)}
-      style={{ left: employee.left + "%", top: employee.top + "%" }}
+      onClick={(event) => {
+        event.stopPropagation();
+        onSelect(employee.id);
+      }}
+      style={{ left: `${employee.left}%`, top: `${employee.top}%` }}
       type="button"
     >
       {employee.status !== "idle" ? <Nameplate employee={employee} /> : null}
@@ -314,6 +402,7 @@ function Nameplate({ employee }: { employee: OfficeEmployee }) {
 
 function EmployeeDetailPanel({ employee, onClose }: { employee: OfficeEmployee; onClose: () => void }) {
   const status = STATUS_META[employee.status];
+  const [selectedTask, setSelectedTask] = useState("接口测试用例设计");
   return (
     <aside className={styles.detailPanel}>
       <header className={styles.detailHeader}>
@@ -334,14 +423,24 @@ function EmployeeDetailPanel({ employee, onClose }: { employee: OfficeEmployee; 
           />
         </div>
         <div>
-          <h3>{employee.name}</h3>
-          <p className={styles.profileStatus} data-status={employee.status}>
-            <i /> {status.detail}
-          </p>
-          <p>
+          <h3>
+            {employee.name}
+            <span className={styles.profileStatus} data-status={employee.status}>
+              <i /> {status.detail}
+            </span>
+          </h3>
+          <p className={styles.profileMeta}>
+            <Building2 aria-hidden="true" />
             {employee.room === "ceo" ? "管理中心" : roomName(employee.room)} · {employee.role}
           </p>
-          <p>工位：{employee.seat}</p>
+          <p className={styles.profileMeta}>
+            <MapPin aria-hidden="true" />
+            工位：{employee.seat}
+          </p>
+          <p className={styles.profileMeta}>
+            <Mail aria-hidden="true" />
+            {employee.email}
+          </p>
         </div>
       </div>
 
@@ -370,32 +469,6 @@ function EmployeeDetailPanel({ employee, onClose }: { employee: OfficeEmployee; 
       </nav>
 
       <div className={styles.detailBody}>
-        <DetailSection title="工位信息">
-          <div className={styles.seatCard}>
-            <span className={styles.seatPreview}>
-              <Image alt={`${roomName(employee.room)}工位实景`} fill sizes="52px" src={roomImage(employee.room)} />
-            </span>
-            <div>
-              <strong>
-                {roomName(employee.room)} · 工位 {employee.seat}
-              </strong>
-              <p>双屏工位 · 靠窗</p>
-            </div>
-            <em>正常使用</em>
-          </div>
-        </DetailSection>
-        <DetailSection title="联系方式">
-          <div className={styles.contactList}>
-            <p>
-              <Mail aria-hidden="true" />
-              {employee.email}
-            </p>
-            <p>
-              <Phone aria-hidden="true" />
-              {employee.phone}
-            </p>
-          </div>
-        </DetailSection>
         <DetailSection title="技能标签">
           <div className={styles.skillList}>
             {employee.skills.map((skill) => (
@@ -405,12 +478,41 @@ function EmployeeDetailPanel({ employee, onClose }: { employee: OfficeEmployee; 
         </DetailSection>
         <DetailSection title="今日工作安排">
           <ol className={styles.timeline}>
-            <TimelineItem active label="接口测试用例设计" status="进行中" time="09:00-10:30" />
-            <TimelineItem label="项目需求评审" status="已完成" time="10:45-12:00" />
-            <TimelineItem label="自动化测试脚本开发" status="待开始" time="14:00-16:00" />
-            <TimelineItem label="测试报告编写" status="待开始" time="16:15-17:30" />
+            <TimelineItem
+              active={selectedTask === "接口测试用例设计"}
+              label="接口测试用例设计"
+              onSelect={setSelectedTask}
+              status="进行中"
+              time="09:00-10:30"
+            />
+            <TimelineItem
+              active={selectedTask === "项目需求评审"}
+              label="项目需求评审"
+              onSelect={setSelectedTask}
+              status="已完成"
+              time="10:45-12:00"
+            />
+            <TimelineItem
+              active={selectedTask === "自动化测试脚本开发"}
+              label="自动化测试脚本开发"
+              onSelect={setSelectedTask}
+              status="待开始"
+              time="14:00-16:00"
+            />
+            <TimelineItem
+              active={selectedTask === "测试报告编写"}
+              label="测试报告编写"
+              onSelect={setSelectedTask}
+              status="待开始"
+              time="16:15-17:30"
+            />
           </ol>
         </DetailSection>
+        <div className={styles.taskDetail}>
+          <span>当前任务</span>
+          <strong>{selectedTask}</strong>
+          <p>点击任务或对应工位，可快速切换员工详情。</p>
+        </div>
       </div>
 
       <footer className={styles.detailActions}>
@@ -445,17 +547,21 @@ function TimelineItem({
   label,
   status,
   active = false,
+  onSelect,
 }: {
   time: string;
   label: string;
   status: string;
   active?: boolean;
+  onSelect: (label: string) => void;
 }) {
   return (
     <li className={active ? styles.timelineActive : ""}>
       <span className={styles.timelineDot} />
       <time>{time}</time>
-      <p>{label}</p>
+      <button className={styles.timelineTask} onClick={() => onSelect(label)} type="button">
+        {label}
+      </button>
       <em>{status}</em>
     </li>
   );
@@ -504,14 +610,9 @@ function employee(
     top,
     skills,
     email: `${id.replaceAll("-", "")}@siliconflow.ai`,
-    phone: "138****5678",
   };
 }
 
 function roomName(roomId: string) {
   return ROOMS.find((roomItem) => roomItem.id === roomId)?.name ?? "硅基员工中心";
-}
-
-function roomImage(roomId: string) {
-  return ROOMS.find((roomItem) => roomItem.id === roomId)?.image ?? `${ASSET_ROOT}/rooms/standard-room.png`;
 }

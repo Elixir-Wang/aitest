@@ -14,6 +14,8 @@ import {
   type ApiAutomationScenarioStep,
   ApiRequestError,
   type ApiScenarioAiPlan,
+  type ApiScenarioAiPlanAccepted,
+  type ApiScenarioAiPlanResponse,
   applyApiScenarioAiPlan,
   createApiAutomationScenario,
   createApiScenarioAiPlan,
@@ -74,6 +76,9 @@ export function useApiScenarioEditor(projectId: string, scenarioId?: string) {
   const [runDrawerOpen, setRunDrawerOpen] = useState(false);
   const [aiPlan, setAiPlan] = useState<ApiScenarioAiPlan | null>(null);
   const [aiBusy, setAiBusy] = useState(false);
+  const [aiLifecycleStatus, setAiLifecycleStatus] = useState<ApiScenarioAiPlanAccepted["lifecycle_status"] | null>(
+    null,
+  );
   const draftVersionRef = useRef(0);
 
   const applyScenario = useCallback((nextScenario: ApiAutomationScenario) => {
@@ -129,18 +134,32 @@ export function useApiScenarioEditor(projectId: string, scenarioId?: string) {
     const storageKey = aiPlanStorageKey(projectId, scenario.id);
     const planId = window.sessionStorage.getItem(storageKey);
     if (!planId) return;
+    const recoveredPlanId = planId;
     let cancelled = false;
-    void getApiScenarioAiPlan(projectId, planId)
-      .then((plan) => {
+    let timer: number | undefined;
+    async function recover() {
+      try {
+        const response = await getApiScenarioAiPlan(projectId, recoveredPlanId);
         if (cancelled) return;
-        if (plan.status === "preview") setAiPlan(plan);
-        else window.sessionStorage.removeItem(storageKey);
-      })
-      .catch(() => {
+        if ("status" in response && response.status === "preview") {
+          setAiPlan(response);
+          setAiLifecycleStatus("completed");
+          return;
+        }
+        if ("lifecycle_status" in response && response.lifecycle_status === "generating") {
+          setAiLifecycleStatus("generating");
+          timer = window.setTimeout(() => void recover(), 1000);
+          return;
+        }
+        window.sessionStorage.removeItem(storageKey);
+      } catch {
         if (!cancelled) window.sessionStorage.removeItem(storageKey);
-      });
+      }
+    }
+    void recover();
     return () => {
       cancelled = true;
+      if (timer) window.clearTimeout(timer);
     };
   }, [aiPlan, projectId, scenario?.id]);
 
@@ -340,23 +359,41 @@ export function useApiScenarioEditor(projectId: string, scenarioId?: string) {
     });
   }
 
-  async function generateAiPlan(goal: string) {
+  async function generateAiPlan(goal: string, endpointIds: string[] = [], options: { requireCleanup?: boolean } = {}) {
     setAiBusy(true);
+    setAiLifecycleStatus("generating");
     try {
       const saved = await saveScenario(false);
       const accepted = await createApiScenarioAiPlan(projectId, {
         goal,
         scenario_id: saved.id,
+        source_scope: { endpoint_ids: endpointIds },
         constraints: {
           environment_id: selectedEnvironmentId || null,
-          require_cleanup: false,
+          require_cleanup: options.requireCleanup ?? false,
         },
       });
       window.sessionStorage.setItem(aiPlanStorageKey(projectId, saved.id), accepted.plan_id);
       notifyAiTaskStarted();
       toast.info("AI 编排任务已提交，可从顶部查看状态");
-      return accepted;
+      for (let attempt = 0; attempt < 90; attempt += 1) {
+        const response: ApiScenarioAiPlanResponse = await getApiScenarioAiPlan(projectId, accepted.plan_id);
+        if ("status" in response && response.status === "preview") {
+          setAiPlan(response);
+          setAiLifecycleStatus("completed");
+          return accepted;
+        }
+        if ("lifecycle_status" in response && response.lifecycle_status === "failed") {
+          throw new Error("AI 编排计划生成失败，请稍后重试");
+        }
+        if ("lifecycle_status" in response && response.lifecycle_status === "expired") {
+          throw new Error("AI 编排计划已过期，请重新生成");
+        }
+        await new Promise((resolve) => window.setTimeout(resolve, 1000));
+      }
+      throw new Error("AI 编排仍在生成中，请稍后从任务中心查看");
     } catch (error) {
+      setAiLifecycleStatus("failed");
       toast.error(error instanceof Error ? error.message : "AI 编排失败");
       return null;
     } finally {
@@ -375,6 +412,7 @@ export function useApiScenarioEditor(projectId: string, scenarioId?: string) {
       });
       applyScenario(applied);
       setAiPlan(null);
+      setAiLifecycleStatus(null);
       window.sessionStorage.removeItem(aiPlanStorageKey(projectId, scenario.id));
       setValidation(null);
       toast.success("AI 编排已应用到场景草稿");
@@ -417,6 +455,7 @@ export function useApiScenarioEditor(projectId: string, scenarioId?: string) {
     runDrawerOpen,
     aiPlan,
     aiBusy,
+    aiLifecycleStatus,
     revisions,
     loading,
     loadError,
@@ -442,6 +481,7 @@ export function useApiScenarioEditor(projectId: string, scenarioId?: string) {
       discardAiPlan: () => {
         if (scenario?.id) window.sessionStorage.removeItem(aiPlanStorageKey(projectId, scenario.id));
         setAiPlan(null);
+        setAiLifecycleStatus(null);
       },
     },
   };

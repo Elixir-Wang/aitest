@@ -44,8 +44,6 @@ def save_script(
           code = excluded.code,
           validation_status = excluded.validation_status,
           validation_result_json = excluded.validation_result_json,
-          confirmed_by = NULL,
-          confirmed_at = NULL,
           updated_at = CURRENT_TIMESTAMP
         """,
         (
@@ -74,7 +72,7 @@ def find_script(db: Connection, script_id: str) -> Row | None:
     return db.execute("SELECT * FROM performance_test_scripts WHERE id = ?", (script_id,)).fetchone()
 
 
-def update_pending_script(
+def update_script(
     db: Connection,
     script_id: str,
     *,
@@ -87,23 +85,10 @@ def update_pending_script(
         """
         UPDATE performance_test_scripts
         SET generation_source = 'user_edited', plan_json = ?, code = ?,
-            validation_status = ?, validation_result_json = ?, confirmed_by = NULL,
-            confirmed_at = NULL, updated_at = CURRENT_TIMESTAMP
+            validation_status = ?, validation_result_json = ?, updated_at = CURRENT_TIMESTAMP
         WHERE id = ?
         """,
         (_dumps(plan), code, validation_status, _dumps(validation_result), script_id),
-    )
-
-
-def confirm_script(db: Connection, script_id: str, actor_id: str) -> None:
-    db.execute(
-        """
-        UPDATE performance_test_scripts
-        SET validation_status = 'confirmed', confirmed_by = ?, confirmed_at = CURRENT_TIMESTAMP,
-            updated_at = CURRENT_TIMESTAMP
-        WHERE id = ?
-        """,
-        (actor_id, script_id),
     )
 
 
@@ -121,8 +106,6 @@ def serialize_script(row: Row) -> dict[str, Any]:
         "required_runtime_variables": _loads(row["required_runtime_variables_json"], []),
         "validation_status": row["validation_status"],
         "validation_result": _loads(row["validation_result_json"], {}),
-        "confirmed_by": row["confirmed_by"],
-        "confirmed_at": row["confirmed_at"],
         "created_at": row["created_at"],
         "updated_at": row["updated_at"],
     }

@@ -31,3 +31,14 @@ def list_performance_reports(db: Connection, project_ids: list[str]) -> list[Row
         """,
         project_ids,
     ).fetchall()
+
+
+def find_performance_report(db: Connection, report_id: str) -> Row | None:
+    return db.execute(
+        "SELECT id, project_id FROM performance_analysis_sessions WHERE id = ?",
+        (report_id,),
+    ).fetchone()
+
+
+def delete_performance_report(db: Connection, report_id: str) -> None:
+    db.execute("DELETE FROM performance_analysis_sessions WHERE id = ?", (report_id,))

@@ -154,10 +154,9 @@ def apply_and_rerun(project_id: str, analysis_id: str, change_ids: list[str], ac
             prompt_version="",
             plan=plan.model_dump(mode="json"),
             code=code,
-            validation_status="pending_confirmation",
+            validation_status="valid",
             validation_result=validation.model_dump(mode="json"),
         )
-        performance_script_repo.confirm_script(db, script_id, str(actor["id"]))
         performance_analysis_repo.update_analysis_session(
             db,
             analysis_id,

@@ -70,16 +70,6 @@ def update_performance_script_configuration(
     return script_service.update_script_configuration(project_id, test_id, script_id, payload, actor)
 
 
-@router.post("/{test_id}/scripts/{script_id}/confirm", response_model=PerformanceScriptOut)
-def confirm_performance_script(
-    project_id: str,
-    test_id: str,
-    script_id: str,
-    actor=Depends(require_admin),
-) -> dict:
-    return script_service.confirm_script(project_id, test_id, script_id, actor)
-
-
 @router.get("/{test_id}", response_model=PerformanceTestOut)
 def get_performance_test(project_id: str, test_id: str, actor=Depends(current_user)) -> dict:
     return service.get_performance_test(project_id, test_id, actor)

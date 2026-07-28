@@ -251,14 +251,16 @@ async def stream_performance_run(project_id: str, run_id: str, actor=Depends(cur
 
     async def events():
         last_run_signature = None
-        last_stat_id = ""
+        last_stat_signature = ""
         last_event_id = ""
+        request_stats_mtime_ns = -1
+        request_stats_cache: list[dict[str, object]] = []
         while True:
             with connect() as db:
                 run = run_repo.get_run(db, run_id)
                 if run is None:
                     return
-                stats = run_repo.list_stats(db, run_id)
+                latest_stat_row = run_repo.get_latest_stat(db, run_id)
                 failures = run_repo.list_failures(db, run_id)
                 exceptions = run_repo.list_exceptions(db, run_id)
                 run_events = run_repo.list_events(db, run_id)
@@ -266,13 +268,30 @@ async def stream_performance_run(project_id: str, run_id: str, actor=Depends(cur
             if run_signature != last_run_signature:
                 last_run_signature = run_signature
                 yield format_run_sse_event("run", _run_payload(run))
-            if stats and stats[-1]["id"] != last_stat_id:
-                last_stat_id = stats[-1]["id"]
+            load_config = json.loads(run["load_config_json"] or "{}")
+            latest = headless_worker.read_realtime_sample(
+                _run_report_directory(project_id, run_id),
+                configured_users=int(load_config.get("users") or 0),
+            )
+            if latest is None and latest_stat_row is not None:
+                latest = _stat_payload(latest_stat_row)
+            stat_signature = json.dumps(latest, ensure_ascii=False, sort_keys=True) if latest else ""
+            if latest and stat_signature != last_stat_signature:
+                last_stat_signature = stat_signature
+                request_stats_path = _run_report_directory(project_id, run_id) / "result_stats.csv"
+                try:
+                    current_request_stats_mtime_ns = request_stats_path.stat().st_mtime_ns
+                except OSError:
+                    current_request_stats_mtime_ns = -1
+                if current_request_stats_mtime_ns != request_stats_mtime_ns:
+                    request_stats_mtime_ns = current_request_stats_mtime_ns
+                    request_stats_cache = _request_stats(project_id, run_id)
                 yield format_run_sse_event(
                     "stats",
                     {
                         "run": _run_payload(run),
-                        "latest": _stat_payload(stats[-1]),
+                        "latest": latest,
+                        "request_stats": request_stats_cache,
                         "failures": [dict(row) for row in failures],
                         "exceptions": [dict(row) for row in exceptions],
                     },
@@ -399,8 +418,9 @@ def _script_lookup(project_id: str, test_id: str, script_id: str, actor):
             or script_row["performance_test_id"] != test_id
         ):
             raise api_error(404, "PERFORMANCE_SCRIPT_NOT_FOUND", "性能测试脚本不存在。")
-        if script_row["validation_status"] != "confirmed":
-            raise api_error(409, "PERFORMANCE_SCRIPT_NOT_CONFIRMED", "只有已确认脚本可以启动正式压测。")
+        validation_result = api_automation_repo.loads_json(script_row["validation_result_json"], {})
+        if script_row["validation_status"] != "valid" or not validation_result.get("valid"):
+            raise api_error(409, "PERFORMANCE_SCRIPT_INVALID", "脚本校验通过后才能启动正式压测。")
         environment = api_automation_repo.find_api_environment(db, test_row["api_environment_id"])
         if not environment or environment["project_id"] != project_id:
             raise api_error(409, "PERFORMANCE_ENVIRONMENT_INVALID", "接口环境引用已失效。")

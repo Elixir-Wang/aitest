@@ -13,11 +13,11 @@ export default function Page() {
       breadcrumbs={moduleBreadcrumbs(
         "performanceTests",
         { label: "性能测试列表", href: `/projects/${params.projectId}/performance-tests` },
-        { label: "脚本审核" },
+        { label: "脚本配置" },
       )}
-      description="审核结构化请求配置、校验结果和只读 Locust 脚本。"
+      description="调整结构化请求配置并查看生成的 Locust 脚本。"
       projectScope="project"
-      title="Locust 脚本审核"
+      title="Locust 脚本配置"
     >
       <ScriptReview projectId={params.projectId} scriptId={params.scriptId} testId={params.testId} />
     </PageShell>

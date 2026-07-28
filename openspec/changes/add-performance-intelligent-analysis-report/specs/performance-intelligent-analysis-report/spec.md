@@ -87,6 +87,16 @@
 - **AND** 系统 SHALL NOT 执行推测性根因归因
 - **AND** SHALL NOT 提供可应用修改
 
+#### Scenario: User manually stops a run
+
+- **GIVEN** 性能运行状态为 stopped
+- **AND** 平台停止流程已记录该运行由用户主动停止
+- **WHEN** 系统生成指标快照和智能报告
+- **THEN** 报告 SHALL 将终止原因展示为人工停止
+- **AND** SHALL NOT 表述为异常停止、系统故障或终止原因未知
+- **AND** 性能目标 SHALL 继续按实际运行窗口内的确定性指标判定
+- **AND** 数据质量 SHALL 标记实际运行窗口限制
+
 ### Requirement: Performance objective verdict
 
 系统 SHALL 根据明确目标、确定性指标和数据质量计算总体结论，而不是让模型决定通过状态。
@@ -131,6 +141,16 @@
 - **THEN** knee point SHALL 为空
 - **AND** 报告 SHALL 展示不可计算原因
 - **AND** SHALL NOT 猜测容量拐点
+
+#### Scenario: Fixed single-stage load meets objectives
+
+- **GIVEN** 运行仅包含一个固定并发负载阶段
+- **AND** 该阶段的性能目标全部通过
+- **WHEN** 系统生成容量结论
+- **THEN** 报告 SHALL 表述为目标负载验收通过
+- **AND** SHALL 将该并发数标记为已验证负载而不是系统容量上限
+- **AND** observed stable capacity 和 knee point SHALL 为空
+- **AND** 报告 SHALL 明确容量上限和性能拐点未评估
 
 ### Requirement: Compatible historical baseline
 

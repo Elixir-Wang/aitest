@@ -95,6 +95,40 @@ export function LocustConsole({ projectId, testId, runId }: { projectId: string;
     let fallbackTimer: number | undefined;
     const controller = new AbortController();
     const refreshSilently = () => refresh().catch(() => undefined);
+    const updateRun = (nextRun: PerformanceRun) => {
+      runRef.current = nextRun;
+      setRun(nextRun);
+    };
+    const handleStreamEvent = (event: string, payload: Record<string, unknown>) => {
+      if (event === "run") {
+        updateRun(payload as PerformanceRun);
+        return;
+      }
+      if (event === "done") {
+        void refreshSilently();
+        return;
+      }
+      if (event !== "stats" || !isRecord(payload.latest)) return;
+      const latest = payload.latest;
+      const nextRun = isRecord(payload.run) ? (payload.run as PerformanceRun) : null;
+      if (nextRun) updateRun(nextRun);
+      setSnapshot((current) => {
+        if (!current) return current;
+        return {
+          ...current,
+          run: nextRun ?? current.run,
+          stats: [...current.stats, latest].slice(-180),
+          request_stats: Array.isArray(payload.request_stats) ? payload.request_stats : current.request_stats,
+          failures: Array.isArray(payload.failures)
+            ? (payload.failures as PerformanceRunStats["failures"])
+            : current.failures,
+          exceptions: Array.isArray(payload.exceptions)
+            ? (payload.exceptions as PerformanceRunStats["exceptions"])
+            : current.exceptions,
+        };
+      });
+      setSamples((current) => [...current, ...chartSamples([latest])].slice(-180));
+    };
     const startPollingFallback = () => {
       if (fallbackTimer !== undefined) return;
       fallbackTimer = window.setInterval(() => {
@@ -103,14 +137,15 @@ export function LocustConsole({ projectId, testId, runId }: { projectId: string;
         }
       }, 1000);
     };
-    refresh()
+    void refresh()
       .catch((error) => !disposed && toast.error(apiErrorMessage(error)))
-      .finally(() => !disposed && setLoading(false));
-    streamPerformanceRun(projectId, runId, controller.signal, () => {
-      if (!disposed) void refreshSilently();
-    }).catch((error) => {
-      if (!disposed && (error as Error)?.name !== "AbortError") startPollingFallback();
-    });
+      .finally(() => {
+        if (disposed) return;
+        setLoading(false);
+        streamPerformanceRun(projectId, runId, controller.signal, handleStreamEvent).catch((error) => {
+          if (!disposed && (error as Error)?.name !== "AbortError") startPollingFallback();
+        });
+      });
     return () => {
       disposed = true;
       controller.abort();
@@ -585,6 +620,10 @@ function chartSamples(rows: Array<Record<string, unknown>>): LocustChartSample[]
     p50ResponseTime: Number(row.p50_response_time_ms ?? 0),
     p95ResponseTime: Number(row.p95_response_time_ms ?? 0),
   }));
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function formatSampleTime(value: unknown) {

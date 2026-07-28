@@ -1,6 +1,6 @@
 import type { AgentPlanStatus } from "@/components/ui/agent-plan";
 
-export type ExplorationMode = "goal" | "autonomous";
+export type ExplorationMode = "goal" | "autonomous" | "loop";
 
 export type ProjectScope = "all" | "project";
 

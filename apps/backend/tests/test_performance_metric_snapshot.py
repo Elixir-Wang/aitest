@@ -62,6 +62,69 @@ def test_metric_snapshot_does_not_invent_missing_percentile() -> None:
     assert snapshot["quality"]["status"] == "partial"
 
 
+def test_manual_stop_is_a_known_run_limit_not_an_unknown_failure() -> None:
+    snapshot = build_metric_snapshot(
+        {
+            "run": {
+                "id": "perfrun-1",
+                "status": "stopped",
+                "termination_reason": "manual_stop",
+                "termination_label": "人工停止",
+                "load_config": {"measurement_duration_seconds": 60, "users": 10},
+                "started_at": "2026-07-28T15:35:33",
+                "finished_at": "2026-07-28T15:36:29",
+            },
+            "summary": {
+                "request_count": 232,
+                "failure_count": 0,
+                "failure_rate": 0,
+                "requests_per_second": 4.2,
+                "average_response_time_ms": 238.78,
+                "p95_response_time_ms": 640,
+            },
+            "stats": [
+                {"sampled_at": "1", "user_count": 10, "request_count": 80, "requests_per_second": 4.1, "p95_response_time_ms": 660},
+                {"sampled_at": "2", "user_count": 10, "request_count": 160, "requests_per_second": 4.3, "p95_response_time_ms": 650},
+                {"sampled_at": "3", "user_count": 10, "request_count": 232, "requests_per_second": 4.2, "p95_response_time_ms": 640},
+            ],
+            "performance_test": {
+                "load_config": {"mode": "fixed", "users": 10},
+                "performance_goal": {
+                    "max_fail_ratio": 0,
+                    "max_average_response_time_ms": 3000,
+                },
+            },
+            "missing_evidence": [],
+        }
+    )
+
+    assert snapshot["verdict"] == "conditional_pass"
+    assert snapshot["quality"]["termination_reason"] == "manual_stop"
+    assert snapshot["quality"]["termination_label"] == "人工停止"
+    assert snapshot["quality"]["actual_duration_seconds"] == 56
+    assert snapshot["quality"]["configured_duration_seconds"] == 60
+    assert snapshot["quality"]["duration_complete"] is False
+    assert snapshot["quality"]["issues"] == ["run_manually_stopped"]
+    assert snapshot["capacity_analysis"]["observed_stable_capacity"] is None
+
+    diagnosis = PerformanceDiagnosis.model_validate(
+        {
+            "category": "insufficient_evidence",
+            "confidence": 0.9,
+            "direct_cause": "固定负载目标已满足",
+            "root_cause": "容量上限未评估",
+            "evidence": [],
+            "proposed_changes": [],
+            "missing_evidence": ["capacity_analysis"],
+        }
+    )
+    report = build_report_snapshot(snapshot, diagnosis)
+    assert "手动停止" in report["executive_summary"]
+    assert "不代表运行异常" in report["executive_summary"]
+    assert "实际运行 56 秒，配置时长 60 秒" in report["executive_summary"]
+    assert "固定单阶段负载" in report["capacity_summary"]
+
+
 def test_report_snapshot_reuses_structured_diagnosis() -> None:
     metric_snapshot = {
         "verdict": "fail",

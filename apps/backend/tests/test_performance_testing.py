@@ -302,7 +302,7 @@ def test_delete_performance_test_stops_active_run_and_removes_all_related_data(
             """
             INSERT INTO performance_test_scripts (
               id, performance_test_id, project_id, generation_source, code, validation_status
-            ) VALUES (?, ?, ?, 'default_plan', 'code', 'confirmed')
+            ) VALUES (?, ?, ?, 'default_plan', 'code', 'valid')
             """,
             ("perfscript-1", created["id"], "project-1"),
         )
@@ -343,7 +343,7 @@ def test_delete_performance_test_removes_all_run_artifacts(monkeypatch: pytest.M
             """
             INSERT INTO performance_test_scripts (
               id, performance_test_id, project_id, generation_source, code, validation_status
-            ) VALUES (?, ?, ?, 'default_plan', 'code', 'confirmed')
+            ) VALUES (?, ?, ?, 'default_plan', 'code', 'valid')
             """,
             ("perfscript-1", created["id"], "project-1"),
         )
@@ -609,12 +609,15 @@ def test_performance_script_state_excludes_running(monkeypatch: pytest.MonkeyPat
         columns = {row["name"] for row in db.execute("PRAGMA table_info(performance_test_scripts)")}
 
     assert table is not None
-    assert "pending_confirmation" in table["sql"]
+    assert "'valid'" in table["sql"]
+    assert "pending_confirmation" not in table["sql"]
     assert "'running'" not in table["sql"]
     assert "superseded" not in table["sql"]
     assert "version" not in columns
     assert "template_version" not in columns
     assert "input_hash" not in columns
+    assert "confirmed_by" not in columns
+    assert "confirmed_at" not in columns
 
 
 def test_migrate_performance_scripts_keeps_only_latest_record(tmp_path: Path) -> None:
@@ -669,7 +672,7 @@ def test_migrate_performance_scripts_keeps_only_latest_record(tmp_path: Path) ->
     seeds._migrate_performance_scripts_to_single_record(db)
 
     columns = {row["name"] for row in db.execute("PRAGMA table_info(performance_test_scripts)")}
-    scripts = db.execute("SELECT id, code FROM performance_test_scripts").fetchall()
+    scripts = db.execute("SELECT id, code, validation_status FROM performance_test_scripts").fetchall()
     run = db.execute("SELECT script_id FROM performance_test_runs WHERE id = 'perfrun-1'").fetchone()
     violations = db.execute("PRAGMA foreign_key_check").fetchall()
     db.close()
@@ -677,6 +680,8 @@ def test_migrate_performance_scripts_keeps_only_latest_record(tmp_path: Path) ->
     assert "version" not in columns
     assert "template_version" not in columns
     assert "input_hash" not in columns
-    assert [dict(row) for row in scripts] == [{"id": "perfscript-current", "code": "new code"}]
+    assert [dict(row) for row in scripts] == [
+        {"id": "perfscript-current", "code": "new code", "validation_status": "valid"}
+    ]
     assert run["script_id"] == "perfscript-current"
     assert violations == []

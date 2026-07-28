@@ -41,6 +41,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import type {
   ApiAutomationEndpoint,
@@ -77,6 +78,7 @@ export function ApiScenarioEditor({ projectId, scenarioId }: ApiScenarioEditorPr
   const [configPanelOpen, setConfigPanelOpen] = useState(false);
   const [assetPickerOpen, setAssetPickerOpen] = useState(false);
   const [aiDrawerOpen, setAiDrawerOpen] = useState(false);
+  const [aiSourceEndpointIds, setAiSourceEndpointIds] = useState<string[]>([]);
   const activeIndex = editor.draft.steps.findIndex((step) => step.id === editor.activeStepId);
   const precedingSteps = activeIndex < 0 ? [] : editor.draft.steps.slice(0, activeIndex);
 
@@ -140,7 +142,14 @@ export function ApiScenarioEditor({ projectId, scenarioId }: ApiScenarioEditorPr
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <Button onClick={() => setAiDrawerOpen(true)} size="sm" variant="outline">
+          <Button
+            onClick={() => {
+              setAiSourceEndpointIds([]);
+              setAiDrawerOpen(true);
+            }}
+            size="sm"
+            variant="outline"
+          >
             <Sparkles />
             AI 编排
           </Button>
@@ -445,18 +454,23 @@ export function ApiScenarioEditor({ projectId, scenarioId }: ApiScenarioEditorPr
       ) : null}
       <ApiScenarioAssetPicker
         endpoints={editor.endpoints}
+        onAiOrchestration={(endpointIds) => {
+          setAiSourceEndpointIds(endpointIds);
+          setAiDrawerOpen(true);
+        }}
         onConfirm={editor.actions.addEndpointSteps}
         onOpenChange={setAssetPickerOpen}
         open={assetPickerOpen}
       />
       <AiOrchestrationDrawer
         busy={editor.aiBusy}
+        endpoints={editor.endpoints}
+        lifecycleStatus={editor.aiLifecycleStatus}
+        selectedEndpointIds={aiSourceEndpointIds}
         onApply={() => void editor.actions.applyAiPlan()}
         onDiscard={editor.actions.discardAiPlan}
-        onGenerate={editor.actions.generateAiPlan}
-        onOpenChange={(open) => {
-          if (open || !editor.aiBusy) setAiDrawerOpen(open);
-        }}
+        onGenerate={(goal, options) => editor.actions.generateAiPlan(goal, aiSourceEndpointIds, options)}
+        onOpenChange={setAiDrawerOpen}
         open={aiDrawerOpen}
         plan={editor.aiPlan}
       />
@@ -477,25 +491,35 @@ export function ApiScenarioEditor({ projectId, scenarioId }: ApiScenarioEditorPr
 
 function AiOrchestrationDrawer({
   busy,
+  endpoints,
+  lifecycleStatus,
   onApply,
   onDiscard,
   onGenerate,
   onOpenChange,
   open,
   plan,
+  selectedEndpointIds,
 }: {
   busy: boolean;
+  endpoints: ApiAutomationEndpoint[];
+  lifecycleStatus: "generating" | "completed" | "failed" | "expired" | null;
   onApply: () => void;
   onDiscard: () => void;
-  onGenerate: (goal: string) => Promise<ApiScenarioAiPlanAccepted | null>;
+  onGenerate: (goal: string, options: { requireCleanup: boolean }) => Promise<ApiScenarioAiPlanAccepted | null>;
   onOpenChange: (open: boolean) => void;
   open: boolean;
   plan: ApiScenarioAiPlan | null;
+  selectedEndpointIds: string[];
 }) {
   const [goal, setGoal] = useState("");
+  const [requireCleanup, setRequireCleanup] = useState(false);
+  const selectedEndpoints = selectedEndpointIds
+    .map((endpointId) => endpoints.find((endpoint) => endpoint.id === endpointId))
+    .filter((endpoint): endpoint is ApiAutomationEndpoint => Boolean(endpoint));
 
   return (
-    <Drawer direction="right" modal={false} open={open} onOpenChange={onOpenChange}>
+    <Drawer direction="right" open={open} onOpenChange={onOpenChange}>
       <DrawerContent className="grid h-full w-full grid-rows-[auto_minmax(0,1fr)_auto] gap-0 overflow-hidden bg-background p-0 data-[vaul-drawer-direction=right]:sm:max-w-[480px]">
         <DrawerHeader className="relative overflow-hidden border-b bg-muted/20 px-5 py-5 pr-14 sm:px-6">
           <div className="flex items-start gap-3.5">
@@ -518,6 +542,40 @@ function AiOrchestrationDrawer({
         </DrawerHeader>
         {!plan ? (
           <div className="min-h-0 space-y-5 overflow-y-auto px-5 py-5 sm:px-6 sm:py-6">
+            <div className="rounded-lg border border-primary/15 bg-primary/5 px-3.5 py-3 text-muted-foreground text-xs">
+              AI 只会在已选接口范围内推测执行路径，并为前后步骤补充参数依赖；应用前不会修改当前场景。
+            </div>
+            <div className="space-y-2.5">
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="font-semibold text-sm">已选接口</div>
+                  <div className="mt-1 text-muted-foreground text-xs">
+                    {selectedEndpoints.length} 个接口作为分析范围
+                  </div>
+                </div>
+                <Badge variant="secondary">范围锁定</Badge>
+              </div>
+              <div className="space-y-1.5 rounded-lg border bg-card p-2.5">
+                {selectedEndpoints.length ? (
+                  selectedEndpoints.map((endpoint) => (
+                    <div className="flex items-center gap-2 rounded-md px-2 py-1.5 text-xs" key={endpoint.id}>
+                      <Badge
+                        className={cn("h-5 w-12 justify-center font-mono text-[10px]", methodTone[endpoint.method])}
+                        variant="outline"
+                      >
+                        {endpoint.method}
+                      </Badge>
+                      <span className="min-w-0 flex-1 truncate font-medium">{endpoint.summary || endpoint.path}</span>
+                      <span className="max-w-[45%] truncate font-mono text-[10px] text-muted-foreground">
+                        {endpoint.path}
+                      </span>
+                    </div>
+                  ))
+                ) : (
+                  <div className="px-2 py-3 text-muted-foreground text-xs">未选择接口，将使用当前项目接口资产。</div>
+                )}
+              </div>
+            </div>
             <div className="space-y-2.5">
               <div className="flex items-center justify-between gap-3">
                 <label className="font-semibold text-sm" htmlFor="ai-scenario-goal">
@@ -534,6 +592,18 @@ function AiOrchestrationDrawer({
                 value={goal}
               />
             </div>
+            <div className="flex items-center justify-between rounded-lg border bg-card px-3.5 py-3">
+              <div>
+                <div className="font-medium text-sm">生成清理步骤</div>
+                <div className="mt-1 text-muted-foreground text-xs">若存在创建/写入操作，优先补充可逆的 cleanup</div>
+              </div>
+              <Switch checked={requireCleanup} onCheckedChange={setRequireCleanup} />
+            </div>
+            {lifecycleStatus === "generating" ? (
+              <div className="flex items-center gap-2 rounded-lg border border-sky-200 bg-sky-50 px-3.5 py-3 text-sky-800 text-xs dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-200">
+                <Loader2 className="size-3.5 animate-spin" /> 正在分析接口依赖并编译方案…
+              </div>
+            ) : null}
           </div>
         ) : (
           <div className="min-h-0 space-y-4 overflow-y-auto bg-muted/10 px-5 py-5 sm:px-6">
@@ -585,6 +655,29 @@ function AiOrchestrationDrawer({
                 </div>
               ))}
             </div>
+            <div className="space-y-2 rounded-lg border bg-card p-4">
+              <div className="flex items-center gap-2 font-semibold text-sm">
+                <Variable className="size-4 text-primary" />
+                数据依赖与参数来源
+              </div>
+              {plan.nodes.flatMap((node) =>
+                (node.bindings ?? []).map((binding) => (
+                  <div
+                    className="flex items-start gap-2 text-xs"
+                    key={`${node.id}-${binding.target.location}-${binding.target.path}`}
+                  >
+                    <span className="rounded bg-muted px-1.5 py-0.5 font-mono text-[10px]">
+                      {formatBindingTarget(binding.target)}
+                    </span>
+                    <span className="text-muted-foreground">←</span>
+                    <span className="min-w-0 flex-1 text-muted-foreground">{formatBindingSource(binding.source)}</span>
+                  </div>
+                )),
+              )}
+              {!plan.nodes.some((node) => (node.bindings ?? []).length) ? (
+                <div className="text-muted-foreground text-xs">暂无可展示的数据绑定。</div>
+              ) : null}
+            </div>
             {[...plan.validation.errors, ...plan.validation.warnings].length ? (
               <div className="space-y-1.5 rounded-lg border border-amber-300/60 bg-amber-50/60 p-3.5 text-amber-900 text-xs dark:bg-amber-500/10 dark:text-amber-200">
                 {[...new Set([...plan.validation.errors, ...plan.validation.warnings])].map((item) => (
@@ -604,20 +697,14 @@ function AiOrchestrationDrawer({
           </div>
           {!plan ? (
             <div className="flex w-full gap-2 sm:w-auto">
-              <Button
-                className="flex-1 sm:flex-none"
-                disabled={busy}
-                onClick={() => onOpenChange(false)}
-                variant="outline"
-              >
-                取消
+              <Button className="flex-1 sm:flex-none" onClick={() => onOpenChange(false)} variant="outline">
+                {busy ? "关闭" : "取消"}
               </Button>
               <Button
                 className="flex-1 px-4 shadow-sm sm:flex-none"
                 disabled={busy || !goal.trim()}
                 onClick={async () => {
-                  const accepted = await onGenerate(goal.trim());
-                  if (accepted) onOpenChange(false);
+                  await onGenerate(goal.trim(), { requireCleanup });
                 }}
               >
                 {busy ? <Loader2 className="animate-spin" /> : <Sparkles />}
@@ -639,6 +726,34 @@ function AiOrchestrationDrawer({
       </DrawerContent>
     </Drawer>
   );
+}
+
+function formatBindingSource(source: unknown) {
+  if (!source || typeof source !== "object") return "未确定来源";
+  const value = source as {
+    type?: string;
+    key?: string;
+    name?: string;
+    step_id?: string;
+    variable?: string;
+    generator?: string;
+    value?: unknown;
+  };
+  if (value.type === "step_output") return `前序步骤 ${value.step_id ?? ""} 的输出`;
+  if (value.type === "environment" || value.type === "secret") {
+    return `${value.type === "secret" ? "密钥" : "运行环境"} · ${value.key ?? value.name ?? "变量"}`;
+  }
+  if (value.type === "scenario" || value.type === "user_input") {
+    return `${value.type === "user_input" ? "用户输入" : "场景变量"} · ${value.name ?? value.variable ?? "变量"}`;
+  }
+  if (value.type === "literal") return `固定值 · ${String(value.value ?? "")}`;
+  if (value.type === "generated") return `自动生成 · ${value.generator ?? "值"}`;
+  return value.type ?? "未确定来源";
+}
+
+function formatBindingTarget(target: { location?: string; path?: string } | string) {
+  if (typeof target === "string") return target;
+  return `${target.location ?? "请求"}${target.path ?? ""}`;
 }
 
 function runStatusLabel(status: string) {

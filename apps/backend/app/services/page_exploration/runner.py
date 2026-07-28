@@ -340,6 +340,9 @@ def _execute_exploration(run_id: str, run_config: dict) -> None:
     goal = str(run_config.get("goal") or "").strip()
     exploration_mode = str(run_config["exploration_mode"]).strip()
     max_pages = run_config["max_pages"]
+    max_actions = run_config.get("max_actions", 1000)
+    forbidden_paths = str(run_config.get("forbidden_paths") or "")
+    timeout_minutes = int(run_config.get("timeout_minutes") or 120)
     storage_state_path = _exploration_auth_state_path(run_config)
 
     model_selection = resolve_model_selection(_capability_id())
@@ -352,6 +355,9 @@ def _execute_exploration(run_id: str, run_config: dict) -> None:
         start_url=start_url,
         exploration_mode=exploration_mode,
         max_pages=max_pages,
+        max_actions=max_actions,
+        forbidden_paths=forbidden_paths,
+        timeout_minutes=timeout_minutes,
         scope=scope,
         goal=goal,
         storage_state_path=storage_state_path,
@@ -407,7 +413,11 @@ def _exploration_auth_state_path(run_config: dict) -> Path | None:
 
 
 def _exploration_mode_label(exploration_mode: str) -> str:
-    return "自主探索" if exploration_mode == "autonomous" else "目标探索"
+    if exploration_mode == "autonomous":
+        return "自主探索"
+    if exploration_mode == "loop":
+        return "Loop 全站探索"
+    return "目标探索"
 
 
 def _exploration_agent_prompt(
@@ -432,6 +442,18 @@ def _exploration_agent_prompt(
                 "- 这是自主探索：以探索范围为覆盖边界，自动识别范围内的主要模块、页面、入口和可测元素。",
                 "- 如果提供了探索目标，它只是补充关注点，不作为单一路径完成条件。",
                 "- 按模块盘点，不要因为某个具体动作完成就提前停止；达到范围覆盖或预算上限后总结。",
+            ]
+        )
+    elif exploration_mode == "loop":
+        lines.extend(
+            [
+                "执行策略:",
+                "- 这是 Loop 全站探索：由外层 frontier 循环驱动，不要把全局待办只保存在模型上下文中。",
+                "- 每次先 snap，基于当前候选选择一个局部动作；动作后必须再次观察并记录 before/after state。",
+                "- 优先发现新页面、弹窗、Tab、分页和表单状态；已 verified 的 state + element 不要重复执行。",
+                "- 不要自行生成 locator、CSS、XPath、坐标或页面产物；只能引用最近 snapshot 的 element_id。",
+                "- 高风险和破坏性动作没有明确授权时返回 request_human，不要自行执行。",
+                "- 以 frontier 耗尽、预算耗尽或结构化阻塞作为停止条件，并输出剩余项。",
             ]
         )
     else:
@@ -485,39 +507,15 @@ def _initial_subgoal_hints(goal: str) -> list[str]:
     ]
 
 
-async def _execute_exploration_async(
-    model,
-    project_id: str,
+def _publish_exploration_plan(
+    *,
     run_id: str,
-    start_url: str,
     exploration_mode: str,
+    start_url: str,
+    scope: str,
+    goal: str,
     max_pages: int,
-    scope: str = "",
-    goal: str = "",
-    storage_state_path: Path | None = None,
 ) -> None:
-    """异步执行探索"""
-    from app.agents.page_exploration.agent import page_exploration_agent
-    from app.agents.page_exploration.tools.runtime_context import (
-        browser_session_context,
-        exploration_runtime_context,
-    )
-    from app.services.page_exploration.artifact_merge_service import (
-        capture_page_baseline,
-        merge_goal_run_artifacts,
-    )
-    from app.services.page_exploration.coverage_evaluator import evaluate_autonomous_coverage
-
-    _ensure_exploration_not_stopping(run_id)
-
-    if exploration_mode == "goal":
-        capture_page_baseline(_project_file_storage_root(), project_id, run_id)
-
-    agent = page_exploration_agent(
-        model,
-        max_actions=max(40, min(int(max_pages or 80) * 6, 200)),
-        exploration_mode=exploration_mode,
-    )
     _event_bus().publish(
         run_id,
         "planning_completed",
@@ -533,14 +531,91 @@ async def _execute_exploration_async(
             "modules": [scope or "主探索模块"],
             "estimated_duration_minutes": None,
             "risk_assessment": "",
-            "success_criteria": [
-                goal or f"最多探索 {max_pages} 个页面，并记录页面事实与关键操作。"
-            ],
+            "success_criteria": [goal or f"最多探索 {max_pages} 个页面，并记录页面事实与关键操作。"],
             "total_steps": 0,
             "steps": [],
         },
     )
 
+
+async def _execute_exploration_async(
+    model,
+    project_id: str,
+    run_id: str,
+    start_url: str,
+    exploration_mode: str,
+    max_pages: int,
+    max_actions: int = 1000,
+    scope: str = "",
+    goal: str = "",
+    forbidden_paths: str = "",
+    timeout_minutes: int = 120,
+    storage_state_path: Path | None = None,
+) -> None:
+    """异步执行探索"""
+    from app.agents.page_exploration.tools.runtime_context import (
+        browser_session_context,
+        exploration_runtime_context,
+    )
+    from app.services.page_exploration.artifact_merge_service import (
+        capture_page_baseline,
+        merge_goal_run_artifacts,
+    )
+    from app.services.page_exploration.coverage_evaluator import evaluate_autonomous_coverage
+
+    _ensure_exploration_not_stopping(run_id)
+
+    if exploration_mode == "goal":
+        capture_page_baseline(_project_file_storage_root(), project_id, run_id)
+    elif exploration_mode == "loop":
+        from app.services.page_exploration.loop.loop_artifact_merge_service import capture_loop_baseline
+
+        capture_loop_baseline(
+            root=_project_file_storage_root() / project_id / "page_exploration",
+            run_id=run_id,
+        )
+
+    _publish_exploration_plan(
+        run_id=run_id,
+        exploration_mode=exploration_mode,
+        start_url=start_url,
+        scope=scope,
+        goal=goal,
+        max_pages=max_pages,
+    )
+
+    loop_state = None
+    if exploration_mode == "loop":
+        from app.services.page_exploration.loop.service import execute_loop_exploration
+
+        with (
+            exploration_runtime_context(
+                project_id=project_id,
+                run_id=run_id,
+                storage_root=_project_file_storage_root(),
+            ),
+            browser_session_context(start_url=start_url, storage_state_path=storage_state_path),
+        ):
+            loop_state = await execute_loop_exploration(
+                model=model,
+                project_id=project_id,
+                run_id=run_id,
+                start_url=start_url,
+                scope=scope,
+                forbidden_paths=forbidden_paths,
+                max_pages=max_pages,
+                max_actions=max_actions,
+                timeout_minutes=timeout_minutes,
+                storage_root=_project_file_storage_root(),
+            )
+    else:
+        from app.agents.page_exploration.agent import page_exploration_agent
+
+        agent = page_exploration_agent(
+            model,
+            max_actions=max(40, min(int(max_pages or 80) * 6, 200)),
+            exploration_mode=exploration_mode,
+        )
     payload = {
         "messages": [
             {
@@ -555,26 +630,37 @@ async def _execute_exploration_async(
             }
         ]
     }
-    with (
-        exploration_runtime_context(
-            project_id=project_id,
-            run_id=run_id,
-            storage_root=_project_file_storage_root(),
-        ),
-        browser_session_context(start_url=start_url, storage_state_path=storage_state_path),
-    ):
-        await _service_attr("_invoke_agent_with_realtime_events", _invoke_agent_with_realtime_events)(
-            agent,
-            payload,
-            run_id,
-            project_id=project_id,
-            max_pages=max_pages,
-        )
+    if exploration_mode != "loop":
+        with (
+            exploration_runtime_context(
+                project_id=project_id,
+                run_id=run_id,
+                storage_root=_project_file_storage_root(),
+            ),
+            browser_session_context(start_url=start_url, storage_state_path=storage_state_path),
+        ):
+            await _service_attr("_invoke_agent_with_realtime_events", _invoke_agent_with_realtime_events)(
+                agent,
+                payload,
+                run_id,
+                project_id=project_id,
+                max_pages=max_pages,
+            )
     _ensure_exploration_not_stopping(run_id)
 
     result_status = "completed"
     coverage_summary = None
-    if exploration_mode == "autonomous":
+    if exploration_mode == "loop" and loop_state is not None:
+        pending_count = sum(item.status == "pending" for item in loop_state.frontier)
+        coverage_summary = {
+            "discovered": len(loop_state.discovered_elements),
+            "executed": loop_state.counters.get("actions", 0),
+            "pending": pending_count,
+            "complete": loop_state.stop_reason == "frontier_exhausted" and pending_count == 0,
+        }
+        if not coverage_summary["complete"]:
+            result_status = "partial"
+    elif exploration_mode == "autonomous":
         coverage_summary = evaluate_autonomous_coverage(_project_file_storage_root(), project_id, run_id)
         if not coverage_summary["complete"]:
             result_status = "partial"
@@ -590,11 +676,24 @@ async def _execute_exploration_async(
         goal=goal,
     )
     if coverage_summary and coverage_summary["pending"]:
-        artifact_summary = f"自主探索部分完成：发现 {coverage_summary['discovered']} 个元素，仍有 {coverage_summary['pending']} 个元素未执行。"
+        coverage_label = "Loop 探索" if exploration_mode == "loop" else "自主探索"
+        artifact_summary = f"{coverage_label}部分完成：发现 {coverage_summary['discovered']} 个元素，仍有 {coverage_summary['pending']} 个元素未执行。"
     if exploration_mode == "goal":
         merge_summary = merge_goal_run_artifacts(_project_file_storage_root(), project_id, run_id)
         if merge_summary["status"] == "conflict":
             artifact_summary = f"目标探索产物已生成，但存在 {merge_summary['conflict_count']} 个合并冲突。"
+    elif exploration_mode == "loop":
+        from app.services.page_exploration.loop.loop_artifact_merge_service import merge_loop_page_artifacts
+
+        root = _project_file_storage_root() / project_id / "page_exploration"
+        merge_summary = merge_loop_page_artifacts(
+            pages_dir=root / "pages",
+            baseline_dir=root / "runs" / run_id / "baseline",
+            conflicts_dir=root / "runs" / run_id / "conflicts",
+            run_id=run_id,
+        )
+        if merge_summary["status"] == "conflict":
+            artifact_summary = f"Loop 探索已生成产物，但存在 {merge_summary['conflict_count']} 个合并冲突。"
     _ensure_exploration_not_stopping(run_id)
     run_dir = _project_file_storage_root() / project_id / "page_exploration" / "runs" / run_id
     completion_status = _exploration_completion_status(_read_timeline_events_from_run_dir(run_dir))

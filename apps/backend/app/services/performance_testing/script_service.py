@@ -40,7 +40,7 @@ def generate_script(project_id: str, test_id: str, actor) -> dict[str, Any]:
             prompt_version=PROMPT_VERSION if model_id else "",
             plan=plan.model_dump(mode="json"),
             code=code,
-            validation_status="pending_confirmation" if validation.valid else "validation_failed",
+            validation_status="valid" if validation.valid else "validation_failed",
             validation_result=validation.model_dump(mode="json"),
         )
         return _serialize_required_script(db, project_id, test_id, script_id)
@@ -72,25 +72,14 @@ def update_script_configuration(
         plan = LocustScriptPlan.model_validate(merged)
         code = render_locust_script(plan)
         validation = validate_locust_script(plan, code)
-        performance_script_repo.update_pending_script(
+        performance_script_repo.update_script(
             db,
             script_id,
             plan=plan.model_dump(mode="json"),
             code=code,
-            validation_status="pending_confirmation" if validation.valid else "validation_failed",
+            validation_status="valid" if validation.valid else "validation_failed",
             validation_result=validation.model_dump(mode="json"),
         )
-        return _serialize_required_script(db, project_id, test_id, script_id)
-
-
-def confirm_script(project_id: str, test_id: str, script_id: str, actor) -> dict[str, Any]:
-    with connect() as db:
-        service._require_visible_project(db, project_id, actor)
-        service._require_performance_test(db, project_id, test_id)
-        script = _require_script(db, project_id, test_id, script_id)
-        if script["validation_status"] != "pending_confirmation" or not script["validation_result"].get("valid"):
-            raise api_error(409, "PERFORMANCE_SCRIPT_NOT_CONFIRMABLE", "脚本校验通过后才能确认。")
-        performance_script_repo.confirm_script(db, script_id, actor["id"])
         return _serialize_required_script(db, project_id, test_id, script_id)
 
 

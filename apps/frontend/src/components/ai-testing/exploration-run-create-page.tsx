@@ -5,7 +5,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { ArrowLeft, CircleHelp, FileText, Gauge, Loader2, Play, Save, Sparkles } from "lucide-react";
-import { toast } from "@/lib/toast";
 
 import { PageShell, ShellSection } from "@/components/ai-testing/page-shell";
 import { Select, SelectOption } from "@/components/ui/animated-select-1";
@@ -25,6 +24,7 @@ import type {
   ExplorationRunDetail,
   ProjectScope,
 } from "@/lib/exploration-types";
+import { toast } from "@/lib/toast";
 import { moduleBreadcrumbs } from "@/navigation/breadcrumbs";
 
 type RequirementDocument = {
@@ -84,11 +84,13 @@ const explorationPlaceholders = {
   forbiddenPaths: "填写本次探索需要避开的路径、页面或操作。",
   goal: "填写本次探索想发现或验证的目标。",
   autonomousGoal: "可选填写本次自主探索想重点关注的内容。",
+  loopGoal: "可选填写 Loop 探索的重点模块或业务风险。",
 };
 
 const explorationModeLabels: Record<ExplorationMode, string> = {
   goal: "目标探索",
   autonomous: "自主探索",
+  loop: "Loop 全站探索",
 };
 
 function isExplorationLinkableRequirement(requirement: RequirementDocument) {
@@ -552,6 +554,10 @@ export function ExplorationRunCreatePage({
                             <span className="font-medium">自主探索：</span>
                             自动盘点指定范围内的主要页面、功能入口和交互元素。
                           </p>
+                          <p>
+                            <span className="font-medium">Loop 全站探索：</span>
+                            以页面状态和待探索队列持续推进，动作后验证并合并项目探索产物。
+                          </p>
                         </div>
                       </TooltipContent>
                     </Tooltip>
@@ -565,7 +571,7 @@ export function ExplorationRunCreatePage({
                   }
                   value={form.explorationMode}
                 >
-                  {(["goal", "autonomous"] as const).map((mode) => (
+                  {(["goal", "autonomous", "loop"] as const).map((mode) => (
                     <SelectOption key={mode} value={mode}>
                       {explorationModeLabels[mode]}
                     </SelectOption>
@@ -674,7 +680,9 @@ export function ExplorationRunCreatePage({
               <Field className="md:col-span-2">
                 <div className="flex items-center justify-between gap-3">
                   <FieldLabel htmlFor="exploration-goal">
-                    {form.explorationMode === "autonomous" ? "补充关注点" : "探索目标"}
+                    {form.explorationMode === "autonomous" || form.explorationMode === "loop"
+                      ? "补充关注点"
+                      : "探索目标"}
                   </FieldLabel>
                   <Button
                     className="border-primary/20 bg-primary/10 text-primary hover:bg-primary/15 hover:text-primary"
@@ -697,7 +705,9 @@ export function ExplorationRunCreatePage({
                   placeholder={
                     form.explorationMode === "autonomous"
                       ? explorationPlaceholders.autonomousGoal
-                      : explorationPlaceholders.goal
+                      : form.explorationMode === "loop"
+                        ? explorationPlaceholders.loopGoal
+                        : explorationPlaceholders.goal
                   }
                   ref={goalRef}
                   rows={2}

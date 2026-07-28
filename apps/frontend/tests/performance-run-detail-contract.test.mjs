@@ -84,6 +84,9 @@ test("performance run uses SSE first and polling fallback", () => {
   const consoleSource = readFileSync(locustConsoleUrl, "utf8");
   assert.match(apiClientSource, /export async function streamPerformanceRun/);
   assert.match(consoleSource, /streamPerformanceRun\(projectId, runId/);
+  assert.match(consoleSource, /event !== "stats" \|\| !isRecord\(payload\.latest\)/);
+  assert.match(consoleSource, /stats: \[\.\.\.current\.stats, latest\]\.slice\(-180\)/);
+  assert.match(consoleSource, /request_stats: Array\.isArray\(payload\.request_stats\)/);
   assert.match(consoleSource, /startPollingFallback/);
   assert.match(consoleSource, /AbortController/);
 });

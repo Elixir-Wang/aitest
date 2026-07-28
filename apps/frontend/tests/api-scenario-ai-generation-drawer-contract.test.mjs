@@ -26,13 +26,26 @@ test("AI scenario generation uses an accepted background task contract", () => {
   assert.doesNotMatch(hookSource, /const plan = await createApiScenarioAiPlan/);
 });
 
-test("AI orchestration is a right drawer that closes after task acceptance", () => {
+test("AI orchestration stays in the right drawer until the generated plan is ready", () => {
   assert.match(editorSource, /AiOrchestrationDrawer/);
   assert.match(editorSource, /<Drawer direction="right"/);
+  assert.doesNotMatch(editorSource, /<Drawer direction="right"[^>]*modal=\{false\}/);
+  assert.match(editorSource, /onOpenChange=\{setAiDrawerOpen\}/);
+  assert.doesNotMatch(editorSource, /if \(open \|\| !editor\.aiBusy\) setAiDrawerOpen\(open\)/);
+  assert.match(editorSource, /\{busy \? "关闭" : "取消"\}/);
   assert.match(editorSource, /data-\[vaul-drawer-direction=right\]:sm:max-w-\[480px\]/);
   assert.doesNotMatch(editorSource, /function AiOrchestrationDialog/);
-  assert.match(editorSource, /const accepted = await onGenerate\(goal\.trim\(\)\)/);
-  assert.match(editorSource, /if \(accepted\) onOpenChange\(false\)/);
+  assert.match(editorSource, /await onGenerate\(goal\.trim\(\), \{ requireCleanup \}\)/);
+  assert.doesNotMatch(editorSource, /if \(accepted\) onOpenChange\(false\)/);
+  assert.match(editorSource, /selectedEndpointIds/);
+  assert.match(hookSource, /source_scope: \{ endpoint_ids: endpointIds \}/);
+});
+
+test("AI plan bindings use structured targets for stable rendering", () => {
+  assert.match(clientSource, /export type ApiScenarioAiPlanBinding = \{/);
+  assert.match(clientSource, /location: .*json_body.*multipart.*raw_body/);
+  assert.match(editorSource, /key=\{`\$\{node\.id\}-\$\{binding\.target\.location\}-\$\{binding\.target\.path\}`\}/);
+  assert.match(editorSource, /formatBindingTarget\(binding\.target\)/);
 });
 
 test("top running task cards link back to task details", () => {

@@ -35,7 +35,7 @@ def _seed_report(db, *, project_id: str, project_name: str, suffix: str, verdict
         """
         INSERT INTO performance_test_scripts (
           id, performance_test_id, project_id, generation_source, code, validation_status
-        ) VALUES (?, ?, ?, 'default_plan', 'pass', 'confirmed')
+        ) VALUES (?, ?, ?, 'default_plan', 'pass', 'valid')
         """,
         (f"script-{suffix}", f"test-{suffix}", project_id),
     )
@@ -97,5 +97,26 @@ def test_report_center_rejects_invisible_project_filter(monkeypatch: pytest.Monk
 
     with pytest.raises(HTTPException) as exc_info:
         report_center_service.list_reports("performance", "project-b", PROJECT_ACTOR)
+
+    assert getattr(exc_info.value, "status_code", None) == 404
+
+
+def test_report_center_deletes_visible_report(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    with core_db.connect() as db:
+        _seed_report(db, project_id="project-a", project_name="项目A", suffix="a")
+
+    report_center_service.delete_report("performance", "analysis-a", ADMIN)
+
+    assert report_center_service.list_reports("performance", "all", ADMIN) == []
+
+
+def test_report_center_rejects_deleting_invisible_report(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    with core_db.connect() as db:
+        _seed_report(db, project_id="project-b", project_name="项目B", suffix="b")
+
+    with pytest.raises(HTTPException) as exc_info:
+        report_center_service.delete_report("performance", "analysis-b", PROJECT_ACTOR)
 
     assert getattr(exc_info.value, "status_code", None) == 404

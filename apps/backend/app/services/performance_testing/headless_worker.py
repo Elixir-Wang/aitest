@@ -184,6 +184,52 @@ def parse_locust_stats_history_samples(content: str) -> list[dict[str, Any]]:
     ]
 
 
+def parse_locust_stats_csv(content: str, *, user_count: int = 0) -> dict[str, Any] | None:
+    """Parse the current aggregate row from Locust's non-history CSV output."""
+    rows = list(csv.DictReader(content.splitlines()))
+    aggregate = next(
+        (row for row in reversed(rows) if row.get("Type") == "Aggregated" or row.get("Name") == "Aggregated"),
+        None,
+    )
+    if not aggregate:
+        return None
+    request_count = int(float(aggregate.get("Total Request Count") or aggregate.get("Request Count") or 0))
+    failure_count = int(float(aggregate.get("Total Failure Count") or aggregate.get("Failure Count") or 0))
+    return {
+        "sampled_at": "",
+        "user_count": user_count,
+        "request_count": request_count,
+        "failure_count": failure_count,
+        "requests_per_second": float(aggregate.get("Requests/s") or 0),
+        "failures_per_second": float(aggregate.get("Failures/s") or 0),
+        "failure_rate": failure_count / request_count if request_count else 0,
+        "average_response_time_ms": float(aggregate.get("Average Response Time") or 0),
+        "p50_response_time_ms": _locust_float(aggregate.get("50%") or aggregate.get("Median Response Time")),
+        "p95_response_time_ms": _locust_float(aggregate.get("95%")),
+        "p99_response_time_ms": _locust_float(aggregate.get("99%")),
+        "source": "locust_csv_live",
+    }
+
+
+def read_realtime_sample(run_dir: Path, *, configured_users: int = 0) -> dict[str, Any] | None:
+    """Read the newest aggregate metrics, tolerating Locust while flushing CSV files."""
+    stats_path = run_dir / "result_stats.csv"
+    if not stats_path.exists():
+        return None
+    try:
+        sampled_at = str(stats_path.stat().st_mtime)
+        sample = parse_locust_stats_csv(stats_path.read_text(encoding="utf-8-sig"), user_count=configured_users)
+        history_sample = _read_history_sample(run_dir)
+    except (OSError, UnicodeDecodeError, ValueError):
+        return None
+    if sample is None:
+        return None
+    if history_sample:
+        sample["user_count"] = history_sample["user_count"]
+    sample["sampled_at"] = sampled_at
+    return sample
+
+
 def _locust_history_sample(aggregate: dict[str, str | None]) -> dict[str, Any]:
     request_count = int(float(aggregate.get("Total Request Count") or aggregate.get("Request Count") or 0))
     failure_count = int(float(aggregate.get("Total Failure Count") or aggregate.get("Failure Count") or 0))
@@ -219,12 +265,25 @@ def _read_history_sample(run_dir: Path) -> dict[str, Any] | None:
         return None
 
 
-def _persist_realtime_sample(db, run_id: str, run_dir: Path, last_sampled_at: str) -> str:
+def _persist_realtime_sample(
+    db,
+    run_id: str,
+    run_dir: Path,
+    last_sampled_at: str,
+    last_file_mtime_ns: int = 0,
+) -> tuple[str, int]:
+    history_path = run_dir / "result_stats_history.csv"
+    try:
+        file_mtime_ns = history_path.stat().st_mtime_ns
+    except OSError:
+        return last_sampled_at, last_file_mtime_ns
+    if file_mtime_ns == last_file_mtime_ns:
+        return last_sampled_at, last_file_mtime_ns
     sample = _read_history_sample(run_dir)
     if not sample or not sample["sampled_at"] or sample["sampled_at"] == last_sampled_at:
-        return last_sampled_at
+        return last_sampled_at, file_mtime_ns
     run_repo.append_stats(db, run_id=run_id, sample=sample)
-    return str(sample["sampled_at"])
+    return str(sample["sampled_at"]), file_mtime_ns
 
 
 def _normalize_failure_reason(reason: str) -> str:
@@ -451,10 +510,13 @@ def _monitor_run(
     run_dir: Path,
 ) -> None:
     last_sampled_at = ""
+    last_history_mtime_ns = 0
     automatic_analysis: tuple[str, str, str] | None = None
     while process.poll() is None:
         with connect() as db:
-            last_sampled_at = _persist_realtime_sample(db, run_id, run_dir, last_sampled_at)
+            last_sampled_at, last_history_mtime_ns = _persist_realtime_sample(
+                db, run_id, run_dir, last_sampled_at, last_history_mtime_ns
+            )
             current = run_repo.get_run(db, run_id)
             if current and current["status"] == "starting":
                 run_repo.update_run_status(db, run_id, "running")
@@ -470,7 +532,7 @@ def _monitor_run(
         _PROCESSES.pop(run_id, None)
         _STOP_REQUESTED.discard(run_id)
     with connect() as db:
-        _persist_realtime_sample(db, run_id, run_dir, last_sampled_at)
+        _persist_realtime_sample(db, run_id, run_dir, last_sampled_at, last_history_mtime_ns)
         _collect_locust_results(db, run_id, run_dir)
         if stopped:
             current = run_repo.get_run(db, run_id)

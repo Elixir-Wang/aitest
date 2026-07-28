@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 
-import { ChevronDown, ChevronRight, Search } from "lucide-react";
+import { ChevronDown, ChevronRight, Search, Sparkles } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -24,6 +24,7 @@ type ApiScenarioAssetPickerProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onConfirm: (endpointIds: string[]) => void;
+  onAiOrchestration: (endpointIds: string[]) => void;
 };
 
 const methodTone: Record<string, string> = {
@@ -35,7 +36,13 @@ const methodTone: Record<string, string> = {
   DELETE: "border-red-200 bg-red-50 text-red-700 dark:border-red-500/35 dark:bg-red-500/15 dark:text-red-200",
 };
 
-export function ApiScenarioAssetPicker({ endpoints, open, onOpenChange, onConfirm }: ApiScenarioAssetPickerProps) {
+export function ApiScenarioAssetPicker({
+  endpoints,
+  open,
+  onOpenChange,
+  onConfirm,
+  onAiOrchestration,
+}: ApiScenarioAssetPickerProps) {
   const [query, setQuery] = useState("");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [expandedGroups, setExpandedGroups] = useState<string[]>([]);
@@ -231,6 +238,17 @@ export function ApiScenarioAssetPicker({ endpoints, open, onOpenChange, onConfir
           <div className="flex gap-2">
             <Button onClick={closePicker} variant="outline">
               取消
+            </Button>
+            <Button
+              disabled={selectedIds.length === 0}
+              onClick={() => {
+                onAiOrchestration(selectedIds);
+                closePicker();
+              }}
+              variant="outline"
+            >
+              <Sparkles />
+              AI 编排
             </Button>
             <Button
               disabled={selectedIds.length === 0}

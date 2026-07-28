@@ -1,7 +1,10 @@
+from pathlib import Path
+
 from langchain.agents import create_agent
 from langchain.agents.structured_output import ToolStrategy
 
 from app.agents.shared.invalid_tool_call_recovery import InvalidToolCallRecoveryMiddleware
+from app.agents.shared.skill_middleware import SkillMiddleware
 from app.schemas.performance_analysis import PerformanceDiagnosis
 
 
@@ -20,6 +23,13 @@ def performance_diagnosis_agent(model):
             "证据不足时使用 insufficient_evidence 并列出 missing_evidence。"
             "分析结论必须包含输入中已有的关键数量、比例、时间范围，不得编造日志、调用链、配置或代码行为。"
             "INPUT.metric_snapshot 如果存在，是确定性计算结果；不得修改其中的 verdict、指标值或图表序列。"
+            "必须优先分析 INPUT.metric_snapshot.test_validity、stage_analysis、capacity_analysis、"
+            "latency_analysis 和 failure_analysis；不得绕过这些结果重新发明容量、拐点或失败分类。"
+            "没有稳定阶段时不得声称已得到稳定容量；没有服务端资源证据时不得确认 CPU、数据库、"
+            "应用代码或下游依赖是根因。不得输出‘优化接口性能’、‘增加服务器资源’等没有对象、"
+            "证据和量化验收条件的泛化建议。"
+            "若 INPUT.metric_snapshot.test_validity 或 quality 标记 run_manually_stopped，必须表述为测试人员人工停止，"
+            "不得写成异常停止、系统故障或无法判断停止原因；指标仍可用于描述实际运行窗口内的目标负载表现。"
             "有充分证据时使用 findings 输出结构化诊断，并且 evidence_refs 只能引用 "
             "INPUT.metric_snapshot.evidence_index 中已有的 evidence_id；recommendations 必须引用已有 finding。"
             "不得输出认证密钥，不得执行或声称已经执行任何修改。"
@@ -35,7 +45,13 @@ def performance_diagnosis_agent(model):
             "platform_code 必须 requires_second_approval=true。"
             "只输出符合 PerformanceDiagnosis 结构的结构化结果，不输出分析过程。"
         ),
-        middleware=[InvalidToolCallRecoveryMiddleware()],
+        middleware=[
+            InvalidToolCallRecoveryMiddleware(),
+            SkillMiddleware(
+                skill_path=Path(__file__).parent.parent / "report_analysis" / "skills" / "performance-report-analysis",
+                load_references=True,
+            ),
+        ],
         response_format=ToolStrategy(PerformanceDiagnosis),
     )
 

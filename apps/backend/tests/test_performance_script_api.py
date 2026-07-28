@@ -86,12 +86,9 @@ def test_script_generation_overwrites_single_current_script(monkeypatch: pytest.
     performance_test = _create_test()
 
     first = script_service.generate_script("project-1", performance_test["id"], ADMIN)
-    confirmed = script_service.confirm_script("project-1", performance_test["id"], first["id"], ADMIN)
     second = script_service.generate_script("project-1", performance_test["id"], ADMIN)
 
-    assert first["validation_status"] == "pending_confirmation"
-    assert confirmed["validation_status"] == "confirmed"
-    assert confirmed["confirmed_by"] == "u-admin"
+    assert first["validation_status"] == "valid"
     assert second["id"] == first["id"]
     assert "version" not in second
     assert script_service.get_current_script("project-1", performance_test["id"], ADMIN)["id"] == first["id"]
@@ -103,11 +100,10 @@ def test_script_generation_overwrites_single_current_script(monkeypatch: pytest.
     assert [row["id"] for row in rows] == [first["id"]]
 
 
-def test_confirmed_script_can_be_edited_in_place(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_valid_script_can_be_edited_in_place(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     _use_temp_db(monkeypatch, tmp_path)
     performance_test = _create_test()
     generated = script_service.generate_script("project-1", performance_test["id"], ADMIN)
-    script_service.confirm_script("project-1", performance_test["id"], generated["id"], ADMIN)
 
     updated = script_service.update_script_configuration(
         "project-1",
@@ -118,12 +114,10 @@ def test_confirmed_script_can_be_edited_in_place(monkeypatch: pytest.MonkeyPatch
     )
 
     assert updated["id"] == generated["id"]
-    assert updated["validation_status"] == "pending_confirmation"
-    assert updated["confirmed_by"] is None
-    assert updated["confirmed_at"] is None
+    assert updated["validation_status"] == "valid"
 
 
-def test_pending_script_edit_rerenders_and_revalidates(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_script_edit_rerenders_and_revalidates(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     _use_temp_db(monkeypatch, tmp_path)
     performance_test = _create_test()
     generated = script_service.generate_script("project-1", performance_test["id"], ADMIN)
@@ -138,7 +132,7 @@ def test_pending_script_edit_rerenders_and_revalidates(monkeypatch: pytest.Monke
 
     assert updated["generation_source"] == "user_edited"
     assert updated["plan"]["request"]["headers"] == {"X-Test": "changed"}
-    assert updated["validation_status"] == "pending_confirmation"
+    assert updated["validation_status"] == "valid"
     assert updated["validation_result"]["valid"] is True
     assert "changed" in updated["code"]
 
@@ -216,7 +210,6 @@ def test_create_run_does_not_require_source_endpoint(monkeypatch: pytest.MonkeyP
     _use_temp_db(monkeypatch, tmp_path)
     performance_test = _create_test()
     generated = script_service.generate_script("project-1", performance_test["id"], ADMIN)
-    script_service.confirm_script("project-1", performance_test["id"], generated["id"], ADMIN)
     with connect() as db:
         api_automation_repo.delete_endpoint(db, "endpoint-project-1")
 

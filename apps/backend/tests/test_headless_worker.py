@@ -190,3 +190,49 @@ def test_parse_locust_stats_history_samples_returns_all_aggregate_rows() -> None
 
     assert [sample["sampled_at"] for sample in samples] == ["100", "101"]
     assert samples[-1]["failures_per_second"] == 0.5
+
+
+def test_parse_locust_stats_csv_returns_current_aggregate_row() -> None:
+    sample = headless_worker.parse_locust_stats_csv(
+        "Type,Name,Request Count,Failure Count,Median Response Time,Average Response Time,Requests/s,Failures/s,50%,95%,99%\n"
+        "POST,/api/items,6,0,110,150,1.69,0,110,660,660\n"
+        ",Aggregated,6,0,110,150,1.69,0,110,660,660\n",
+        user_count=3,
+    )
+
+    assert sample == {
+        "sampled_at": "",
+        "user_count": 3,
+        "request_count": 6,
+        "failure_count": 0,
+        "requests_per_second": 1.69,
+        "failures_per_second": 0.0,
+        "failure_rate": 0.0,
+        "average_response_time_ms": 150.0,
+        "p50_response_time_ms": 110.0,
+        "p95_response_time_ms": 660.0,
+        "p99_response_time_ms": 660.0,
+        "source": "locust_csv_live",
+    }
+
+
+def test_read_realtime_sample_uses_current_stats_and_history_user_count(tmp_path: Path) -> None:
+    (tmp_path / "result_stats.csv").write_text(
+        "Type,Name,Request Count,Failure Count,Average Response Time,Requests/s,Failures/s,50%,95%,99%\n"
+        ",Aggregated,6,1,150,1.69,0.2,110,660,700\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "result_stats_history.csv").write_text(
+        "Timestamp,User Count,Type,Name,Requests/s,Failures/s,Total Request Count,Total Failure Count,Total Average Response Time,50%,95%,99%\n"
+        "100,4,,Aggregated,0,0,0,0,0,0,0,0\n",
+        encoding="utf-8",
+    )
+
+    sample = headless_worker.read_realtime_sample(tmp_path, configured_users=10)
+
+    assert sample is not None
+    assert sample["user_count"] == 4
+    assert sample["request_count"] == 6
+    assert sample["failure_count"] == 1
+    assert sample["source"] == "locust_csv_live"
+    assert sample["sampled_at"]

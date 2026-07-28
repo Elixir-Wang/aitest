@@ -86,6 +86,10 @@ export function PerformanceAnalysisReport({
   const report = analysis.report_snapshot ?? {};
   const aggregate = metric.aggregate ?? {};
   const quality = metric.quality ?? {};
+  const validity = metric.test_validity ?? {};
+  const stageAnalysis = metric.stage_analysis ?? [];
+  const capacityAnalysis = metric.capacity_analysis ?? {};
+  const failureAnalysis = metric.failure_analysis ?? [];
   const verdict = report.verdict ?? metric.verdict ?? "indeterminate";
   const series = (metric.series ?? []).map((item, index) => ({ index: index + 1, ...item }));
 
@@ -184,6 +188,111 @@ export function PerformanceAnalysisReport({
         </div>
       </section>
 
+      <section className="grid gap-4 lg:grid-cols-[minmax(0,1.4fr)_minmax(18rem,0.6fr)]">
+        <div className="space-y-4">
+          <SectionHeading icon={TrendingUp} title="负载阶段" />
+          <div className="overflow-x-auto rounded-lg border">
+            <table className="w-full min-w-[42rem] text-sm">
+              <thead className="bg-muted/50 text-left text-muted-foreground text-xs">
+                <tr>
+                  <th className="px-4 py-3 font-medium">阶段</th>
+                  <th className="px-4 py-3 font-medium">并发</th>
+                  <th className="px-4 py-3 font-medium">RPS</th>
+                  <th className="px-4 py-3 font-medium">P95</th>
+                  <th className="px-4 py-3 font-medium">失败率</th>
+                  <th className="px-4 py-3 font-medium">判定</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {stageAnalysis.map((stage) => (
+                  <tr key={stage.name}>
+                    <td className="px-4 py-3 font-medium">{stage.name}</td>
+                    <td className="px-4 py-3 tabular-nums">{stage.actual_users ?? stage.target_users}</td>
+                    <td className="px-4 py-3 tabular-nums">{decimalValue(stage.requests_per_second)}</td>
+                    <td className="px-4 py-3 tabular-nums">{nullableValue(stage.p95_response_time_ms)}</td>
+                    <td className="px-4 py-3 tabular-nums">{percentageValue(stage.failure_rate)}</td>
+                    <td className="px-4 py-3">
+                      <StageStatus status={stage.status} />
+                    </td>
+                  </tr>
+                ))}
+                {!stageAnalysis.length ? (
+                  <tr>
+                    <td className="px-4 py-5 text-center text-muted-foreground" colSpan={6}>
+                      没有可用的阶段采样。
+                    </td>
+                  </tr>
+                ) : null}
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div className="space-y-4">
+          <SectionHeading icon={Gauge} title="容量判断" />
+          <div className="rounded-lg border bg-card p-4 text-sm">
+            {capacityAnalysis.observed_stable_capacity ? (
+              <>
+                <p className="text-muted-foreground">观测稳定容量</p>
+                <p className="mt-2 font-semibold text-xl tabular-nums">
+                  {capacityAnalysis.observed_stable_capacity.users ?? "-"} 并发
+                </p>
+                <p className="mt-1 text-muted-foreground">
+                  {decimalValue(capacityAnalysis.observed_stable_capacity.requests_per_second)} RPS · P95{" "}
+                  {nullableValue(capacityAnalysis.observed_stable_capacity.p95_response_time_ms)}
+                </p>
+                {capacityAnalysis.knee_point ? (
+                  <p className="mt-4 border-t pt-3 text-muted-foreground text-xs">
+                    拐点区间：{capacityAnalysis.knee_point.between_users?.join(" ~ ")} 并发
+                  </p>
+                ) : null}
+              </>
+            ) : (
+              <p className="text-muted-foreground">{capacityAnalysis.reason || "当前证据不足以判断稳定容量。"}</p>
+            )}
+          </div>
+        </div>
+      </section>
+
+      <section className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(18rem,0.7fr)]">
+        <div className="space-y-4">
+          <SectionHeading icon={AlertTriangle} title="失败分类" />
+          <div className="divide-y rounded-lg border">
+            {failureAnalysis.map((failure) => (
+              <div className="grid gap-2 p-4 sm:grid-cols-[10rem_minmax(0,1fr)]" key={failure.kind}>
+                <div className="flex items-center justify-between gap-3 sm:block">
+                  <p className="font-medium text-sm">{failureKindLabel(failure.kind)}</p>
+                  <p className="mt-1 text-muted-foreground text-xs">
+                    {failure.count} 次 · {percentageValue(failure.ratio)}
+                  </p>
+                </div>
+                <p className="text-muted-foreground text-sm">{failure.example || "未记录示例原因"}</p>
+              </div>
+            ))}
+            {!failureAnalysis.length ? (
+              <p className="p-4 text-muted-foreground text-sm">没有记录到失败或异常分类。</p>
+            ) : null}
+          </div>
+        </div>
+        <div className="space-y-4">
+          <SectionHeading icon={ShieldCheck} title="测试有效性" />
+          <div className="rounded-lg border bg-card p-4">
+            <div className="flex items-center justify-between gap-3">
+              <span className="font-medium text-sm">{qualityLabel(validity.status)}</span>
+              <Badge variant={validity.status === "complete" ? "secondary" : "outline"}>
+                {validity.sample_count ?? 0} 个样本
+              </Badge>
+            </div>
+            {(validity.issues ?? []).length ? (
+              <p className="mt-3 text-muted-foreground text-xs leading-5">
+                {validity.issues?.map(validityIssueLabel).join("；")}
+              </p>
+            ) : (
+              <p className="mt-3 text-muted-foreground text-xs">当前没有发现明显的数据完整性问题。</p>
+            )}
+          </div>
+        </div>
+      </section>
+
       {series.length ? (
         <section className="space-y-4">
           <SectionHeading icon={TrendingUp} title="运行趋势" />
@@ -271,6 +380,11 @@ export function PerformanceAnalysisReport({
                 {recommendation.verification ? (
                   <p className="mt-2 text-muted-foreground text-xs">验证：{recommendation.verification}</p>
                 ) : null}
+                {recommendation.acceptance_criteria?.length ? (
+                  <p className="mt-2 text-muted-foreground text-xs">
+                    验收：{recommendation.acceptance_criteria.join("；")}
+                  </p>
+                ) : null}
               </div>
             </div>
           ))}
@@ -344,6 +458,28 @@ function ObjectiveStatus({ status }: { status: string }) {
   return <Badge variant="outline">未判断</Badge>;
 }
 
+function StageStatus({ status }: { status?: string }) {
+  if (status === "degraded") return <Badge variant="destructive">退化</Badge>;
+  if (status === "stable") return <Badge variant="secondary">稳定</Badge>;
+  return <Badge variant="outline">证据不足</Badge>;
+}
+
+function failureKindLabel(value: string) {
+  return (
+    (
+      {
+        timeout: "超时",
+        connection_error: "连接错误",
+        assertion_failure: "断言失败",
+        rate_limit: "限流",
+        http_4xx: "HTTP 4xx",
+        http_5xx: "HTTP 5xx",
+        unknown: "未知错误",
+      } as Record<string, string>
+    )[value] ?? value
+  );
+}
+
 function verdictLabel(value: string) {
   return (
     { pass: "通过", conditional_pass: "有条件通过", fail: "不通过", indeterminate: "无法判断" }[value] ?? "无法判断"
@@ -352,6 +488,22 @@ function verdictLabel(value: string) {
 
 function qualityLabel(value?: string) {
   return { complete: "完整", partial: "部分可用", invalid: "无效" }[value ?? ""] ?? "未知";
+}
+
+function validityIssueLabel(value: string) {
+  return (
+    (
+      {
+        run_manually_stopped: "由测试人员手动停止，实际指标仅覆盖停止前的运行窗口",
+        run_terminal_status: "运行未正常完成",
+        time_series_missing: "缺少时序采样",
+        p95_response_time_missing: "缺少 P95 响应时间",
+        too_few_time_series_samples: "时序样本数量偏少",
+        load_stage_missing: "缺少负载阶段配置",
+        measurement_window_contains_no_requests: "测量窗口内没有请求",
+      } as Record<string, string>
+    )[value] ?? value
+  );
 }
 
 function metricLabel(value: string) {
