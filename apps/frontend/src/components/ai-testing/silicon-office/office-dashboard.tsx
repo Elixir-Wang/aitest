@@ -67,11 +67,11 @@ const DETAIL_PORTRAITS: Partial<Record<string, string>> = {
   "sun-na": `${ASSET_ROOT}/portraits/female-yujie-red.png`,
   "zheng-kai": `${ASSET_ROOT}/portraits/male-handsome-camel.png`,
   "tang-yu": `${ASSET_ROOT}/portraits/male-handsome-charcoal.png`,
-  "lin-yue": `${ASSET_ROOT}/portraits/male-handsome-green.png`,
+  "lin-yue": `${ASSET_ROOT}/portraits/female-yujie-plum.png`,
   "peng-yu": `${ASSET_ROOT}/portraits/male-handsome-camel.png`,
   "xu-jing": `${ASSET_ROOT}/portraits/female-yujie-emerald.png`,
   "yang-fan": `${ASSET_ROOT}/portraits/male-handsome-green.png`,
-  "he-li": `${ASSET_ROOT}/portraits/female-yujie-plum.png`,
+  "he-li": `${ASSET_ROOT}/portraits/male-handsome-green.png`,
   ceo: `${ASSET_ROOT}/portraits/ceo-wang-avatar.png`,
 };
 
@@ -124,7 +124,7 @@ const EMPLOYEES: OfficeEmployee[] = [
     "运行监控",
     "日志分析",
   ]),
-  employee("lin-yue", "林悦", "数据分析师", "operations", "04-02", "running", "male-gray", 69, 35, [
+  employee("lin-yue", "林悦", "数据分析师", "operations", "04-02", "running", "female-cream", 69, 35, [
     "数据分析",
     "质量洞察",
   ]),
@@ -140,10 +140,7 @@ const EMPLOYEES: OfficeEmployee[] = [
     "知识检索",
     "RAG",
   ]),
-  employee("he-li", "何立", "算法工程师", "ai-center", "05-03", "idle", "female-cream", 31, 69, [
-    "模型路由",
-    "智能分析",
-  ]),
+  employee("he-li", "何立", "算法工程师", "ai-center", "05-03", "idle", "male-white", 31, 69, ["模型路由", "智能分析"]),
   employee("ceo", "王总", "AI 测试负责人", "ceo", "CEO-01", "running", "male-gray", 50, 72, ["战略规划", "团队管理"]),
 ];
 

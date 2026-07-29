@@ -81,3 +81,9 @@ apps/backend/data/codex-*-probe-*/
 apps/backend/data/**/codex-work/
 apps/backend/data/**/.codex-home/
 apps/backend/data/projects/**/knowledge/agentic-search/
+
+# Backend local diagnostics and temporary artifacts
+apps/backend/conversation_history/
+apps/backend/large_tool_results/
+apps/backend/tmp/
+apps/backend/service-baseline*.json
