@@ -1,22 +1,81 @@
 pages:
+  page-agentStore.yaml:
+    display_name: agentStore
+    breadcrumb:
+    - agentStore
+    structure_summary: 发现 0 个元素
+    run_id: exp_0x7w65xtPTAv4HxCNvZ8zA
+    captured_at: '2026-07-29T10:32:31.117601Z'
+  page-resource.yaml:
+    display_name: resource
+    breadcrumb:
+    - resource
+    structure_summary: 发现 0 个元素
+    run_id: exp_0x7w65xtPTAv4HxCNvZ8zA
+    captured_at: '2026-07-29T10:32:31.453051Z'
+  page-observability.yaml:
+    display_name: observability
+    breadcrumb:
+    - observability
+    structure_summary: 发现 0 个元素
+    run_id: exp_0x7w65xtPTAv4HxCNvZ8zA
+    captured_at: '2026-07-29T10:32:31.366139Z'
+  page-homeland.yaml:
+    display_name: homeland
+    breadcrumb:
+    - homeland
+    structure_summary: 发现 0 个元素
+    run_id: exp_0x7w65xtPTAv4HxCNvZ8zA
+    captured_at: '2026-07-29T10:32:31.300984Z'
+  page-agentStore-agentDetails.yaml:
+    display_name: agentDetails
+    breadcrumb:
+    - agentStore
+    - agentDetails
+    structure_summary: 发现 0 个元素
+    run_id: exp_0x7w65xtPTAv4HxCNvZ8zA
+    captured_at: '2026-07-29T10:32:31.065335Z'
+  page-docCenter-manual-87.yaml:
+    display_name: '87'
+    breadcrumb:
+    - docCenter
+    - manual
+    - '87'
+    structure_summary: 发现 0 个元素
+    run_id: exp_0x7w65xtPTAv4HxCNvZ8zA
+    captured_at: '2026-07-29T10:32:31.269879Z'
+  page-agentEvaluation.yaml:
+    display_name: agentEvaluation
+    breadcrumb:
+    - agentEvaluation
+    structure_summary: 发现 0 个元素
+    run_id: exp_0x7w65xtPTAv4HxCNvZ8zA
+    captured_at: '2026-07-29T10:32:31.038247Z'
+  page-batchTask.yaml:
+    display_name: batchTask
+    breadcrumb:
+    - batchTask
+    structure_summary: 发现 0 个元素
+    run_id: exp_0x7w65xtPTAv4HxCNvZ8zA
+    captured_at: '2026-07-29T10:32:31.236412Z'
   page-workspace.yaml:
     display_name: workspace
     breadcrumb:
     - workspace
-    structure_summary: 发现 13 个元素
-    run_id: exp_AEF5tx0X9WHsIXTDDzdQuA
-    captured_at: '2026-07-24T08:28:26.024264Z'
-  page-botSetting.yaml:
-    display_name: botSetting
+    structure_summary: 发现 0 个元素
+    run_id: exp_0x7w65xtPTAv4HxCNvZ8zA
+    captured_at: '2026-07-29T10:32:31.495232Z'
+  page-autoTuning.yaml:
+    display_name: autoTuning
     breadcrumb:
-    - botSetting
-    structure_summary: 发现 23 个元素
-    run_id: exp_AEF5tx0X9WHsIXTDDzdQuA
-    captured_at: '2026-07-24T08:28:26.017818Z'
-  page-agentRelease.yaml:
-    display_name: agentRelease
+    - autoTuning
+    structure_summary: 发现 0 个元素
+    run_id: exp_0x7w65xtPTAv4HxCNvZ8zA
+    captured_at: '2026-07-29T10:32:31.207113Z'
+  page-publishManage.yaml:
+    display_name: publishManage
     breadcrumb:
-    - agentRelease
-    structure_summary: 发现 18 个元素
-    run_id: exp_AEF5tx0X9WHsIXTDDzdQuA
-    captured_at: '2026-07-24T08:28:26.011546Z'
+    - publishManage
+    structure_summary: 发现 0 个元素
+    run_id: exp_0x7w65xtPTAv4HxCNvZ8zA
+    captured_at: '2026-07-29T10:32:31.416597Z'

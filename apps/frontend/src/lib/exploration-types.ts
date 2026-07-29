@@ -157,6 +157,45 @@ export type ExplorationReport = {
   unsupported_reason: string;
 };
 
+export type ExplorationCoverageView = {
+  schema_version: string;
+  summary: {
+    pages_discovered: number;
+    pages_completed: number;
+    states_discovered: number;
+    states_completed: number;
+    actions_discovered: number;
+    actions_completed: number;
+    actions_pending: number;
+    actions_blocked: number;
+    actions_failed: number;
+  };
+  resume: {
+    available: boolean;
+    run_id: string;
+    state_key: string;
+    page_id: string;
+    next_action: {
+      element_key: string;
+      action_type: string;
+      state_key: string;
+      page_id: string;
+    } | null;
+  };
+  pages: Array<{
+    page_id: string;
+    path: string;
+    status: "completed" | "partial";
+    states: Array<{ state_key: string; status: string }>;
+    actions: Array<{
+      element_key: string;
+      action_type: string;
+      state_key: string;
+      status: "completed" | "pending" | "blocked" | "failed";
+    }>;
+  }>;
+};
+
 export type ExplorationStreamEvent = {
   event_id?: number;
   type: string;

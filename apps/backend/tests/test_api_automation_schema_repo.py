@@ -12,7 +12,7 @@ from app.core.db import connect
 from app.repositories import api_automation_repo
 from app.seed.init_db import init_db
 from app.schemas.api_automation import ApiAutomationGenerateIn, ApiRunCreateIn, ApiTestCaseSetIn, ApiTestCaseSetOut
-from app.seed.seeds import _ensure_api_generation_batch_structure
+from app.seed.seeds import _assert_foreign_key_integrity
 from app.services.api_automation import service
 
 
@@ -313,7 +313,7 @@ def test_existing_database_adds_generation_batch_structure_without_losing_cases(
     assert "partial_success" in run_sql
 
 
-def test_generation_batch_migration_rejects_foreign_key_violations(
+def test_system_migration_integrity_check_rejects_foreign_key_violations(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     _use_temp_db(monkeypatch, tmp_path)
@@ -329,7 +329,7 @@ def test_generation_batch_migration_rejects_foreign_key_violations(
     raw_db.execute("PRAGMA foreign_keys = ON")
 
     with pytest.raises(RuntimeError, match="Foreign key violations remain"):
-        _ensure_api_generation_batch_structure(raw_db)
+        _assert_foreign_key_integrity(raw_db)
 
     raw_db.close()
 

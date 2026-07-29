@@ -1,0 +1,1090 @@
+schema_version: '4.0'
+page:
+  id: page-agentStore-agentDetails
+  title: 百融百工
+  normalized_path: /agentStore/agentDetails
+objects:
+- key: agentStore-agentDetails
+  type: page
+  name: 百融百工
+states:
+- id: page-agentStore-agentDetails__root__001
+  type: root
+  object: agentStore-agentDetails
+elements:
+- key: button-创建智能体
+  object: agentStore-agentDetails
+  states:
+  - page-agentStore-agentDetails__root__001
+  role: button
+  name: 创建智能体
+  actions:
+  - click
+  locator:
+    strategy: role
+    role: button
+    name: 创建智能体
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div > div > div:nth-of-type(2) > button
+- key: clickable-探索广场
+  object: agentStore-agentDetails
+  states:
+  - page-agentStore-agentDetails__root__001
+  role: clickable
+  name: 探索广场
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: body > div:nth-of-type(1) > div > div > div > div:nth-of-type(1) > div
+      > div > div:nth-of-type(1)
+- key: clickable-批量任务
+  object: agentStore-agentDetails
+  states:
+  - page-agentStore-agentDetails__root__001
+  role: clickable
+  name: 批量任务
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 批量任务
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: aside > div > div > div:nth-of-type(4) > div > div > div:nth-of-type(2)
+      > div:nth-of-type(2)
+- key: clickable-hongbao.wang 所有者
+  object: agentStore-agentDetails
+  states:
+  - page-agentStore-agentDetails__root__001
+  role: clickable
+  name: hongbao.wang 所有者
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(4) > div > div > div:nth-of-type(3) > div:nth-of-type(1)
+      > div:nth-of-type(2) > div > div > div > div:nth-of-type(1)
+- key: clickable-工作台
+  object: agentStore-agentDetails
+  states:
+  - page-agentStore-agentDetails__root__001
+  role: clickable
+  name: 工作台
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 工作台
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(4) > div:nth-of-type(1)
+- key: clickable-资源库
+  object: agentStore-agentDetails
+  states:
+  - page-agentStore-agentDetails__root__001
+  role: clickable
+  name: 资源库
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 资源库
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(1) > div:nth-of-type(4) > div:nth-of-type(2)
+- key: clickable-效果评测
+  object: agentStore-agentDetails
+  states:
+  - page-agentStore-agentDetails__root__001
+  role: clickable
+  name: 效果评测
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 效果评测
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(4) > div:nth-of-type(3)
+- key: clickable-发布管理
+  object: agentStore-agentDetails
+  states:
+  - page-agentStore-agentDetails__root__001
+  role: clickable
+  name: 发布管理
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 发布管理
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(4) > div > div > div:nth-of-type(3) > div:nth-of-type(2)
+      > div:nth-of-type(2) > div:nth-of-type(1)
+- key: clickable-线上观测
+  object: agentStore-agentDetails
+  states:
+  - page-agentStore-agentDetails__root__001
+  role: clickable
+  name: 线上观测
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 线上观测
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(4) > div > div > div:nth-of-type(3) > div:nth-of-type(2)
+      > div:nth-of-type(2) > div:nth-of-type(2)
+- key: clickable-自动优化
+  object: agentStore-agentDetails
+  states:
+  - page-agentStore-agentDetails__root__001
+  role: clickable
+  name: 自动优化
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 自动优化
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(2) > div:nth-of-type(2) > div:nth-of-type(3)
+- key: clickable-空间管理
+  object: agentStore-agentDetails
+  states:
+  - page-agentStore-agentDetails__root__001
+  role: clickable
+  name: 空间管理
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 空间管理
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(4) > div > div > div:nth-of-type(3) > div:nth-of-type(3)
+      > div:nth-of-type(2) > div:nth-of-type(1)
+- key: clickable-文档中心
+  object: agentStore-agentDetails
+  states:
+  - page-agentStore-agentDetails__root__001
+  role: clickable
+  name: 文档中心
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 文档中心
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(4) > div > div > div:nth-of-type(3) > div:nth-of-type(3)
+      > div:nth-of-type(2) > div:nth-of-type(2)
+- key: clickable-收藏
+  object: agentStore-agentDetails
+  states:
+  - page-agentStore-agentDetails__root__001
+  role: clickable
+  name: 收藏
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 收藏
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: aside > div > div > div:nth-of-type(5) > div:nth-of-type(2)
+- key: clickable-点击【⭐️收藏】 可将智能体添加到这里
+  object: agentStore-agentDetails
+  states:
+  - page-agentStore-agentDetails__root__001
+  role: clickable
+  name: 点击【⭐️收藏】 可将智能体添加到这里
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(5) > div:nth-of-type(3) > div
+- key: clickable-hongbao-wang1
+  object: agentStore-agentDetails
+  states:
+  - page-agentStore-agentDetails__root__001
+  role: clickable
+  name: hongbao.wang1
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: hongbao.wang1
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: aside > div > div > div:nth-of-type(6) > div:nth-of-type(1) > div > div:nth-of-type(2)
+- key: textbox-搜索
+  object: agentStore-agentDetails
+  states:
+  - page-agentStore-agentDetails__root__001
+  role: textbox
+  name: 搜索
+  actions:
+  - fill
+  locator:
+    strategy: role
+    role: textbox
+    name: 搜索
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(1) > div > div > div > div:nth-of-type(1) > div > div >
+      div:nth-of-type(1) > div > div > input
+- key: clickable-结果即刻交付 首个聚焦结果交付的智能体平台，快速激活业务价值，使AI普惠千业万户
+  object: agentStore-agentDetails
+  states:
+  - page-agentStore-agentDetails__root__001
+  role: clickable
+  name: 结果即刻交付 首个聚焦结果交付的智能体平台，快速激活业务价值，使AI普惠千业万户
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: body > div:nth-of-type(1) > div > div > div > div:nth-of-type(1) > div
+      > div > div:nth-of-type(2) > div:nth-of-type(1) > div
+- key: clickable-全部 已订阅 最近使用 语言 选择语言 类型 全部 排序 按发布时间排序
+  object: agentStore-agentDetails
+  states:
+  - page-agentStore-agentDetails__root__001
+  role: clickable
+  name: 全部 已订阅 最近使用 语言 选择语言 类型 全部 排序 按发布时间排序
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: body > div:nth-of-type(1) > div > div > div > div:nth-of-type(1) > div
+      > div > div:nth-of-type(2) > div:nth-of-type(2) > div:nth-of-type(1)
+- key: clickable-全部
+  object: agentStore-agentDetails
+  states:
+  - page-agentStore-agentDetails__root__001
+  role: clickable
+  name: 全部
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(2)
+      > div > div > span:nth-of-type(2)
+- key: clickable-已订阅
+  object: agentStore-agentDetails
+  states:
+  - page-agentStore-agentDetails__root__001
+  role: clickable
+  name: 已订阅
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 已订阅
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(1) > div > div > div:nth-of-type(2) > div:nth-of-type(2)
+      > div:nth-of-type(1) > div:nth-of-type(1) > span:nth-of-type(2)
+- key: clickable-最近使用
+  object: agentStore-agentDetails
+  states:
+  - page-agentStore-agentDetails__root__001
+  role: clickable
+  name: 最近使用
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 最近使用
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(1) > span:nth-of-type(3)
+- key: clickable-语言 选择语言 类型 全部 排序 按发布时间排序
+  object: agentStore-agentDetails
+  states:
+  - page-agentStore-agentDetails__root__001
+  role: clickable
+  name: 语言 选择语言 类型 全部 排序 按发布时间排序
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(2) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(2)
+- key: clickable-语言 选择语言
+  object: agentStore-agentDetails
+  states:
+  - page-agentStore-agentDetails__root__001
+  role: clickable
+  name: 语言 选择语言
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 语言 选择语言
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(2) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(2)
+      > div:nth-of-type(1)
+- key: clickable-选择语言
+  object: agentStore-agentDetails
+  states:
+  - page-agentStore-agentDetails__root__001
+  role: clickable
+  name: 选择语言
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 选择语言
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1)
+      > div
+- key: clickable-类型 全部
+  object: agentStore-agentDetails
+  states:
+  - page-agentStore-agentDetails__root__001
+  role: clickable
+  name: 类型 全部
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(2) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(2)
+      > div:nth-of-type(2)
+- key: clickable-排序 按发布时间排序
+  object: agentStore-agentDetails
+  states:
+  - page-agentStore-agentDetails__root__001
+  role: clickable
+  name: 排序 按发布时间排序
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(3)
+- key: clickable-按发布时间排序
+  object: agentStore-agentDetails
+  states:
+  - page-agentStore-agentDetails__root__001
+  role: clickable
+  name: 按发布时间排序
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(3) > div > div > span:nth-of-type(2)
+- key: clickable-官方
+  object: agentStore-agentDetails
+  states:
+  - page-agentStore-agentDetails__root__001
+  role: clickable
+  name: 官方
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 官方
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(2)
+      > div:nth-of-type(1) > span
+- key: clickable-客服场景
+  object: agentStore-agentDetails
+  states:
+  - page-agentStore-agentDetails__root__001
+  role: clickable
+  name: 客服场景
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 客服场景
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(2) > div:nth-of-type(2) > div:nth-of-type(2) > span:nth-of-type(2)
+- key: clickable-营销场景
+  object: agentStore-agentDetails
+  states:
+  - page-agentStore-agentDetails__root__001
+  role: clickable
+  name: 营销场景
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 营销场景
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(2) > div:nth-of-type(2) > div:nth-of-type(2) > span:nth-of-type(3)
+- key: clickable-合规与风控
+  object: agentStore-agentDetails
+  states:
+  - page-agentStore-agentDetails__root__001
+  role: clickable
+  name: 合规与风控
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 合规与风控
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: span:nth-of-type(4)
+- key: clickable-金融业务
+  object: agentStore-agentDetails
+  states:
+  - page-agentStore-agentDetails__root__001
+  role: clickable
+  name: 金融业务
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 金融业务
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: span:nth-of-type(5)
+- key: clickable-保险场景
+  object: agentStore-agentDetails
+  states:
+  - page-agentStore-agentDetails__root__001
+  role: clickable
+  name: 保险场景
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 保险场景
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: span:nth-of-type(6)
+- key: clickable-产品服务
+  object: agentStore-agentDetails
+  states:
+  - page-agentStore-agentDetails__root__001
+  role: clickable
+  name: 产品服务
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 产品服务
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: span:nth-of-type(7)
+- key: clickable-零售场景
+  object: agentStore-agentDetails
+  states:
+  - page-agentStore-agentDetails__root__001
+  role: clickable
+  name: 零售场景
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 零售场景
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: span:nth-of-type(8)
+- key: clickable-人力资源
+  object: agentStore-agentDetails
+  states:
+  - page-agentStore-agentDetails__root__001
+  role: clickable
+  name: 人力资源
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 人力资源
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: span:nth-of-type(9)
+- key: clickable-报告生成
+  object: agentStore-agentDetails
+  states:
+  - page-agentStore-agentDetails__root__001
+  role: clickable
+  name: 报告生成
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 报告生成
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: span:nth-of-type(10)
+- key: clickable-其他
+  object: agentStore-agentDetails
+  states:
+  - page-agentStore-agentDetails__root__001
+  role: clickable
+  name: 其他
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 其他
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: span:nth-of-type(11)
+- key: clickable-智能面试 知识库 百融云创AI智能面试官，通过预设问题（如行为面试题、技术测试题）考察求职者的专业能力与综合素质。减少性别、年龄等主观因素影响，提升招聘公平性。根据回答内容生成量化评分，为HR提供候选人优先级排序。适用于校园招聘、大规模社会招聘及远程面试，尤其适合需要高效处理海量申请的岗位。化解时间协调难题，消除偏见，
+  object: agentStore-agentDetails
+  states:
+  - page-agentStore-agentDetails__root__001
+  role: clickable
+  name: 智能面试 知识库 百融云创AI智能面试官，通过预设问题（如行为面试题、技术测试题）考察求职者的专业能力与综合素质。减少性别、年龄等主观因素影响，提升招聘公平性。根据回答内容生成量化评分，为HR提供候选人优先级排序。适用于校园招聘、大规模社会招聘及远程面试，尤其适合需要高效处理海量申请的岗位。化解时间协调难题，消除偏见，
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: body > div:nth-of-type(1) > div > div > div > div:nth-of-type(1) > div
+      > div > div:nth-of-type(2) > div:nth-of-type(3) > div:nth-of-type(1)
+- key: clickable-智能面试 知识库
+  object: agentStore-agentDetails
+  states:
+  - page-agentStore-agentDetails__root__001
+  role: clickable
+  name: 智能面试 知识库
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(1) > div > div > div:nth-of-type(2) > div:nth-of-type(3)
+      > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1)
+- key: clickable-知识库
+  object: agentStore-agentDetails
+  states:
+  - page-agentStore-agentDetails__root__001
+  role: clickable
+  name: 知识库
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 知识库
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(6) > div:nth-of-type(2) > span
+- key: clickable-官方 744
+  object: agentStore-agentDetails
+  states:
+  - page-agentStore-agentDetails__root__001
+  role: clickable
+  name: 官方 744
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(2) > div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(2)
+- key: clickable-744
+  object: agentStore-agentDetails
+  states:
+  - page-agentStore-agentDetails__root__001
+  role: clickable
+  name: '744'
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: '744'
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(2)
+      > div
+- key: clickable-培训及考核 知识库 对话流 百融云创培训及考核智能助手，基于知识库数据，依托大模型语义理解与反馈以及评估分析能力，自动陪使用者进行个性化培训与考核。通过标准化内容与即时反馈，缩短周期、统一标准，适配多领域，提升培训规模化效率与质量，助力快速响应知识更新需求。
+    官方 213
+  object: agentStore-agentDetails
+  states:
+  - page-agentStore-agentDetails__root__001
+  role: clickable
+  name: 培训及考核 知识库 对话流 百融云创培训及考核智能助手，基于知识库数据，依托大模型语义理解与反馈以及评估分析能力，自动陪使用者进行个性化培训与考核。通过标准化内容与即时反馈，缩短周期、统一标准，适配多领域，提升培训规模化效率与质量，助力快速响应知识更新需求。
+    官方 213
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(2) > div:nth-of-type(3) > div:nth-of-type(2)
+- key: clickable-培训及考核 知识库 对话流
+  object: agentStore-agentDetails
+  states:
+  - page-agentStore-agentDetails__root__001
+  role: clickable
+  name: 培训及考核 知识库 对话流
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(2) > div:nth-of-type(3) > div:nth-of-type(2) > div:nth-of-type(1)
+      > div:nth-of-type(1)
+- key: clickable-知识库 对话流
+  object: agentStore-agentDetails
+  states:
+  - page-agentStore-agentDetails__root__001
+  role: clickable
+  name: 知识库 对话流
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(3) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1)
+      > div:nth-of-type(2) > div:nth-of-type(2)
+- key: clickable-官方 213
+  object: agentStore-agentDetails
+  states:
+  - page-agentStore-agentDetails__root__001
+  role: clickable
+  name: 官方 213
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(2) > div:nth-of-type(3) > div:nth-of-type(2) > div:nth-of-type(2)
+- key: clickable-213
+  object: agentStore-agentDetails
+  states:
+  - page-agentStore-agentDetails__root__001
+  role: clickable
+  name: '213'
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: '213'
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(2) > div:nth-of-type(3) > div:nth-of-type(2) > div:nth-of-type(2)
+      > div:nth-of-type(2) > div
+- key: clickable-年审报告 知识库 对话流 插件 百融云创年审报告助手。自动生成年审报告，省时精准，减少错误，助力中小企业高效合规。根据公司年报数据，自动生成年审报告，实现数据精准提取与报告结构化输出。智能解析年报中资产、负债、营业收入、营业成本、利润等关键信息，自动匹配年审指标要求，快速生成年审报告，助力企业高效完成年审流程，减少人为
+  object: agentStore-agentDetails
+  states:
+  - page-agentStore-agentDetails__root__001
+  role: clickable
+  name: 年审报告 知识库 对话流 插件 百融云创年审报告助手。自动生成年审报告，省时精准，减少错误，助力中小企业高效合规。根据公司年报数据，自动生成年审报告，实现数据精准提取与报告结构化输出。智能解析年报中资产、负债、营业收入、营业成本、利润等关键信息，自动匹配年审指标要求，快速生成年审报告，助力企业高效完成年审流程，减少人为
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(2) > div:nth-of-type(3) > div:nth-of-type(3)
+- key: clickable-年审报告 知识库 对话流 插件
+  object: agentStore-agentDetails
+  states:
+  - page-agentStore-agentDetails__root__001
+  role: clickable
+  name: 年审报告 知识库 对话流 插件
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(3) > div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(1)
+- key: clickable-知识库 对话流 插件
+  object: agentStore-agentDetails
+  states:
+  - page-agentStore-agentDetails__root__001
+  role: clickable
+  name: 知识库 对话流 插件
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2)
+      > div:nth-of-type(2)
+- key: clickable-官方 227
+  object: agentStore-agentDetails
+  states:
+  - page-agentStore-agentDetails__root__001
+  role: clickable
+  name: 官方 227
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(2) > div:nth-of-type(3) > div:nth-of-type(3) > div:nth-of-type(2)
+- key: textbox-请输入问题，按Shift+Enter换行
+  object: agentStore-agentDetails
+  states:
+  - page-agentStore-agentDetails__root__001
+  role: textbox
+  name: 请输入问题，按Shift+Enter换行
+  actions:
+  - fill
+  locator:
+    strategy: role
+    role: textbox
+    name: 请输入问题，按Shift+Enter换行
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(1) > div > textarea
+- key: clickable-智能面试 官方 发布于2025-12-17 15:20:49
+  object: agentStore-agentDetails
+  states:
+  - page-agentStore-agentDetails__root__001
+  role: clickable
+  name: 智能面试 官方 发布于2025-12-17 15:20:49
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(1) > div > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(2)
+      > div:nth-of-type(1) > div:nth-of-type(2)
+- key: clickable-官方 发布于2025-12-17 15:20:49
+  object: agentStore-agentDetails
+  states:
+  - page-agentStore-agentDetails__root__001
+  role: clickable
+  name: 官方 发布于2025-12-17 15:20:49
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(1) > div > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(2)
+      > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(2)
+- key: clickable-发布于2025-12-17 15:20:49
+  object: agentStore-agentDetails
+  states:
+  - page-agentStore-agentDetails__root__001
+  role: clickable
+  name: 发布于2025-12-17 15:20:49
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 发布于2025-12-17 15:20:49
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(2) > div:nth-of-type(2)
+      > span
+- key: clickable-0 次订阅 0 人使用 0 次对话
+  object: agentStore-agentDetails
+  states:
+  - page-agentStore-agentDetails__root__001
+  role: clickable
+  name: 0 次订阅 0 人使用 0 次对话
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(1) > div > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(2)
+      > div:nth-of-type(2)
+- key: clickable-0 次订阅
+  object: agentStore-agentDetails
+  states:
+  - page-agentStore-agentDetails__root__001
+  role: clickable
+  name: 0 次订阅
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(1) > div > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(2)
+      > div:nth-of-type(2) > div:nth-of-type(1)
+- key: clickable-0 人使用
+  object: agentStore-agentDetails
+  states:
+  - page-agentStore-agentDetails__root__001
+  role: clickable
+  name: 0 人使用
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(2) > div:nth-of-type(2) > div:nth-of-type(2) > div:nth-of-type(2)
+- key: clickable-0 次对话
+  object: agentStore-agentDetails
+  states:
+  - page-agentStore-agentDetails__root__001
+  role: clickable
+  name: 0 次对话
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(2) > div:nth-of-type(2) > div:nth-of-type(2) > div:nth-of-type(3)
+- key: button-订阅此Agent
+  object: agentStore-agentDetails
+  states:
+  - page-agentStore-agentDetails__root__001
+  role: button
+  name: 订阅此Agent
+  actions:
+  - click
+  locator:
+    strategy: role
+    role: button
+    name: 订阅此Agent
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(2) > div:nth-of-type(2) > button
+- key: clickable-智能面试 内容由AI生成 智能面试 官方 发布于2025-12-17 15:20:49 0 次订阅 0 人使用 0 次对话 简介：
+    百融云创AI智能面试官，通过预设问题（如行为面试题、技术测试题）考察求职者的专业能力与综合素质。减少性别、年龄等主观因素影响，提升招聘公平性。根据回答内容生成量化评分，为HR提供候选人优先
+  object: agentStore-agentDetails
+  states:
+  - page-agentStore-agentDetails__root__001
+  role: clickable
+  name: 智能面试 内容由AI生成 智能面试 官方 发布于2025-12-17 15:20:49 0 次订阅 0 人使用 0 次对话 简介： 百融云创AI智能面试官，通过预设问题（如行为面试题、技术测试题）考察求职者的专业能力与综合素质。减少性别、年龄等主观因素影响，提升招聘公平性。根据回答内容生成量化评分，为HR提供候选人优先
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: body > div:nth-of-type(1) > div > div:nth-of-type(1)
+- key: clickable-智能面试
+  object: agentStore-agentDetails
+  states:
+  - page-agentStore-agentDetails__root__001
+  role: clickable
+  name: 智能面试
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(1) > div > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(2)
+      > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1)
+- key: clickable-内容由AI生成 智能面试 官方 发布于2025-12-17 15:20:49 0 次订阅 0 人使用 0 次对话 简介： 百融云创AI智能面试官，通过预设问题（如行为面试题、技术测试题）考察求职者的专业能力与综合素质。减少性别、年龄等主观因素影响，提升招聘公平性。根据回答内容生成量化评分，为HR提供候选人优先级排序。适
+  object: agentStore-agentDetails
+  states:
+  - page-agentStore-agentDetails__root__001
+  role: clickable
+  name: 内容由AI生成 智能面试 官方 发布于2025-12-17 15:20:49 0 次订阅 0 人使用 0 次对话 简介： 百融云创AI智能面试官，通过预设问题（如行为面试题、技术测试题）考察求职者的专业能力与综合素质。减少性别、年龄等主观因素影响，提升招聘公平性。根据回答内容生成量化评分，为HR提供候选人优先级排序。适
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: body > div:nth-of-type(1) > div > div:nth-of-type(1) > div:nth-of-type(2)
+- key: clickable-内容由AI生成
+  object: agentStore-agentDetails
+  states:
+  - page-agentStore-agentDetails__root__001
+  role: clickable
+  name: 内容由AI生成
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(2) > div:nth-of-type(1) > div > div:nth-of-type(4)
+- key: clickable-智能面试 官方 发布于2025-12-17 15:20:49 0 次订阅 0 人使用 0 次对话 简介： 百融云创AI智能面试官，通过预设问题（如行为面试题、技术测试题）考察求职者的专业能力与综合素质。减少性别、年龄等主观因素影响，提升招聘公平性。根据回答内容生成量化评分，为HR提供候选人优先级排序。适用于校园招聘、大
+  object: agentStore-agentDetails
+  states:
+  - page-agentStore-agentDetails__root__001
+  role: clickable
+  name: 智能面试 官方 发布于2025-12-17 15:20:49 0 次订阅 0 人使用 0 次对话 简介： 百融云创AI智能面试官，通过预设问题（如行为面试题、技术测试题）考察求职者的专业能力与综合素质。减少性别、年龄等主观因素影响，提升招聘公平性。根据回答内容生成量化评分，为HR提供候选人优先级排序。适用于校园招聘、大
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: body > div:nth-of-type(1) > div > div:nth-of-type(1) > div:nth-of-type(2)
+      > div:nth-of-type(2)
+- key: clickable-0
+  object: agentStore-agentDetails
+  states:
+  - page-agentStore-agentDetails__root__001
+  role: clickable
+  name: '0'
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(3) > span:nth-of-type(1)
+- key: clickable-次订阅
+  object: agentStore-agentDetails
+  states:
+  - page-agentStore-agentDetails__root__001
+  role: clickable
+  name: 次订阅
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 次订阅
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(1) > span:nth-of-type(2)
+- key: clickable-人使用
+  object: agentStore-agentDetails
+  states:
+  - page-agentStore-agentDetails__root__001
+  role: clickable
+  name: 人使用
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 人使用
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(2) > span:nth-of-type(2)
+- key: clickable-次对话
+  object: agentStore-agentDetails
+  states:
+  - page-agentStore-agentDetails__root__001
+  role: clickable
+  name: 次对话
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 次对话
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(3) > span:nth-of-type(2)
+- key: clickable-简介： 百融云创AI智能面试官，通过预设问题（如行为面试题、技术测试题）考察求职者的专业能力与综合素质。减少性别、年龄等主观因素影响，提升招聘公平性。根据回答内容生成量化评分，为HR提供候选人优先级排序。适用于校园招聘、大规模社会招聘及远程面试，尤其适合需要高效处理海量申请的岗位。化解时间协调难题，消除偏见，实时反馈提
+  object: agentStore-agentDetails
+  states:
+  - page-agentStore-agentDetails__root__001
+  role: clickable
+  name: 简介： 百融云创AI智能面试官，通过预设问题（如行为面试题、技术测试题）考察求职者的专业能力与综合素质。减少性别、年龄等主观因素影响，提升招聘公平性。根据回答内容生成量化评分，为HR提供候选人优先级排序。适用于校园招聘、大规模社会招聘及远程面试，尤其适合需要高效处理海量申请的岗位。化解时间协调难题，消除偏见，实时反馈提
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(2) > div:nth-of-type(4)
+- key: clickable-简介：
+  object: agentStore-agentDetails
+  states:
+  - page-agentStore-agentDetails__root__001
+  role: clickable
+  name: 简介：
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 简介：
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(2) > div:nth-of-type(4) > div:nth-of-type(1)
+- key: clickable-百融云创AI智能面试官，通过预设问题（如行为面试题、技术测试题）考察求职者的专业能力与综合素质。减少性别、年龄等主观因素影响，提升招聘公平性。根据回答内容生成量化评分，为HR提供候选人优先级排序。适用于校园招聘、大规模社会招聘及远程面试，尤其适合需要高效处理海量申请的岗位。化解时间协调难题，消除偏见，实时反馈提升效率，
+  object: agentStore-agentDetails
+  states:
+  - page-agentStore-agentDetails__root__001
+  role: clickable
+  name: 百融云创AI智能面试官，通过预设问题（如行为面试题、技术测试题）考察求职者的专业能力与综合素质。减少性别、年龄等主观因素影响，提升招聘公平性。根据回答内容生成量化评分，为HR提供候选人优先级排序。适用于校园招聘、大规模社会招聘及远程面试，尤其适合需要高效处理海量申请的岗位。化解时间协调难题，消除偏见，实时反馈提升效率，
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(2) > div:nth-of-type(4) > div:nth-of-type(2)
+- key: clickable-模型： LLM_Fix_Large_MutiLingual_Chat
+  object: agentStore-agentDetails
+  states:
+  - page-agentStore-agentDetails__root__001
+  role: clickable
+  name: 模型： LLM_Fix_Large_MutiLingual_Chat
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(2) > div:nth-of-type(5)
+- key: clickable-模型：
+  object: agentStore-agentDetails
+  states:
+  - page-agentStore-agentDetails__root__001
+  role: clickable
+  name: 模型：
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 模型：
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(2) > div:nth-of-type(5) > div:nth-of-type(1)
+- key: clickable-llm-fix-large-mutilingual-chat
+  object: agentStore-agentDetails
+  states:
+  - page-agentStore-agentDetails__root__001
+  role: clickable
+  name: LLM_Fix_Large_MutiLingual_Chat
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: LLM_Fix_Large_MutiLingual_Chat
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(2) > div:nth-of-type(5) > div:nth-of-type(2)
+- key: clickable-资源： 知识库
+  object: agentStore-agentDetails
+  states:
+  - page-agentStore-agentDetails__root__001
+  role: clickable
+  name: 资源： 知识库
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(2) > div:nth-of-type(6)
+- key: clickable-资源：
+  object: agentStore-agentDetails
+  states:
+  - page-agentStore-agentDetails__root__001
+  role: clickable
+  name: 资源：
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 资源：
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(2) > div:nth-of-type(6) > div:nth-of-type(1)
+- key: clickable-订阅此Agent
+  object: agentStore-agentDetails
+  states:
+  - page-agentStore-agentDetails__root__001
+  role: clickable
+  name: 订阅此Agent
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 订阅此Agent
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(2) > div:nth-of-type(2) > button > span
+quality:
+  status: complete

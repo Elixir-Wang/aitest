@@ -10,7 +10,7 @@ from typing import Any
 import yaml
 
 
-_MERGE_COLLECTIONS = ("regions", "elements", "states", "interactions", "blockers")
+_MERGE_COLLECTIONS = ("objects", "states", "elements", "collections", "transitions")
 
 
 def merge_page_delta(base: dict[str, Any], delta: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
@@ -53,8 +53,9 @@ def merge_page_delta(base: dict[str, Any], delta: dict[str, Any]) -> tuple[dict[
             else:
                 conflicts.append({"collection": collection, "stable_key": key, "reason": "fact_conflict", "base": existing, "delta": item})
 
-    history = result.setdefault("merge_history", [])
-    history.append({"delta_run_id": delta.get("run_id", ""), "added": added, "updated": updated, "duplicate": duplicate, "conflict_count": len(conflicts)})
+    result.pop("merge_history", None)
+    if isinstance(delta.get("quality"), dict):
+        result["quality"] = deepcopy(delta["quality"])
     status = "conflict" if conflicts else "merged"
     return result, {"status": status, "added": added, "updated": updated, "duplicate": duplicate, "conflicts": conflicts}
 
@@ -105,17 +106,17 @@ def merge_goal_run_artifacts(project_root: Path, project_id: str, run_id: str) -
 def _same_page_identity(base: dict[str, Any], delta: dict[str, Any]) -> bool:
     base_page = base.get("page") if isinstance(base.get("page"), dict) else base
     delta_page = delta.get("page") if isinstance(delta.get("page"), dict) else delta
-    base_key = base_page.get("identity_key") or base_page.get("page_id") or base_page.get("canonical_path")
-    delta_key = delta_page.get("identity_key") or delta_page.get("page_id") or delta_page.get("canonical_path")
+    base_key = base_page.get("id") or base_page.get("normalized_path")
+    delta_key = delta_page.get("id") or delta_page.get("normalized_path")
     return not base_key or not delta_key or base_key == delta_key
 
 
 def _stable_key(item: dict[str, Any]) -> str:
-    return str(item.get("stable_key") or item.get("id") or item.get("element_id") or item.get("state_signature") or "").strip()
+    return str(item.get("key") or item.get("id") or "").strip()
 
 
 def _compatible(base: dict[str, Any], delta: dict[str, Any]) -> bool:
-    for key in ("page_id", "region_id", "state_signature", "role"):
+    for key in ("id", "key", "role", "type", "from_state", "action", "target"):
         if base.get(key) and delta.get(key) and base[key] != delta[key]:
             return False
     return True

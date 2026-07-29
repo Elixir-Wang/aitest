@@ -50,6 +50,7 @@ class SnapshotResult(BaseModel):
     elements: list[ElementInfo]
     accessibility_tree: list[AccessibilityNodeInfo] = []
     visible_text_blocks: list[str] = []
+    collections: list[dict[str, Any]] = []
     page_text_summary: str = ""
     state_signature: str = ""
     error: str | None = None

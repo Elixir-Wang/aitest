@@ -358,11 +358,12 @@ export function ExplorationRunCreatePage({
   const maxPages = parsePositiveInteger(form.maxPages);
   const maxActions = parsePositiveInteger(form.maxActions);
   const timeoutMinutes = parsePositiveInteger(form.timeoutMinutes);
+  const usesPlatformSafetyLimits = form.explorationMode === "loop";
   const canCreate =
     selectedProjectId.length > 0 &&
     form.title.trim().length > 0 &&
     form.environmentId.length > 0 &&
-    Boolean(maxPages && maxActions && timeoutMinutes);
+    (usesPlatformSafetyLimits || Boolean(maxPages && maxActions && timeoutMinutes));
   const canSubmit = canCreate && !runLoading;
   const backHref =
     isEditing && runId
@@ -425,8 +426,10 @@ export function ExplorationRunCreatePage({
   }, [form.explorationMode, form.goal, selectedProjectId]);
 
   async function saveExplorationRun() {
-    if (!canSubmit || !maxPages || !maxActions || !timeoutMinutes) {
-      toast.error("请填写任务名称、项目、环境和大于 0 的执行边界");
+    if (!canSubmit || (!usesPlatformSafetyLimits && (!maxPages || !maxActions || !timeoutMinutes))) {
+      toast.error(
+        usesPlatformSafetyLimits ? "请填写任务名称、项目和环境" : "请填写任务名称、项目、环境和大于 0 的执行边界",
+      );
       return;
     }
 
@@ -441,9 +444,9 @@ export function ExplorationRunCreatePage({
         forbidden_paths: form.forbiddenPaths,
         goal: form.goal,
         notes: form.notes,
-        max_pages: maxPages,
-        max_actions: maxActions,
-        timeout_minutes: timeoutMinutes,
+        max_pages: usesPlatformSafetyLimits ? 50 : maxPages,
+        max_actions: usesPlatformSafetyLimits ? 1000 : maxActions,
+        timeout_minutes: usesPlatformSafetyLimits ? 120 : timeoutMinutes,
       };
 
       if (isEditing && runId) {
@@ -483,8 +486,8 @@ export function ExplorationRunCreatePage({
       breadcrumbs={pageBreadcrumbs}
       description={
         isEditing
-          ? "调整页面探索任务的目标、范围、环境和执行边界。"
-          : "配置目标、范围、环境和执行边界后创建页面探索任务。"
+          ? "调整页面探索任务的目标、范围和运行环境。"
+          : "配置目标、范围和运行环境后创建页面探索任务。"
       }
       projectScope={projectScope}
       title={isEditing ? "编辑探索任务" : "新建探索任务"}
@@ -727,47 +730,49 @@ export function ExplorationRunCreatePage({
                   value={form.notes}
                 />
               </Field>
-              <Field className="md:col-span-2">
-                <FieldLabel>执行边界 *</FieldLabel>
-                <div className="grid gap-3 sm:grid-cols-3">
-                  <label className="grid gap-1.5 text-sm" htmlFor="exploration-max-pages">
-                    <span className="text-muted-foreground text-xs">页面上限</span>
-                    <Input
-                      id="exploration-max-pages"
-                      inputMode="numeric"
-                      min={1}
-                      onChange={(event) => setForm((current) => ({ ...current, maxPages: event.target.value }))}
-                      placeholder="50"
-                      type="number"
-                      value={form.maxPages}
-                    />
-                  </label>
-                  <label className="grid gap-1.5 text-sm" htmlFor="exploration-max-actions">
-                    <span className="text-muted-foreground text-xs">操作上限</span>
-                    <Input
-                      id="exploration-max-actions"
-                      inputMode="numeric"
-                      min={1}
-                      onChange={(event) => setForm((current) => ({ ...current, maxActions: event.target.value }))}
-                      placeholder="1000"
-                      type="number"
-                      value={form.maxActions}
-                    />
-                  </label>
-                  <label className="grid gap-1.5 text-sm" htmlFor="exploration-timeout-minutes">
-                    <span className="text-muted-foreground text-xs">超时时间（分钟）</span>
-                    <Input
-                      id="exploration-timeout-minutes"
-                      inputMode="numeric"
-                      min={1}
-                      onChange={(event) => setForm((current) => ({ ...current, timeoutMinutes: event.target.value }))}
-                      placeholder="120"
-                      type="number"
-                      value={form.timeoutMinutes}
-                    />
-                  </label>
-                </div>
-              </Field>
+              {form.explorationMode !== "loop" && (
+                <Field className="md:col-span-2">
+                  <FieldLabel>执行边界 *</FieldLabel>
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    <label className="grid gap-1.5 text-sm" htmlFor="exploration-max-pages">
+                      <span className="text-muted-foreground text-xs">页面上限</span>
+                      <Input
+                        id="exploration-max-pages"
+                        inputMode="numeric"
+                        min={1}
+                        onChange={(event) => setForm((current) => ({ ...current, maxPages: event.target.value }))}
+                        placeholder="50"
+                        type="number"
+                        value={form.maxPages}
+                      />
+                    </label>
+                    <label className="grid gap-1.5 text-sm" htmlFor="exploration-max-actions">
+                      <span className="text-muted-foreground text-xs">操作上限</span>
+                      <Input
+                        id="exploration-max-actions"
+                        inputMode="numeric"
+                        min={1}
+                        onChange={(event) => setForm((current) => ({ ...current, maxActions: event.target.value }))}
+                        placeholder="1000"
+                        type="number"
+                        value={form.maxActions}
+                      />
+                    </label>
+                    <label className="grid gap-1.5 text-sm" htmlFor="exploration-timeout-minutes">
+                      <span className="text-muted-foreground text-xs">超时时间（分钟）</span>
+                      <Input
+                        id="exploration-timeout-minutes"
+                        inputMode="numeric"
+                        min={1}
+                        onChange={(event) => setForm((current) => ({ ...current, timeoutMinutes: event.target.value }))}
+                        placeholder="120"
+                        type="number"
+                        value={form.timeoutMinutes}
+                      />
+                    </label>
+                  </div>
+                </Field>
+              )}
             </FieldGroup>
           )}
         </ShellSection>

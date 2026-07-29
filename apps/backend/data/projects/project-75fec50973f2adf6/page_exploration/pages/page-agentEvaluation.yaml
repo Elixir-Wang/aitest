@@ -1,0 +1,555 @@
+schema_version: '4.0'
+page:
+  id: page-agentEvaluation
+  title: 百融百工
+  normalized_path: /agentEvaluation
+objects:
+- key: agentEvaluation
+  type: page
+  name: 百融百工
+states:
+- id: page-agentEvaluation__root__001
+  type: root
+  object: agentEvaluation
+elements:
+- key: button-创建智能体
+  object: agentEvaluation
+  states:
+  - page-agentEvaluation__root__001
+  role: button
+  name: 创建智能体
+  actions:
+  - click
+  locator:
+    strategy: role
+    role: button
+    name: 创建智能体
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(2) > button
+- key: clickable-探索广场
+  object: agentEvaluation
+  states:
+  - page-agentEvaluation__root__001
+  role: clickable
+  name: 探索广场
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 探索广场
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(4) > div > div > div:nth-of-type(1) > div:nth-of-type(2)
+      > span
+- key: clickable-批量任务
+  object: agentEvaluation
+  states:
+  - page-agentEvaluation__root__001
+  role: clickable
+  name: 批量任务
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 批量任务
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(4) > div > div > div:nth-of-type(2) > div:nth-of-type(2)
+      > span
+- key: clickable-hongbao.wang 所有者
+  object: agentEvaluation
+  states:
+  - page-agentEvaluation__root__001
+  role: clickable
+  name: hongbao.wang 所有者
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(2)
+- key: clickable-工作台
+  object: agentEvaluation
+  states:
+  - page-agentEvaluation__root__001
+  role: clickable
+  name: 工作台
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 工作台
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(1) > div:nth-of-type(4) > div:nth-of-type(1) > span
+- key: clickable-资源库
+  object: agentEvaluation
+  states:
+  - page-agentEvaluation__root__001
+  role: clickable
+  name: 资源库
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 资源库
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(4) > div:nth-of-type(2) > span
+- key: clickable-效果评测
+  object: agentEvaluation
+  states:
+  - page-agentEvaluation__root__001
+  role: clickable
+  name: 效果评测
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(4) > div:nth-of-type(3) > span
+- key: clickable-发布管理
+  object: agentEvaluation
+  states:
+  - page-agentEvaluation__root__001
+  role: clickable
+  name: 发布管理
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 发布管理
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(2) > div:nth-of-type(2) > div:nth-of-type(1) > span
+- key: clickable-线上观测
+  object: agentEvaluation
+  states:
+  - page-agentEvaluation__root__001
+  role: clickable
+  name: 线上观测
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 线上观测
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(2) > div:nth-of-type(2) > div:nth-of-type(2) > span
+- key: clickable-自动优化
+  object: agentEvaluation
+  states:
+  - page-agentEvaluation__root__001
+  role: clickable
+  name: 自动优化
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 自动优化
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(2) > div:nth-of-type(2) > div:nth-of-type(3) > span
+- key: clickable-空间管理
+  object: agentEvaluation
+  states:
+  - page-agentEvaluation__root__001
+  role: clickable
+  name: 空间管理
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 空间管理
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(3) > div:nth-of-type(3) > div:nth-of-type(2) > div:nth-of-type(1)
+      > span
+- key: clickable-文档中心
+  object: agentEvaluation
+  states:
+  - page-agentEvaluation__root__001
+  role: clickable
+  name: 文档中心
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 文档中心
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(3) > div:nth-of-type(2) > div:nth-of-type(2) > span
+- key: clickable-收藏
+  object: agentEvaluation
+  states:
+  - page-agentEvaluation__root__001
+  role: clickable
+  name: 收藏
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 收藏
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div > div:nth-of-type(5) > div:nth-of-type(2) > div:nth-of-type(1)
+- key: clickable-点击【⭐️收藏】 可将智能体添加到这里
+  object: agentEvaluation
+  states:
+  - page-agentEvaluation__root__001
+  role: clickable
+  name: 点击【⭐️收藏】 可将智能体添加到这里
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(5) > div:nth-of-type(3)
+- key: clickable-hongbao-wang1
+  object: agentEvaluation
+  states:
+  - page-agentEvaluation__root__001
+  role: clickable
+  name: hongbao.wang1
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: hongbao.wang1
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(6) > div:nth-of-type(1) > div > div:nth-of-type(2)
+- key: clickable-效果评测 评测任务 评测集 评估器
+  object: agentEvaluation
+  states:
+  - page-agentEvaluation__root__001
+  role: clickable
+  name: 效果评测 评测任务 评测集 评估器
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: body > div:nth-of-type(1) > div > div > div > div > div > div > div:nth-of-type(1)
+- key: 'clickable-欢迎来到百融百工评测，让我们开始吧！ 第一步: 挑选评测对象 第二步: 上传评测数据 第三步: 定制评测规则 第四步: 查看评测结果
+    立即评测'
+  object: agentEvaluation
+  states:
+  - page-agentEvaluation__root__001
+  role: clickable
+  name: '欢迎来到百融百工评测，让我们开始吧！ 第一步: 挑选评测对象 第二步: 上传评测数据 第三步: 定制评测规则 第四步: 查看评测结果 立即评测'
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: body > div:nth-of-type(1) > div > div > div > div > div > div > div:nth-of-type(2)
+      > div > div > div
+- key: 'clickable-第一步: 挑选评测对象 第二步: 上传评测数据 第三步: 定制评测规则 第四步: 查看评测结果'
+  object: agentEvaluation
+  states:
+  - page-agentEvaluation__root__001
+  role: clickable
+  name: '第一步: 挑选评测对象 第二步: 上传评测数据 第三步: 定制评测规则 第四步: 查看评测结果'
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: ul
+- key: clickable-立即评测
+  object: agentEvaluation
+  states:
+  - page-agentEvaluation__root__001
+  role: clickable
+  name: 立即评测
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 立即评测
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div > div > div > div > div > div:nth-of-type(2) > div > div > div > div:nth-of-type(2)
+      > span
+- key: clickable-创建智能体 广场 探索广场 应用 批量任务 hongbao.wang 所有者 创作中心 工作台 资源库 效果评测 运行中心 发布管理
+    线上观测 自动优化 管理中心 空间管理 文档中心 收藏 点击【⭐️收藏】 可将智能体添加到这里 hongbao.wang1 效果评测 评测任务 评测集 评估器
+    欢迎来到百融百工评测，让我
+  object: agentEvaluation
+  states:
+  - page-agentEvaluation__root__001
+  role: clickable
+  name: 创建智能体 广场 探索广场 应用 批量任务 hongbao.wang 所有者 创作中心 工作台 资源库 效果评测 运行中心 发布管理 线上观测 自动优化
+    管理中心 空间管理 文档中心 收藏 点击【⭐️收藏】 可将智能体添加到这里 hongbao.wang1 效果评测 评测任务 评测集 评估器 欢迎来到百融百工评测，让我
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: body > div:nth-of-type(1) > div
+- key: clickable-创建智能体 广场 探索广场 应用 批量任务 hongbao.wang 所有者 创作中心 工作台 资源库 效果评测 运行中心 发布管理
+    线上观测 自动优化 管理中心 空间管理 文档中心 收藏 点击【⭐️收藏】 可将智能体添加到这里 hongbao.wang1
+  object: agentEvaluation
+  states:
+  - page-agentEvaluation__root__001
+  role: clickable
+  name: 创建智能体 广场 探索广场 应用 批量任务 hongbao.wang 所有者 创作中心 工作台 资源库 效果评测 运行中心 发布管理 线上观测 自动优化
+    管理中心 空间管理 文档中心 收藏 点击【⭐️收藏】 可将智能体添加到这里 hongbao.wang1
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: aside > div > div
+- key: clickable-创建智能体
+  object: agentEvaluation
+  states:
+  - page-agentEvaluation__root__001
+  role: clickable
+  name: 创建智能体
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(2) > button > span > span
+- key: clickable-广场 探索广场 应用 批量任务 hongbao.wang 所有者 创作中心 工作台 资源库 效果评测 运行中心 发布管理 线上观测
+    自动优化 管理中心 空间管理 文档中心
+  object: agentEvaluation
+  states:
+  - page-agentEvaluation__root__001
+  role: clickable
+  name: 广场 探索广场 应用 批量任务 hongbao.wang 所有者 创作中心 工作台 资源库 效果评测 运行中心 发布管理 线上观测 自动优化 管理中心
+    空间管理 文档中心
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: aside > div > div > div:nth-of-type(4) > div > div
+- key: clickable-广场 探索广场
+  object: agentEvaluation
+  states:
+  - page-agentEvaluation__root__001
+  role: clickable
+  name: 广场 探索广场
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: aside > div > div > div:nth-of-type(4) > div > div > div:nth-of-type(1)
+- key: clickable-广场
+  object: agentEvaluation
+  states:
+  - page-agentEvaluation__root__001
+  role: clickable
+  name: 广场
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 广场
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div > div:nth-of-type(4) > div > div > div:nth-of-type(1) > div:nth-of-type(1)
+- key: clickable-应用 批量任务
+  object: agentEvaluation
+  states:
+  - page-agentEvaluation__root__001
+  role: clickable
+  name: 应用 批量任务
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(4) > div > div > div:nth-of-type(2)
+- key: clickable-应用
+  object: agentEvaluation
+  states:
+  - page-agentEvaluation__root__001
+  role: clickable
+  name: 应用
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 应用
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(4) > div > div > div:nth-of-type(2) > div:nth-of-type(1)
+- key: clickable-hongbao.wang 所有者 创作中心 工作台 资源库 效果评测 运行中心 发布管理 线上观测 自动优化 管理中心 空间管理
+    文档中心
+  object: agentEvaluation
+  states:
+  - page-agentEvaluation__root__001
+  role: clickable
+  name: hongbao.wang 所有者 创作中心 工作台 资源库 效果评测 运行中心 发布管理 线上观测 自动优化 管理中心 空间管理 文档中心
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(4) > div > div > div:nth-of-type(3)
+- key: clickable-hongbao.wang 所有者 创作中心 工作台 资源库 效果评测
+  object: agentEvaluation
+  states:
+  - page-agentEvaluation__root__001
+  role: clickable
+  name: hongbao.wang 所有者 创作中心 工作台 资源库 效果评测
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(4) > div > div > div:nth-of-type(3) > div:nth-of-type(1)
+- key: clickable-hongbao-wang
+  object: agentEvaluation
+  states:
+  - page-agentEvaluation__root__001
+  role: clickable
+  name: hongbao.wang
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: hongbao.wang
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(2) > div > div
+      > div > div:nth-of-type(1) > span:nth-of-type(1)
+- key: clickable-所有者
+  object: agentEvaluation
+  states:
+  - page-agentEvaluation__root__001
+  role: clickable
+  name: 所有者
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 所有者
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(2) > div > div
+      > div > div:nth-of-type(1) > span:nth-of-type(2)
+- key: clickable-创作中心
+  object: agentEvaluation
+  states:
+  - page-agentEvaluation__root__001
+  role: clickable
+  name: 创作中心
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 创作中心
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(3)
+- key: clickable-工作台 资源库 效果评测
+  object: agentEvaluation
+  states:
+  - page-agentEvaluation__root__001
+  role: clickable
+  name: 工作台 资源库 效果评测
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(4)
+- key: clickable-运行中心 发布管理 线上观测 自动优化
+  object: agentEvaluation
+  states:
+  - page-agentEvaluation__root__001
+  role: clickable
+  name: 运行中心 发布管理 线上观测 自动优化
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(4) > div > div > div:nth-of-type(3) > div:nth-of-type(2)
+- key: clickable-运行中心
+  object: agentEvaluation
+  states:
+  - page-agentEvaluation__root__001
+  role: clickable
+  name: 运行中心
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 运行中心
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(4) > div > div > div:nth-of-type(3) > div:nth-of-type(2)
+      > div:nth-of-type(1)
+- key: clickable-发布管理 线上观测 自动优化
+  object: agentEvaluation
+  states:
+  - page-agentEvaluation__root__001
+  role: clickable
+  name: 发布管理 线上观测 自动优化
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(4) > div > div > div:nth-of-type(3) > div:nth-of-type(2)
+      > div:nth-of-type(2)
+- key: clickable-管理中心 空间管理 文档中心
+  object: agentEvaluation
+  states:
+  - page-agentEvaluation__root__001
+  role: clickable
+  name: 管理中心 空间管理 文档中心
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(3) > div:nth-of-type(3)
+- key: clickable-管理中心
+  object: agentEvaluation
+  states:
+  - page-agentEvaluation__root__001
+  role: clickable
+  name: 管理中心
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 管理中心
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(3) > div:nth-of-type(3) > div:nth-of-type(1)
+- key: clickable-空间管理 文档中心
+  object: agentEvaluation
+  states:
+  - page-agentEvaluation__root__001
+  role: clickable
+  name: 空间管理 文档中心
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(3) > div:nth-of-type(3) > div:nth-of-type(2)
+- key: clickable-收藏 点击【⭐️收藏】 可将智能体添加到这里
+  object: agentEvaluation
+  states:
+  - page-agentEvaluation__root__001
+  role: clickable
+  name: 收藏 点击【⭐️收藏】 可将智能体添加到这里
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: aside > div > div > div:nth-of-type(5)
+quality:
+  status: complete

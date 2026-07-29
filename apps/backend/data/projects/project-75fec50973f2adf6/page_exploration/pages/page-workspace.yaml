@@ -1,347 +1,568 @@
-schema_version: '3.0'
+schema_version: '4.0'
 page:
   id: page-workspace
   title: 百融百工
   normalized_path: /workspace
+objects:
+- key: workspace
+  type: page
+  name: 百融百工
 states:
 - id: page-workspace__root__001
   type: root
-  title: 百融百工
-  url: https://www.cybotstar.cn/workspace
-  elements:
-  - key: combobox-element-1
-    role: combobox
-    name: element-1
-    action: fill
-    locators:
-    - code: locator('div:nth-of-type(1) > div > div > form > div:nth-of-type(1) >
-        div:nth-of-type(2) > div > div > span:nth-of-type(1) > input')
-    context:
-      role: div
-      name: 请选择
-  - key: combobox-element-2
-    role: combobox
-    name: element-2
-    action: fill
-    locators:
-    - code: locator('div:nth-of-type(2) > div:nth-of-type(2) > div > div > span:nth-of-type(1)
-        > input')
-    context:
-      role: div
-      name: 请选择
-  - key: combobox-element-3
-    role: combobox
-    name: element-3
-    action: fill
-    locators:
-    - code: locator('div:nth-of-type(1) > div > div > form > div:nth-of-type(3) >
-        div:nth-of-type(2) > div > div > span:nth-of-type(1) > input')
-    context:
-      role: div
-      name: 请选择
-  - key: combobox-element-4
-    role: combobox
-    name: element-4
-    action: fill
-    locators:
-    - code: locator('div > div > div:nth-of-type(2) > div:nth-of-type(1) > div > div
-        > span:nth-of-type(1) > input')
-    context:
-      role: div
-      name: 选择排序方式
-  - key: clickable-ExploreBot_2026 已发布 分析 使用 对话历史 hongbao.wang1 编辑于 2026-07-23 10:43:23
-      自主规划 Agent
-    role: clickable
-    name: ExploreBot_2026 已发布 分析 使用 对话历史 hongbao.wang1 编辑于 2026-07-23 10:43:23 自主规划
-      Agent
-    action: click
-    locators:
-    - code: locator('body > div:nth-of-type(1) > div > div > div > div > div > div:nth-of-type(1)
-        > div > div:nth-of-type(3) > div > div > div > div > div:nth-of-type(1)')
-    context:
-      role: div
-      name: ExploreBot_2026 已发布 分析 使用 对话历史 hongbao.wang1 编辑于 2026-07-23 10:43:23 自主规划
-        Agent 对话流超长文本性能优化 草稿 编辑 发布 hongbao.wang1 编辑于 2
-  - key: clickable-已发布--in--explorebot-2026
-    role: clickable
-    name: 已发布
-    action: click
-    locators:
-    - code: locator('div:nth-of-type(3) > div > div > div > div > div:nth-of-type(1)
-        > div:nth-of-type(1) > div > div:nth-of-type(2) > div:nth-of-type(2)')
-    context:
-      ordinal: 1
-      role: div
-      name: ExploreBot_2026 已发布
-  - key: clickable-已发布--in--已发布
-    role: clickable
-    name: 已发布
-    action: click
-    locators:
-    - code: locator('div:nth-of-type(3) > div > div > div > div > div:nth-of-type(1)
-        > div:nth-of-type(1) > div > div:nth-of-type(2) > div:nth-of-type(2) > span')
-    context:
-      ordinal: 2
-      role: div
-      name: 已发布
-  - key: clickable-哈哈 已发布 分析 使用 对话历史 hongbao.wang1 编辑于 2026-07-15 16:25:40 自主规划 Agent
-    role: clickable
-    name: 哈哈 已发布 分析 使用 对话历史 hongbao.wang1 编辑于 2026-07-15 16:25:40 自主规划 Agent
-    action: click
-    locators:
-    - code: locator('div > div:nth-of-type(3) > div > div > div > div > div:nth-of-type(4)')
-    context:
-      role: div
-      name: ExploreBot_2026 已发布 分析 使用 对话历史 hongbao.wang1 编辑于 2026-07-23 10:43:23 自主规划
-        Agent 对话流超长文本性能优化 草稿 编辑 发布 hongbao.wang1 编辑于 2
-  - key: clickable-已发布--in--哈哈 已发布
-    role: clickable
-    name: 已发布
-    action: click
-    locators:
-    - code: locator('div > div > div > div:nth-of-type(4) > div:nth-of-type(1) > div
-        > div:nth-of-type(2) > div:nth-of-type(2)')
-    context:
-      ordinal: 3
-      role: div
-      name: 哈哈 已发布
-  - key: clickable-已发布--in--已发布-2
-    role: clickable
-    name: 已发布
-    action: click
-    locators:
-    - code: locator('div > div > div > div:nth-of-type(4) > div:nth-of-type(1) > div
-        > div:nth-of-type(2) > div:nth-of-type(2) > span')
-    context:
-      ordinal: 4
-      role: div
-      name: 已发布
-  - key: clickable-无插件智能体2 已发布 1 分析 使用 对话历史 hongbao.wang1 编辑于 2026-06-26 22:45:12
-      自主规划 Agent
-    role: clickable
-    name: 无插件智能体2 已发布 1 分析 使用 对话历史 hongbao.wang1 编辑于 2026-06-26 22:45:12 自主规划 Agent
-    action: click
-    locators:
-    - code: locator('div > div:nth-of-type(3) > div > div > div > div > div:nth-of-type(5)')
-    context:
-      role: div
-      name: ExploreBot_2026 已发布 分析 使用 对话历史 hongbao.wang1 编辑于 2026-07-23 10:43:23 自主规划
-        Agent 对话流超长文本性能优化 草稿 编辑 发布 hongbao.wang1 编辑于 2
-  - key: clickable-已发布--in--2
-    role: clickable
-    name: 已发布
-    action: click
-    locators:
-    - code: locator('div:nth-of-type(5) > div:nth-of-type(1) > div > div:nth-of-type(2)
-        > div:nth-of-type(2)')
-    context:
-      ordinal: 5
-      role: div
-      name: 无插件智能体2 已发布
-  - key: clickable-已发布--in--已发布-3
-    role: clickable
-    name: 已发布
-    action: click
-    locators:
-    - code: locator('div:nth-of-type(5) > div:nth-of-type(1) > div > div:nth-of-type(2)
-        > div:nth-of-type(2) > span')
-    context:
-      ordinal: 6
-      role: div
-      name: 已发布
-  assertion_texts:
-  - 百融百工
-  - ExploreBot_2026
-  - 已发布
-  - ExploreBot_2026 已发布 分析 使用 对话历史 hongbao.wang1 编辑于 2026-07-23 10:43:23 自主规划 Agent
-  - 哈哈 已发布 分析 使用 对话历史 hongbao.wang1 编辑于 2026-07-15 16:25:40 自主规划 Agent
-  - 无插件智能体2 已发布 1 分析 使用 对话历史 hongbao.wang1 编辑于 2026-06-26 22:45:12 自主规划 Agent
-  children:
-  - id: page-workspace__popover__c80197f4
-    type: popover
-    title: 百融百工
-    url: https://www.cybotstar.cn/workspace
-    elements:
-    - key: popover-创建智能体 自主规划 Agent 能够自主规划任务，适用于大部分场景 Multi-Agent 在一个智能体中设置多个Agent，以处理复杂任务
-        写作 Agent 通过创建模板，完成复杂写作内容生成 端到端语音 Agent（仅限定制） 毫秒级低延时，拟人化高表现力 任务流 Agent 面向自动化任务，通过流程编排实现任务
-      role: popover
-      name: 创建智能体 自主规划 Agent 能够自主规划任务，适用于大部分场景 Multi-Agent 在一个智能体中设置多个Agent，以处理复杂任务
-        写作 Agent 通过创建模板，完成复杂写作内容生成 端到端语音 Agent（仅限定制） 毫秒级低延时，拟人化高表现力 任务流 Agent 面向自动化任务，通过流程编排实现任务
-      action: click
-      locators:
-      - code: locator('div:nth-of-type(29) > div:nth-of-type(2)')
-      context:
-        role: div
-        name: 创建智能体 自主规划 Agent 能够自主规划任务，适用于大部分场景 Multi-Agent 在一个智能体中设置多个Agent，以处理复杂任务
-          写作 Agent 通过创建模板，完成复杂写作内容生成 端到端语音 Agent（仅限定制） 毫秒级
-    - key: clickable-自主规划 Agent 能够自主规划任务，适用于大部分场景
-      role: clickable
-      name: 自主规划 Agent 能够自主规划任务，适用于大部分场景
-      action: click
-      locators:
-      - code: locator('div:nth-of-type(2) > div > div > ul > li:nth-of-type(1)')
-      context:
-        role: popover
-        name: 创建智能体 自主规划 Agent 能够自主规划任务，适用于大部分场景 Multi-Agent 在一个智能体中设置多个Agent，以处理复杂任务
-          写作 Agent 通过创建模板，完成复杂写作内容生成 端到端语音 Agent（仅限定制） 毫秒级低延时，拟人化高表现力 任务流 Agent 面向自动化任务，通过流程编排实现任务
-    - key: button-创建智能体
-      role: button
-      name: 创建智能体
-      action: click
-      locators:
-      - code: 'getByRole(''button'', { name: ''创建智能体'' })'
-      - code: locator('div:nth-of-type(2) > button')
-      context:
-        role: div
-        name: 创建智能体
-    - key: combobox-element-4
-      role: combobox
-      name: element-4
-      action: fill
-      locators:
-      - code: locator('div:nth-of-type(1) > div > div > form > div:nth-of-type(1)
-          > div:nth-of-type(2) > div > div > span:nth-of-type(1) > input')
-      context:
-        role: div
-        name: 请选择
-    - key: combobox-element-5
-      role: combobox
-      name: element-5
-      action: fill
-      locators:
-      - code: locator('div:nth-of-type(2) > div:nth-of-type(2) > div > div > span:nth-of-type(1)
-          > input')
-      context:
-        role: div
-        name: 请选择
-    - key: combobox-element-6
-      role: combobox
-      name: element-6
-      action: fill
-      locators:
-      - code: locator('div:nth-of-type(1) > div > div > form > div:nth-of-type(3)
-          > div:nth-of-type(2) > div > div > span:nth-of-type(1) > input')
-      context:
-        role: div
-        name: 请选择
-    - key: combobox-element-7
-      role: combobox
-      name: element-7
-      action: fill
-      locators:
-      - code: locator('div > div > div:nth-of-type(2) > div:nth-of-type(1) > div >
-          div > span:nth-of-type(1) > input')
-      context:
-        role: div
-        name: 选择排序方式
-    - key: clickable-自主规划 Agent--in--hongbao-wang1-2026-07-22-15-19-02-agent
-      role: clickable
-      name: 自主规划 Agent
-      action: click
-      locators:
-      - code: locator('div:nth-of-type(3) > div > div > div > div > div:nth-of-type(1)
-          > span:nth-of-type(2)')
-      context:
-        ordinal: 1
-        role: div
-        name: 对话流超长文本性能优化 草稿 编辑 发布 hongbao.wang1 编辑于 2026-07-22 15:19:02 自主规划 Agent
-    - key: clickable-哈哈 已发布 分析 使用 对话历史 hongbao.wang1 编辑于 2026-07-15 16:25:40 自主规划
-        Agent
-      role: clickable
-      name: 哈哈 已发布 分析 使用 对话历史 hongbao.wang1 编辑于 2026-07-15 16:25:40 自主规划 Agent
-      action: click
-      locators:
-      - code: locator('div > div:nth-of-type(3) > div > div > div > div > div:nth-of-type(3)')
-      context:
-        role: div
-        name: 对话流超长文本性能优化 草稿 编辑 发布 hongbao.wang1 编辑于 2026-07-22 15:19:02 自主规划 Agent
-          test_Multi_Agent_001 草稿 Test multi-agent for explo
-    - key: clickable-自主规划 Agent--in--hongbao-wang1-2026-07-15-16-25-40-agent
-      role: clickable
-      name: 自主规划 Agent
-      action: click
-      locators:
-      - code: locator('div:nth-of-type(3) > span:nth-of-type(2)')
-      context:
-        ordinal: 2
-        role: div
-        name: 哈哈 已发布 分析 使用 对话历史 hongbao.wang1 编辑于 2026-07-15 16:25:40 自主规划 Agent
-    - key: clickable-无插件智能体2 已发布 1 分析 使用 对话历史 hongbao.wang1 编辑于 2026-06-26 22:45:12
-        自主规划 Agent
-      role: clickable
-      name: 无插件智能体2 已发布 1 分析 使用 对话历史 hongbao.wang1 编辑于 2026-06-26 22:45:12 自主规划 Agent
-      action: click
-      locators:
-      - code: locator('div > div:nth-of-type(3) > div > div > div > div > div:nth-of-type(4)')
-      context:
-        role: div
-        name: 对话流超长文本性能优化 草稿 编辑 发布 hongbao.wang1 编辑于 2026-07-22 15:19:02 自主规划 Agent
-          test_Multi_Agent_001 草稿 Test multi-agent for explo
-    - key: clickable-自主规划 Agent--in--2-1-hongbao-wang1-2026-06-26-22-45-12-ag
-      role: clickable
-      name: 自主规划 Agent
-      action: click
-      locators:
-      - code: locator('div > div:nth-of-type(3) > div > div > div > div > div:nth-of-type(4)
-          > span:nth-of-type(2)')
-      context:
-        ordinal: 3
-        role: div
-        name: 无插件智能体2 已发布 1 分析 使用 对话历史 hongbao.wang1 编辑于 2026-06-26 22:45:12 自主规划
-          Agent
-    - key: clickable-测试_自主规划智能体 已发布 分析 使用 对话历史 hongbao.wang1 编辑于 2026-07-16 20:04:27
-        自主规划 Agent
-      role: clickable
-      name: 测试_自主规划智能体 已发布 分析 使用 对话历史 hongbao.wang1 编辑于 2026-07-16 20:04:27 自主规划 Agent
-      action: click
-      locators:
-      - code: locator('div > div:nth-of-type(3) > div > div > div > div > div:nth-of-type(5)')
-      context:
-        role: div
-        name: 对话流超长文本性能优化 草稿 编辑 发布 hongbao.wang1 编辑于 2026-07-22 15:19:02 自主规划 Agent
-          test_Multi_Agent_001 草稿 Test multi-agent for explo
-    assertion_texts:
-    - 百融百工
-    - 创建智能体
-    - 自主规划 Agent
-    - 创建智能体 自主规划 Agent 能够自主规划任务，适用于大部分场景 Multi-Agent 在一个智能体中设置多个Agent，以处理复杂任务 写作 Agent
-      通过创建模板，完成复杂写作内容生成 端到端语音 Agent（仅限定制） 毫秒级
-    - 自主规划 Agent 能够自主规划任务，适用于大部分场景
-    - 创建智能体 自主规划 Agent 能够自主规划任务，适用于大部分场景 Multi-Agent 在一个智能体中设置多个Agent，以处理复杂任务 写作 Agent
-      通过创建模板，完成复杂写作内容生成 端到端语音 Agent（仅限定制） 毫秒级低延时，拟人化高表现力 任务流 Agent 面向自动化任务，通过流程编排实现任务
-    - 哈哈 已发布 分析 使用 对话历史 hongbao.wang1 编辑于 2026-07-15 16:25:40 自主规划 Agent
-    - 无插件智能体2 已发布 1 分析 使用 对话历史 hongbao.wang1 编辑于 2026-06-26 22:45:12 自主规划 Agent
-    - 测试_自主规划智能体 已发布 分析 使用 对话历史 hongbao.wang1 编辑于 2026-07-16 20:04:27 自主规划 Agent
-    children: []
-    triggered_by:
-      from_state: page-workspace__root__001
-      element_key: button-创建
-      action: click
-      url_changed: false
-      observed_url: https://www.cybotstar.cn/workspace
-    container:
-      role: ''
-      name: 创建智能体 自主规划 Agent 能够自主规划任务，适用于大部分场景 Multi-Agent 在一个智能体中设置多个Agent，以处理复杂任务
-        写作 Agent 通过创建模板，完成复杂写作内容生成 端到端语音 Agent（仅限定制） 毫秒级低延时，拟人化高表现力 任务流 Agent 面向自动化任务，通过流程编排实现任务
-      locators:
-      - code: locator('.create-agent-dropdown')
-regions: []
-elements: []
-interactions: []
-blockers: []
-merge_history:
-- delta_run_id: exp_AEF5tx0X9WHsIXTDDzdQuA
-  added: 0
-  updated: 1
-  duplicate: 0
-  conflict_count: 0
-- delta_run_id: exp_AEF5tx0X9WHsIXTDDzdQuA
-  added: 0
-  updated: 0
-  duplicate: 1
-  conflict_count: 0
-- delta_run_id: exp_AEF5tx0X9WHsIXTDDzdQuA
-  added: 0
-  updated: 0
-  duplicate: 1
-  conflict_count: 0
+  object: workspace
+elements:
+- key: button-创建智能体
+  object: workspace
+  states:
+  - page-workspace__root__001
+  role: button
+  name: 创建智能体
+  actions:
+  - click
+  locator:
+    strategy: role
+    role: button
+    name: 创建智能体
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(2) > button
+- key: clickable-探索广场
+  object: workspace
+  states:
+  - page-workspace__root__001
+  role: clickable
+  name: 探索广场
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 探索广场
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(4) > div > div > div:nth-of-type(1) > div:nth-of-type(2)
+      > span
+- key: clickable-批量任务
+  object: workspace
+  states:
+  - page-workspace__root__001
+  role: clickable
+  name: 批量任务
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 批量任务
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(4) > div > div > div:nth-of-type(2) > div:nth-of-type(2)
+- key: clickable-hongbao.wang 所有者
+  object: workspace
+  states:
+  - page-workspace__root__001
+  role: clickable
+  name: hongbao.wang 所有者
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(2)
+- key: clickable-工作台
+  object: workspace
+  states:
+  - page-workspace__root__001
+  role: clickable
+  name: 工作台
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(1) > div:nth-of-type(4) > div:nth-of-type(1) > span
+- key: clickable-资源库
+  object: workspace
+  states:
+  - page-workspace__root__001
+  role: clickable
+  name: 资源库
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 资源库
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(4) > div:nth-of-type(2) > span
+- key: clickable-效果评测
+  object: workspace
+  states:
+  - page-workspace__root__001
+  role: clickable
+  name: 效果评测
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 效果评测
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(4) > div:nth-of-type(3) > span
+- key: clickable-发布管理
+  object: workspace
+  states:
+  - page-workspace__root__001
+  role: clickable
+  name: 发布管理
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 发布管理
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(3) > div:nth-of-type(2) > div:nth-of-type(2) > div:nth-of-type(1)
+      > span
+- key: clickable-线上观测
+  object: workspace
+  states:
+  - page-workspace__root__001
+  role: clickable
+  name: 线上观测
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 线上观测
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(3) > div:nth-of-type(2) > div:nth-of-type(2) > div:nth-of-type(2)
+      > span
+- key: clickable-自动优化
+  object: workspace
+  states:
+  - page-workspace__root__001
+  role: clickable
+  name: 自动优化
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 自动优化
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(2) > div:nth-of-type(2) > div:nth-of-type(3) > span
+- key: clickable-空间管理
+  object: workspace
+  states:
+  - page-workspace__root__001
+  role: clickable
+  name: 空间管理
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 空间管理
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(3) > div:nth-of-type(3) > div:nth-of-type(2) > div:nth-of-type(1)
+- key: clickable-文档中心
+  object: workspace
+  states:
+  - page-workspace__root__001
+  role: clickable
+  name: 文档中心
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 文档中心
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(3) > div:nth-of-type(3) > div:nth-of-type(2) > div:nth-of-type(2)
+- key: clickable-收藏
+  object: workspace
+  states:
+  - page-workspace__root__001
+  role: clickable
+  name: 收藏
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 收藏
+    exact: true
+- key: clickable-hongbao-wang1
+  object: workspace
+  states:
+  - page-workspace__root__001
+  role: clickable
+  name: hongbao.wang1
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: aside > div > div > div:nth-of-type(6) > div:nth-of-type(1)
+- key: textbox-搜索智能体
+  object: workspace
+  states:
+  - page-workspace__root__001
+  role: textbox
+  name: 搜索智能体
+  actions:
+  - fill
+  locator:
+    strategy: role
+    role: textbox
+    name: 搜索智能体
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div > div:nth-of-type(1) > div:nth-of-type(2) > div > input
+- key: clickable-类型 全部
+  object: workspace
+  states:
+  - page-workspace__root__001
+  role: clickable
+  name: 类型 全部
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(2) > div > div > div:nth-of-type(1) > div > div > form
+      > div:nth-of-type(1)
+- key: clickable-类型
+  object: workspace
+  states:
+  - page-workspace__root__001
+  role: clickable
+  name: 类型
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 类型
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(2) > div > div > div:nth-of-type(1) > div > div > form
+      > div:nth-of-type(1) > div:nth-of-type(1)
+- key: clickable-全部
+  object: workspace
+  states:
+  - page-workspace__root__001
+  role: clickable
+  name: 全部
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(3) > div:nth-of-type(2) > div > div > span:nth-of-type(2)
+- key: clickable-范围 全部
+  object: workspace
+  states:
+  - page-workspace__root__001
+  role: clickable
+  name: 范围 全部
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(2) > div > div > div:nth-of-type(1) > div > div > form
+      > div:nth-of-type(2)
+- key: clickable-范围
+  object: workspace
+  states:
+  - page-workspace__root__001
+  role: clickable
+  name: 范围
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 范围
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(2) > div > div > div:nth-of-type(1) > div > div > form
+      > div:nth-of-type(2) > div:nth-of-type(1)
+- key: clickable-状态 全部
+  object: workspace
+  states:
+  - page-workspace__root__001
+  role: clickable
+  name: 状态 全部
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(2) > div > div > div:nth-of-type(1) > div > div > form
+      > div:nth-of-type(3)
+- key: clickable-状态
+  object: workspace
+  states:
+  - page-workspace__root__001
+  role: clickable
+  name: 状态
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 状态
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(2) > div > div > div:nth-of-type(1) > div > div > form
+      > div:nth-of-type(3) > div:nth-of-type(1)
+- key: clickable-按创建时间排序
+  object: workspace
+  states:
+  - page-workspace__root__001
+  role: clickable
+  name: 按创建时间排序
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(1) > div > div:nth-of-type(2) > div > div > div:nth-of-type(2)
+      > div:nth-of-type(1) > div > div > span:nth-of-type(2)
+- key: clickable-
+  object: workspace
+  states:
+  - page-workspace__root__001
+  role: clickable
+  name: '|'
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: '|'
+    exact: true
+- key: button-创建
+  object: workspace
+  states:
+  - page-workspace__root__001
+  role: button
+  name: 创建
+  actions:
+  - click
+  locator:
+    strategy: role
+    role: button
+    name: 创建
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(4) > button
+- key: clickable-创建智能体 广场 探索广场 应用 批量任务 hongbao.wang 所有者 创作中心 工作台 资源库 效果评测 运行中心 发布管理
+    线上观测 自动优化 管理中心 空间管理 文档中心 收藏 点击【⭐️收藏】 可将智能体添加到这里 hongbao.wang1 工作台 类型 全部 范围 全部
+    状态 全部 排序 按创建时间排
+  object: workspace
+  states:
+  - page-workspace__root__001
+  role: clickable
+  name: 创建智能体 广场 探索广场 应用 批量任务 hongbao.wang 所有者 创作中心 工作台 资源库 效果评测 运行中心 发布管理 线上观测 自动优化
+    管理中心 空间管理 文档中心 收藏 点击【⭐️收藏】 可将智能体添加到这里 hongbao.wang1 工作台 类型 全部 范围 全部 状态 全部 排序 按创建时间排
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: body > div:nth-of-type(1) > div
+- key: clickable-创建智能体 广场 探索广场 应用 批量任务 hongbao.wang 所有者 创作中心 工作台 资源库 效果评测 运行中心 发布管理
+    线上观测 自动优化 管理中心 空间管理 文档中心 收藏 点击【⭐️收藏】 可将智能体添加到这里 hongbao.wang1
+  object: workspace
+  states:
+  - page-workspace__root__001
+  role: clickable
+  name: 创建智能体 广场 探索广场 应用 批量任务 hongbao.wang 所有者 创作中心 工作台 资源库 效果评测 运行中心 发布管理 线上观测 自动优化
+    管理中心 空间管理 文档中心 收藏 点击【⭐️收藏】 可将智能体添加到这里 hongbao.wang1
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: aside > div > div
+- key: clickable-创建智能体
+  object: workspace
+  states:
+  - page-workspace__root__001
+  role: clickable
+  name: 创建智能体
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(2) > button > span > span
+- key: clickable-广场 探索广场 应用 批量任务 hongbao.wang 所有者 创作中心 工作台 资源库 效果评测 运行中心 发布管理 线上观测
+    自动优化 管理中心 空间管理 文档中心
+  object: workspace
+  states:
+  - page-workspace__root__001
+  role: clickable
+  name: 广场 探索广场 应用 批量任务 hongbao.wang 所有者 创作中心 工作台 资源库 效果评测 运行中心 发布管理 线上观测 自动优化 管理中心
+    空间管理 文档中心
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: aside > div > div > div:nth-of-type(4) > div > div
+- key: clickable-广场 探索广场
+  object: workspace
+  states:
+  - page-workspace__root__001
+  role: clickable
+  name: 广场 探索广场
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: aside > div > div > div:nth-of-type(4) > div > div > div:nth-of-type(1)
+- key: clickable-广场
+  object: workspace
+  states:
+  - page-workspace__root__001
+  role: clickable
+  name: 广场
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 广场
+    exact: true
+- key: clickable-应用
+  object: workspace
+  states:
+  - page-workspace__root__001
+  role: clickable
+  name: 应用
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 应用
+    exact: true
+- key: clickable-hongbao.wang 所有者 创作中心 工作台 资源库 效果评测 运行中心 发布管理 线上观测 自动优化 管理中心 空间管理
+    文档中心
+  object: workspace
+  states:
+  - page-workspace__root__001
+  role: clickable
+  name: hongbao.wang 所有者 创作中心 工作台 资源库 效果评测 运行中心 发布管理 线上观测 自动优化 管理中心 空间管理 文档中心
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(4) > div > div > div:nth-of-type(3)
+- key: clickable-hongbao.wang 所有者 创作中心 工作台 资源库 效果评测
+  object: workspace
+  states:
+  - page-workspace__root__001
+  role: clickable
+  name: hongbao.wang 所有者 创作中心 工作台 资源库 效果评测
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(4) > div > div > div:nth-of-type(3) > div:nth-of-type(1)
+- key: clickable-hongbao-wang
+  object: workspace
+  states:
+  - page-workspace__root__001
+  role: clickable
+  name: hongbao.wang
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(2) > div > div
+      > div > div:nth-of-type(1) > span:nth-of-type(1)
+- key: clickable-所有者
+  object: workspace
+  states:
+  - page-workspace__root__001
+  role: clickable
+  name: 所有者
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 所有者
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(2) > div > div
+      > div > div:nth-of-type(1) > span:nth-of-type(2)
+- key: clickable-创作中心
+  object: workspace
+  states:
+  - page-workspace__root__001
+  role: clickable
+  name: 创作中心
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 创作中心
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(3)
+- key: clickable-工作台 资源库 效果评测
+  object: workspace
+  states:
+  - page-workspace__root__001
+  role: clickable
+  name: 工作台 资源库 效果评测
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(4)
+- key: clickable-运行中心 发布管理 线上观测 自动优化
+  object: workspace
+  states:
+  - page-workspace__root__001
+  role: clickable
+  name: 运行中心 发布管理 线上观测 自动优化
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(4) > div > div > div:nth-of-type(3) > div:nth-of-type(2)
+- key: clickable-运行中心
+  object: workspace
+  states:
+  - page-workspace__root__001
+  role: clickable
+  name: 运行中心
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 运行中心
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(4) > div > div > div:nth-of-type(3) > div:nth-of-type(2)
+      > div:nth-of-type(1)
+- key: clickable-发布管理 线上观测 自动优化
+  object: workspace
+  states:
+  - page-workspace__root__001
+  role: clickable
+  name: 发布管理 线上观测 自动优化
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(4) > div > div > div:nth-of-type(3) > div:nth-of-type(2)
+      > div:nth-of-type(2)
+quality:
+  status: complete

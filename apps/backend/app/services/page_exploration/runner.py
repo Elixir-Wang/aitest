@@ -12,6 +12,12 @@ from app.core.db import connect as default_connect
 from app.core.environment_auth_state import auth_state_path, auth_state_summary
 from app.repositories import exploration_run_repo as default_exploration_run_repo
 from app.services.page_exploration import event_bus as default_event_bus
+from app.services.page_exploration.coverage_registry import (
+    build_autonomous_coverage_summary,
+    coverage_updates_from_artifacts,
+    load_coverage,
+    update_coverage,
+)
 from app.services.page_exploration.event_log import _ExplorationEventLog, _publish_run_terminal_event
 from app.services.page_exploration.event_payload import _compact_event_payload
 from app.services.page_exploration.output_registry import (
@@ -232,7 +238,7 @@ def _finalize_cancelled_exploration_run(run_id: str) -> None:
     )
 
 
-def _run_exploration_background(run_id: str) -> None:
+def _run_exploration_background(run_id: str, resume: bool = False) -> None:
     """后台执行探索任务"""
     run_dict: dict = {}
     try:
@@ -256,6 +262,7 @@ def _run_exploration_background(run_id: str) -> None:
             if not run:
                 return
             run_dict = dict(run)
+            run_dict["_resume"] = resume
         _event_bus().publish(
             run_id,
             "run_started",
@@ -343,6 +350,7 @@ def _execute_exploration(run_id: str, run_config: dict) -> None:
     max_actions = run_config.get("max_actions", 1000)
     forbidden_paths = str(run_config.get("forbidden_paths") or "")
     timeout_minutes = int(run_config.get("timeout_minutes") or 120)
+    resume = bool(run_config.get("_resume"))
     storage_state_path = _exploration_auth_state_path(run_config)
 
     model_selection = resolve_model_selection(_capability_id())
@@ -361,6 +369,7 @@ def _execute_exploration(run_id: str, run_config: dict) -> None:
         scope=scope,
         goal=goal,
         storage_state_path=storage_state_path,
+        resume=resume,
     ))
 
 
@@ -426,6 +435,7 @@ def _exploration_agent_prompt(
     scope: str,
     max_pages: int,
     goal: str = "",
+    coverage_summary: dict | None = None,
 ) -> str:
     lines = [f"请探索网站: {start_url}"]
     mode_label = _exploration_mode_label(exploration_mode)
@@ -444,6 +454,8 @@ def _exploration_agent_prompt(
                 "- 按模块盘点，不要因为某个具体动作完成就提前停止；达到范围覆盖或预算上限后总结。",
             ]
         )
+        if coverage_summary:
+            lines.extend(_autonomous_coverage_prompt_lines(coverage_summary))
     elif exploration_mode == "loop":
         lines.extend(
             [
@@ -478,6 +490,52 @@ def _exploration_agent_prompt(
 
     lines.append(f"最多探索 {max_pages} 个页面。")
     return "\n".join(lines)
+
+
+def _autonomous_coverage_prompt_lines(summary: dict) -> list[str]:
+    lines = ["", "已有探索覆盖（直接复用）："]
+    for label, key in (
+        ("已完成页面", "completed_pages"),
+        ("已完成状态", "completed_states"),
+        ("已完成操作", "completed_actions"),
+    ):
+        values = summary.get(key) if isinstance(summary.get(key), list) else []
+        if values:
+            lines.append(f"- {label}: {', '.join(str(value) for value in values)}")
+    for label, key in (
+        ("已完成列表分组", "completed_collection_groups"),
+        ("待探索列表分组", "pending_collection_groups"),
+    ):
+        groups = summary.get(key) if isinstance(summary.get(key), list) else []
+        for group in groups:
+            if not isinstance(group, dict):
+                continue
+            lines.append(
+                f"- {label}: {group.get('collection', '')} / {group.get('type', '')} / {group.get('status', '')}"
+            )
+    lines.append("- 不要重复探索以上已完成内容；优先处理待探索内容和新发现内容。")
+    return lines
+
+
+def _autonomous_coverage_context(
+    storage_root: Path,
+    project_id: str,
+    exploration_mode: str,
+) -> dict | None:
+    if exploration_mode != "autonomous":
+        return None
+    return build_autonomous_coverage_summary(load_coverage(storage_root, project_id))
+
+
+def _write_autonomous_coverage(storage_root: Path, project_id: str, run_id: str) -> None:
+    updates = coverage_updates_from_artifacts(storage_root, project_id)
+    update_coverage(
+        storage_root,
+        project_id,
+        run_id=run_id,
+        mode="autonomous",
+        **updates,
+    )
 
 
 def _initial_subgoal_hints(goal: str) -> list[str]:
@@ -551,6 +609,7 @@ async def _execute_exploration_async(
     forbidden_paths: str = "",
     timeout_minutes: int = 120,
     storage_state_path: Path | None = None,
+    resume: bool = False,
 ) -> None:
     """异步执行探索"""
     from app.agents.page_exploration.tools.runtime_context import (
@@ -584,10 +643,17 @@ async def _execute_exploration_async(
         max_pages=max_pages,
     )
 
+    storage_root = _project_file_storage_root()
+    autonomous_coverage = _autonomous_coverage_context(
+        storage_root,
+        project_id,
+        exploration_mode,
+    )
     loop_state = None
     if exploration_mode == "loop":
         from app.services.page_exploration.loop.service import execute_loop_exploration
 
+        _ensure_exploration_not_stopping(run_id)
         with (
             exploration_runtime_context(
                 project_id=project_id,
@@ -607,6 +673,7 @@ async def _execute_exploration_async(
                 max_actions=max_actions,
                 timeout_minutes=timeout_minutes,
                 storage_root=_project_file_storage_root(),
+                resume=resume,
             )
     else:
         from app.agents.page_exploration.agent import page_exploration_agent
@@ -626,11 +693,13 @@ async def _execute_exploration_async(
                     scope,
                     max_pages,
                     goal=goal,
+                    coverage_summary=autonomous_coverage,
                 ),
             }
         ]
     }
     if exploration_mode != "loop":
+        _ensure_exploration_not_stopping(run_id)
         with (
             exploration_runtime_context(
                 project_id=project_id,
@@ -675,6 +744,8 @@ async def _execute_exploration_async(
         result_status=result_status,
         goal=goal,
     )
+    if exploration_mode == "autonomous":
+        _write_autonomous_coverage(storage_root, project_id, run_id)
     if coverage_summary and coverage_summary["pending"]:
         coverage_label = "Loop 探索" if exploration_mode == "loop" else "自主探索"
         artifact_summary = f"{coverage_label}部分完成：发现 {coverage_summary['discovered']} 个元素，仍有 {coverage_summary['pending']} 个元素未执行。"

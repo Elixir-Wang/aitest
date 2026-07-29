@@ -5,8 +5,6 @@ import sys
 import time
 from pathlib import Path
 
-import psutil
-
 from app.core import settings
 
 
@@ -59,18 +57,3 @@ def launch_locust_web_process(run_dir: Path, *, port: int, base_path: str) -> in
         creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
     )
     return process.pid
-
-
-def terminate_process(process_id: int) -> None:
-    try:
-        process = psutil.Process(process_id)
-    except psutil.NoSuchProcess:
-        return
-
-    processes = [*reversed(process.children(recursive=True)), process]
-    for item in processes:
-        try:
-            item.terminate()
-        except psutil.NoSuchProcess:
-            pass
-    psutil.wait_procs(processes, timeout=5)

@@ -60,3 +60,31 @@ def test_in_process_queued_run_is_not_scheduled_twice(monkeypatch):
         service._running_explorations.pop("run-queued", None)
 
     assert result["status"] == "queued"
+
+
+def test_resume_exploration_schedules_without_clearing_outputs(monkeypatch):
+    repo = _Repo()
+    started = []
+    cleared = []
+
+    class _Thread:
+        def __init__(self, *, target, args, daemon):
+            started.append((target, args, daemon))
+
+        def start(self):
+            started.append("started")
+
+    monkeypatch.setattr(service, "connect", lambda: _Db())
+    monkeypatch.setattr(service, "exploration_run_repo", repo)
+    monkeypatch.setattr(service, "_clear_previous_exploration_outputs", lambda run: cleared.append(run))
+    monkeypatch.setattr(service.event_bus, "clear", lambda _run_id: None)
+    monkeypatch.setattr(service.event_bus, "publish", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(service.threading, "Thread", _Thread)
+    service._running_explorations.pop("run-queued", None)
+
+    result = service.resume_exploration_async({"id": "user-1"}, "run-queued")
+
+    assert result["status"] == "queued"
+    assert cleared == []
+    assert started[0][1] == ("run-queued", True)
+    assert started[-1] == "started"

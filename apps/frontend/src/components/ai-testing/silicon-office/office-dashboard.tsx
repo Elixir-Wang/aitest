@@ -1,175 +1,325 @@
 "use client";
 
-import { type ReactNode, useMemo, useState } from "react";
+import { type ComponentType, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import Image from "next/image";
+import { useRouter } from "next/navigation";
 
 import {
+  Bot,
   Building2,
-  CalendarDays,
   CircleAlert,
-  Ellipsis,
-  Mail,
+  Clock3,
+  ExternalLink,
   MapPin,
-  MessageSquare,
   PlayCircle,
+  RefreshCw,
   UsersRound,
   X,
 } from "lucide-react";
 
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { AI_TASK_STARTED_EVENT } from "@/lib/ai-task-events";
+import { type ApiTaskItem, apiRequest, formatDateTime } from "@/lib/api-client";
+import { useAuthStore } from "@/stores/auth-store";
 import { usePreferencesStore } from "@/stores/preferences/preferences-provider";
+import { useProjectContextStore } from "@/stores/project-context-store";
 
+import {
+  buildOfficeEmployeeViewModels,
+  buildOfficeMetrics,
+  type EmployeeRuntimeState,
+  type OfficeEmployeeViewModel,
+  type SiliconEmployee,
+} from "./employee-projection";
 import styles from "./office-dashboard.module.css";
 
-type EmployeeStatus = "idle" | "running" | "error";
-type WorkstationVariant = "male-gray" | "male-white" | "female-cream";
-
-type OfficeEmployee = {
-  id: string;
-  name: string;
-  role: string;
-  room: string;
-  seat: string;
-  status: EmployeeStatus;
-  workstation: WorkstationVariant;
+type OfficeEmployee = OfficeEmployeeViewModel & {
+  characterId: BuiltInCharacterId;
   left: number;
   top: number;
-  skills: string[];
-  email: string;
+  size: number;
 };
 
 type OfficeRoomData = {
   id: string;
   name: string;
-  occupied: number;
   capacity: number;
   image: string;
+  deskForeground?: string;
+  monitorForeground?: string;
   employees: OfficeEmployee[];
   executive?: boolean;
 };
 
+type Metric = {
+  label: string;
+  value: number | string;
+  suffix: string;
+  hint: string;
+  tone: "blue" | "green" | "red";
+  icon: ComponentType<{ "aria-hidden"?: boolean }>;
+};
+
 const ASSET_ROOT = "/assets/silicon-office-v2";
-const EMPLOYEE_PORTRAITS: Record<WorkstationVariant, string> = {
-  "male-gray": `${ASSET_ROOT}/workstations/workstation-male-gray-front-clean.png`,
-  "male-white": `${ASSET_ROOT}/workstations/workstation-male-white-front-clean.png`,
-  "female-cream": `${ASSET_ROOT}/workstations/workstation-female-cream-front-clean.png`,
-};
+const POLL_INTERVAL_MS = 2_000;
+const EMPLOYEE_POLL_INTERVAL_MS = 10 * 60 * 1_000;
+const ROOM_CAPACITY = 4;
 
-const DETAIL_PORTRAITS: Partial<Record<string, string>> = {
-  "li-ming": `${ASSET_ROOT}/portraits/male-handsome-charcoal.png`,
-  "wang-fang": `${ASSET_ROOT}/portraits/female-yujie-red.png`,
-  "liu-yang": `${ASSET_ROOT}/portraits/male-handsome-camel.png`,
-  "zhang-wei": `${ASSET_ROOT}/portraits/male-handsome-charcoal.png`,
-  "zhou-yan": `${ASSET_ROOT}/portraits/female-yujie-emerald.png`,
-  "zhou-jie": `${ASSET_ROOT}/portraits/male-handsome-green.png`,
-  "chen-yan": `${ASSET_ROOT}/portraits/female-yujie-plum.png`,
-  "sun-na": `${ASSET_ROOT}/portraits/female-yujie-red.png`,
-  "zheng-kai": `${ASSET_ROOT}/portraits/male-handsome-camel.png`,
-  "tang-yu": `${ASSET_ROOT}/portraits/male-handsome-charcoal.png`,
-  "lin-yue": `${ASSET_ROOT}/portraits/female-yujie-plum.png`,
-  "peng-yu": `${ASSET_ROOT}/portraits/male-handsome-camel.png`,
-  "xu-jing": `${ASSET_ROOT}/portraits/female-yujie-emerald.png`,
-  "yang-fan": `${ASSET_ROOT}/portraits/male-handsome-green.png`,
-  "he-li": `${ASSET_ROOT}/portraits/male-handsome-green.png`,
-  ceo: `${ASSET_ROOT}/portraits/ceo-wang-avatar.png`,
-};
-
-const STATUS_META: Record<EmployeeStatus, { label: string; detail: string }> = {
-  idle: { label: "空闲", detail: "等待任务" },
-  running: { label: "运行中", detail: "专注工作" },
-  error: { label: "异常", detail: "任务执行异常" },
-};
-
-const EMPLOYEES: OfficeEmployee[] = [
-  employee("li-ming", "李明", "需求分析师", "requirement", "01-01", "running", "male-gray", 31, 35, [
-    "需求分析",
-    "业务建模",
-  ]),
-  employee("wang-fang", "王芳", "产品分析师", "requirement", "01-02", "running", "female-cream", 69, 35, [
-    "需求澄清",
-    "文档分析",
-  ]),
-  employee("liu-yang", "刘洋", "需求工程师", "requirement", "01-03", "idle", "male-white", 31, 69, [
-    "原型审查",
-    "规则提取",
-  ]),
-  employee("zhang-wei", "张伟", "测试设计师", "test-design", "02-03", "running", "male-gray", 31, 35, [
-    "测试设计",
-    "接口测试",
-    "性能测试",
-    "自动化测试",
-  ]),
-  employee("zhou-yan", "周燕", "测试分析师", "test-design", "02-04", "running", "female-cream", 69, 35, [
-    "用例评审",
-    "覆盖分析",
-  ]),
-  employee("zhou-jie", "周杰", "测试工程师", "test-design", "02-05", "running", "male-white", 31, 69, [
-    "边界分析",
-    "缺陷预测",
-  ]),
-  employee("chen-yan", "陈燕", "自动化工程师", "automation", "03-01", "running", "female-cream", 31, 35, [
-    "UI 自动化",
-    "脚本生成",
-  ]),
-  employee("sun-na", "孙娜", "接口自动化工程师", "automation", "03-02", "error", "female-cream", 69, 35, [
-    "接口测试",
-    "场景编排",
-  ]),
-  employee("zheng-kai", "郑凯", "自动化架构师", "automation", "03-03", "running", "male-gray", 31, 69, [
-    "框架设计",
-    "任务编排",
-  ]),
-  employee("tang-yu", "唐宇", "运行分析师", "operations", "04-01", "running", "male-white", 31, 35, [
-    "运行监控",
-    "日志分析",
-  ]),
-  employee("lin-yue", "林悦", "数据分析师", "operations", "04-02", "running", "female-cream", 69, 35, [
-    "数据分析",
-    "质量洞察",
-  ]),
-  employee("peng-yu", "彭宇", "质量分析师", "operations", "04-03", "running", "male-gray", 31, 69, [
-    "质量分析",
-    "趋势预测",
-  ]),
-  employee("xu-jing", "徐静", "AI 能力工程师", "ai-center", "05-01", "running", "female-cream", 31, 35, [
-    "模型评测",
-    "提示词工程",
-  ]),
-  employee("yang-fan", "杨帆", "知识工程师", "ai-center", "05-02", "running", "male-white", 69, 35, [
-    "知识检索",
-    "RAG",
-  ]),
-  employee("he-li", "何立", "算法工程师", "ai-center", "05-03", "idle", "male-white", 31, 69, ["模型路由", "智能分析"]),
-  employee("ceo", "王总", "AI 测试负责人", "ceo", "CEO-01", "running", "male-gray", 50, 72, ["战略规划", "团队管理"]),
-];
-
-const ROOMS: OfficeRoomData[] = [
-  room("requirement", "需求工程组", 6, 7, `${ASSET_ROOT}/rooms/requirement-room-unified.png`),
-  room("test-design", "测试设计组", 8, 8, `${ASSET_ROOT}/rooms/test-design-room-unified.png`),
-  room("automation", "自动化工程组", 7, 7, `${ASSET_ROOT}/rooms/automation-room-unified.png`),
-  room("operations", "运行与分析组", 5, 6, `${ASSET_ROOT}/rooms/operations-room-unified.png`),
-  room("ai-center", "AI能力中枢", 4, 4, `${ASSET_ROOT}/rooms/ai-center-room-unified.png`),
-  room("ceo", "CEO办公室", 1, 1, `${ASSET_ROOT}/rooms/ceo-office-unified.png`, true),
-];
-
-const METRICS = [
-  { label: "员工总数", value: 32, suffix: "人", hint: "较昨日 +2", tone: "blue", icon: UsersRound },
-  { label: "工作中", value: 24, suffix: "人", hint: "75.0%", tone: "green", icon: PlayCircle },
-  { label: "异常", value: 1, suffix: "人", hint: "3.1%", tone: "red", icon: CircleAlert },
+const BUILT_IN_CHARACTER_IDS = [
+  "document_editor",
+  "requirement_standardization",
+  "requirement_analysis",
+  "knowledge_query",
+  "test_case_generation",
+  "test_point_generation",
+  "api_test_generation",
+  "api_scenario_orchestration",
+  "ui_test_generation",
+  "page_exploration",
+  "performance_script_generation",
+  "performance_report_analysis",
+  "character_13",
+  "character_14",
+  "character_15",
+  "character_16",
+  "character_17",
+  "character_18",
+  "character_19",
+  "character_20",
 ] as const;
 
+type BuiltInCharacterId = (typeof BUILT_IN_CHARACTER_IDS)[number];
+
+const PERSON_BODY_ASSETS: Record<BuiltInCharacterId, string> = {
+  document_editor: `${ASSET_ROOT}/people/document_editor-body.png`,
+  requirement_standardization: `${ASSET_ROOT}/people/requirement_standardization-body.png`,
+  requirement_analysis: `${ASSET_ROOT}/people/requirement_analysis-body.png`,
+  knowledge_query: `${ASSET_ROOT}/people/knowledge_query-body.png`,
+  test_case_generation: `${ASSET_ROOT}/people/test_case_generation-body.png`,
+  test_point_generation: `${ASSET_ROOT}/people/test_point_generation-body.png`,
+  api_test_generation: `${ASSET_ROOT}/people/api_test_generation-body.png`,
+  api_scenario_orchestration: `${ASSET_ROOT}/people/api_scenario_orchestration-body.png`,
+  ui_test_generation: `${ASSET_ROOT}/people/ui_test_generation-body.png`,
+  page_exploration: `${ASSET_ROOT}/people/page_exploration-body.png`,
+  performance_script_generation: `${ASSET_ROOT}/people/performance_script_generation-body.png`,
+  performance_report_analysis: `${ASSET_ROOT}/people/performance_report_analysis-body.png`,
+  character_13: `${ASSET_ROOT}/people/character_13-body.png`,
+  character_14: `${ASSET_ROOT}/people/character_14-body.png`,
+  character_15: `${ASSET_ROOT}/people/character_15-body.png`,
+  character_16: `${ASSET_ROOT}/people/character_16-body.png`,
+  character_17: `${ASSET_ROOT}/people/character_17-body.png`,
+  character_18: `${ASSET_ROOT}/people/character_18-body.png`,
+  character_19: `${ASSET_ROOT}/people/character_19-body.png`,
+  character_20: `${ASSET_ROOT}/people/character_20-body.png`,
+};
+
+const PERSON_HANDS_ASSETS: Record<BuiltInCharacterId, string> = {
+  document_editor: `${ASSET_ROOT}/people/document_editor-hands.png`,
+  requirement_standardization: `${ASSET_ROOT}/people/requirement_standardization-hands.png`,
+  requirement_analysis: `${ASSET_ROOT}/people/requirement_analysis-hands.png`,
+  knowledge_query: `${ASSET_ROOT}/people/knowledge_query-hands.png`,
+  test_case_generation: `${ASSET_ROOT}/people/test_case_generation-hands.png`,
+  test_point_generation: `${ASSET_ROOT}/people/test_point_generation-hands.png`,
+  api_test_generation: `${ASSET_ROOT}/people/api_test_generation-hands.png`,
+  api_scenario_orchestration: `${ASSET_ROOT}/people/api_scenario_orchestration-hands.png`,
+  ui_test_generation: `${ASSET_ROOT}/people/ui_test_generation-hands.png`,
+  page_exploration: `${ASSET_ROOT}/people/page_exploration-hands.png`,
+  performance_script_generation: `${ASSET_ROOT}/people/performance_script_generation-hands.png`,
+  performance_report_analysis: `${ASSET_ROOT}/people/performance_report_analysis-hands.png`,
+  character_13: `${ASSET_ROOT}/people/character_13-hands.png`,
+  character_14: `${ASSET_ROOT}/people/character_14-hands.png`,
+  character_15: `${ASSET_ROOT}/people/character_15-hands.png`,
+  character_16: `${ASSET_ROOT}/people/character_16-hands.png`,
+  character_17: `${ASSET_ROOT}/people/character_17-hands.png`,
+  character_18: `${ASSET_ROOT}/people/character_18-hands.png`,
+  character_19: `${ASSET_ROOT}/people/character_19-hands.png`,
+  character_20: `${ASSET_ROOT}/people/character_20-hands.png`,
+};
+
+const PERSON_PORTRAIT_ASSETS: Record<BuiltInCharacterId, string> = {
+  document_editor: `${ASSET_ROOT}/people/document_editor-portrait.png`,
+  requirement_standardization: `${ASSET_ROOT}/people/requirement_standardization-portrait.png`,
+  requirement_analysis: `${ASSET_ROOT}/people/requirement_analysis-portrait.png`,
+  knowledge_query: `${ASSET_ROOT}/people/knowledge_query-portrait.png`,
+  test_case_generation: `${ASSET_ROOT}/people/test_case_generation-portrait.png`,
+  test_point_generation: `${ASSET_ROOT}/people/test_point_generation-portrait.png`,
+  api_test_generation: `${ASSET_ROOT}/people/api_test_generation-portrait.png`,
+  api_scenario_orchestration: `${ASSET_ROOT}/people/api_scenario_orchestration-portrait.png`,
+  ui_test_generation: `${ASSET_ROOT}/people/ui_test_generation-portrait.png`,
+  page_exploration: `${ASSET_ROOT}/people/page_exploration-portrait.png`,
+  performance_script_generation: `${ASSET_ROOT}/people/performance_script_generation-portrait.png`,
+  performance_report_analysis: `${ASSET_ROOT}/people/performance_report_analysis-portrait.png`,
+  character_13: `${ASSET_ROOT}/people/character_13-portrait.png`,
+  character_14: `${ASSET_ROOT}/people/character_14-portrait.png`,
+  character_15: `${ASSET_ROOT}/people/character_15-portrait.png`,
+  character_16: `${ASSET_ROOT}/people/character_16-portrait.png`,
+  character_17: `${ASSET_ROOT}/people/character_17-portrait.png`,
+  character_18: `${ASSET_ROOT}/people/character_18-portrait.png`,
+  character_19: `${ASSET_ROOT}/people/character_19-portrait.png`,
+  character_20: `${ASSET_ROOT}/people/character_20-portrait.png`,
+};
+
+const ROOM_CONFIGS = [
+  roomConfig("requirement", "需求工程组", ROOM_CAPACITY, "requirement"),
+  roomConfig("test-design", "测试设计组", ROOM_CAPACITY, "test-design"),
+  roomConfig("automation", "自动化工程组", ROOM_CAPACITY, "automation"),
+  roomConfig("operations", "运行与分析组", ROOM_CAPACITY, "operations"),
+  roomConfig("ai-center", "AI能力中枢", ROOM_CAPACITY, "ai-center"),
+  roomConfig("ceo", "CEO办公室", 1, `${ASSET_ROOT}/rooms/ceo-office-unified.png`, true),
+] as const;
+
+const ROOM_SEAT_LAYOUTS = {
+  requirement: [
+    { left: 29.3, top: 24.4, size: 18.6 },
+    { left: 69.3, top: 24.4, size: 18.6 },
+    { left: 29.3, top: 56.5, size: 19.8 },
+    { left: 69.3, top: 56.5, size: 19.8 },
+  ],
+  "test-design": [
+    { left: 29.3, top: 24.4, size: 18.6 },
+    { left: 69.3, top: 24.4, size: 18.6 },
+    { left: 29.3, top: 56.5, size: 19.8 },
+    { left: 69.3, top: 56.5, size: 19.8 },
+  ],
+  automation: [
+    { left: 29.3, top: 24.4, size: 18.6 },
+    { left: 69.3, top: 24.4, size: 18.6 },
+    { left: 29.3, top: 56.5, size: 19.8 },
+    { left: 69.3, top: 56.5, size: 19.8 },
+  ],
+  operations: [
+    { left: 29.3, top: 24.4, size: 18.6 },
+    { left: 69.3, top: 24.4, size: 18.6 },
+    { left: 29.3, top: 56.5, size: 19.8 },
+    { left: 69.3, top: 56.5, size: 19.8 },
+  ],
+  "ai-center": [
+    { left: 29.3, top: 24.4, size: 18.6 },
+    { left: 69.3, top: 24.4, size: 18.6 },
+    { left: 29.3, top: 56.5, size: 19.8 },
+    { left: 69.3, top: 56.5, size: 19.8 },
+  ],
+} as const;
+
 export function SiliconOfficeDashboard({ embedded = false }: { embedded?: boolean }) {
-  const [selectedId, setSelectedId] = useState("zhang-wei");
-  const [expandedRoomId, setExpandedRoomId] = useState<string | null>(null);
+  const { currentProjectId, hasHydrated: projectHydrated, hydrate, scope } = useProjectContextStore();
+  const { hasHydrated: authHydrated, hydrate: hydrateAuth, token } = useAuthStore();
   const isDarkMode = usePreferencesStore((state) => state.themeMode === "dark");
+  const [employees, setEmployees] = useState<SiliconEmployee[]>([]);
+  const [tasks, setTasks] = useState<ApiTaskItem[]>([]);
+  const [selectedId, setSelectedId] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [statusUnknown, setStatusUnknown] = useState(false);
+  const employeeRequestRef = useRef(0);
+  const taskRequestRef = useRef(0);
+
+  useEffect(() => hydrate(), [hydrate]);
+  useEffect(() => hydrateAuth(), [hydrateAuth]);
+
+  const loadEmployees = useCallback(async () => {
+    employeeRequestRef.current += 1;
+    const requestId = employeeRequestRef.current;
+    const result = await apiRequest<SiliconEmployee[]>("/agents/employees");
+    if (requestId !== employeeRequestRef.current) return;
+    setEmployees(result);
+    setSelectedId((current) => (result.some((employee) => employee.id === current) ? current : (result[0]?.id ?? "")));
+  }, []);
+
+  const loadTasks = useCallback(async () => {
+    taskRequestRef.current += 1;
+    const requestId = taskRequestRef.current;
+    const query = scope === "project" && currentProjectId ? `?project_id=${encodeURIComponent(currentProjectId)}` : "";
+    try {
+      const result = await apiRequest<ApiTaskItem[]>(`/tasks/running${query}`);
+      if (requestId !== taskRequestRef.current) return;
+      setTasks(result);
+      setStatusUnknown(false);
+      setError("");
+    } catch (requestError) {
+      if (requestId !== taskRequestRef.current) return;
+      setStatusUnknown(true);
+      setError(requestError instanceof Error ? requestError.message : "员工状态加载失败");
+    }
+  }, [currentProjectId, scope]);
+
+  const loadWorkspace = useCallback(async () => {
+    if (!authHydrated || !projectHydrated || !token) {
+      setEmployees([]);
+      setTasks([]);
+      setLoading(false);
+      setError("");
+      setStatusUnknown(false);
+      return;
+    }
+
+    setLoading(true);
+    try {
+      await Promise.all([loadEmployees(), loadTasks()]);
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "员工工作空间加载失败");
+    } finally {
+      setLoading(false);
+    }
+  }, [authHydrated, loadEmployees, loadTasks, projectHydrated, token]);
+
+  useEffect(() => {
+    void loadWorkspace();
+  }, [loadWorkspace]);
+
+  useEffect(() => {
+    if (!authHydrated || !projectHydrated || !token) return;
+    const timer = window.setInterval(() => void loadTasks(), POLL_INTERVAL_MS);
+    return () => window.clearInterval(timer);
+  }, [authHydrated, loadTasks, projectHydrated, token]);
+
+  useEffect(() => {
+    if (!authHydrated || !projectHydrated || !token) return;
+    const timer = window.setInterval(() => void loadEmployees(), EMPLOYEE_POLL_INTERVAL_MS);
+    return () => window.clearInterval(timer);
+  }, [authHydrated, loadEmployees, projectHydrated, token]);
+
+  useEffect(() => {
+    const handleTaskStarted = () => void loadTasks();
+    window.addEventListener(AI_TASK_STARTED_EVENT, handleTaskStarted);
+    return () => window.removeEventListener(AI_TASK_STARTED_EVENT, handleTaskStarted);
+  }, [loadTasks]);
+
+  const employeeViewModels = useMemo(() => buildOfficeEmployeeViewModels(employees, tasks), [employees, tasks]);
+  const metrics = useMemo(() => buildOfficeMetrics(employeeViewModels), [employeeViewModels]);
+  const rooms = useMemo(() => buildOfficeRooms(employeeViewModels), [employeeViewModels]);
   const selectedEmployee = useMemo(
-    () => EMPLOYEES.find((employeeItem) => employeeItem.id === selectedId) ?? EMPLOYEES[3],
-    [selectedId],
+    () => employeeViewModels.find((employee) => employee.id === selectedId) ?? employeeViewModels[0] ?? null,
+    [employeeViewModels, selectedId],
   );
-  const expandedRoom = useMemo(
-    () => ROOMS.find((roomItem) => roomItem.id === expandedRoomId) ?? null,
-    [expandedRoomId],
+  const metricCards = useMemo<Metric[]>(
+    () => [
+      {
+        label: "员工总数",
+        value: metrics.total,
+        suffix: "人",
+        hint: "真实注册智能体",
+        tone: "blue",
+        icon: UsersRound,
+      },
+      {
+        label: "工作中",
+        value: statusUnknown ? "-" : metrics.working,
+        suffix: statusUnknown ? "" : "人",
+        hint: statusUnknown ? "状态未知" : `${tasks.length} 个运行任务`,
+        tone: "green",
+        icon: PlayCircle,
+      },
+      {
+        label: "空闲",
+        value: statusUnknown ? "-" : metrics.idle,
+        suffix: statusUnknown ? "" : "人",
+        hint: statusUnknown ? "等待重新连接" : "等待任务",
+        tone: "red",
+        icon: Clock3,
+      },
+    ],
+    [metrics, statusUnknown, tasks.length],
   );
 
   return (
@@ -178,109 +328,66 @@ export function SiliconOfficeDashboard({ embedded = false }: { embedded?: boolea
         <div className={styles.leftColumn}>
           <section aria-label="硅基员工状态概览" className={styles.metricsSection}>
             <div className={styles.metrics}>
-              {METRICS.map((metric) => (
+              {metricCards.map((metric) => (
                 <MetricCard key={metric.label} metric={metric} />
               ))}
             </div>
           </section>
           <div className={styles.officeFloor}>
             <div className={styles.roomGrid}>
-              {ROOMS.map((roomItem) => (
+              {rooms.map((room) => (
                 <OfficeRoom
-                  key={roomItem.id}
+                  key={room.id}
                   onSelect={setSelectedId}
-                  onOpenRoom={setExpandedRoomId}
-                  room={roomItem}
-                  selectedId={selectedEmployee.id}
+                  room={room}
+                  selectedId={selectedEmployee?.id ?? ""}
+                  statusUnknown={statusUnknown}
                 />
               ))}
             </div>
-            <StatusLegend />
+            <StatusLegend statusUnknown={statusUnknown} />
           </div>
         </div>
-        <EmployeeDetailPanel employee={selectedEmployee} onClose={() => setSelectedId("")} />
+        <EmployeeDetailPanel
+          employee={selectedEmployee}
+          error={error}
+          loading={loading}
+          onClose={() => setSelectedId("")}
+          onRefresh={() => void loadWorkspace()}
+          statusUnknown={statusUnknown}
+        />
       </section>
-      <Dialog open={expandedRoom !== null} onOpenChange={(open) => !open && setExpandedRoomId(null)}>
-        <DialogContent className={styles.roomDialog} showCloseButton>
-          {expandedRoom ? (
-            <>
-              <DialogHeader className={styles.roomDialogHeader}>
-                <DialogTitle>{expandedRoom.name}</DialogTitle>
-                <DialogDescription>
-                  {expandedRoom.occupied}/{expandedRoom.capacity} 个工位已占用 · 点击工位查看员工详情
-                </DialogDescription>
-              </DialogHeader>
-              <div className={styles.roomPreviewScene}>
-                <Image
-                  alt={`${expandedRoom.name}工位实景`}
-                  className={styles.roomBackground}
-                  fill
-                  sizes="(max-width: 760px) calc(100vw - 40px), 900px"
-                  src={expandedRoom.image}
-                />
-                {!expandedRoom.executive
-                  ? expandedRoom.employees.map((employeeItem) => (
-                      <Workstation
-                        employee={employeeItem}
-                        key={employeeItem.id}
-                        onSelect={(employeeId) => {
-                          setSelectedId(employeeId);
-                          setExpandedRoomId(null);
-                        }}
-                        selected={employeeItem.id === selectedEmployee.id}
-                      />
-                    ))
-                  : null}
-                {expandedRoom.executive ? (
-                  <button
-                    aria-label="查看王总"
-                    className={[styles.executiveHotspot, selectedEmployee.id === "ceo" ? styles.selected : ""].join(
-                      " ",
-                    )}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      setSelectedId("ceo");
-                      setExpandedRoomId(null);
-                    }}
-                    type="button"
-                  >
-                    <Nameplate employee={expandedRoom.employees[0]} />
-                  </button>
-                ) : null}
-              </div>
-            </>
-          ) : null}
-        </DialogContent>
-      </Dialog>
     </main>
   );
 }
 
-function StatusLegend() {
+function StatusLegend({ statusUnknown }: { statusUnknown: boolean }) {
   return (
     <section aria-label="员工状态图例" className={styles.statusLegend}>
       <span data-status="running">
         <i />
-        运行中
+        工作中
       </span>
       <span data-status="idle">
         <i />
         空闲
       </span>
-      <span data-status="error">
-        <i />
-        异常
-      </span>
+      {statusUnknown ? (
+        <span data-status="error">
+          <i />
+          状态未知
+        </span>
+      ) : null}
     </section>
   );
 }
 
-function MetricCard({ metric }: { metric: (typeof METRICS)[number] }) {
+function MetricCard({ metric }: { metric: Metric }) {
   const Icon = metric.icon;
   return (
     <article className={styles.metricCard} data-tone={metric.tone}>
       <span className={styles.metricIcon}>
-        <Icon aria-hidden="true" />
+        <Icon aria-hidden={true} />
       </span>
       <div className={styles.metricCopy}>
         <span className={styles.metricLabel}>{metric.label}</span>
@@ -297,20 +404,20 @@ function MetricCard({ metric }: { metric: (typeof METRICS)[number] }) {
 function OfficeRoom({
   room,
   selectedId,
+  statusUnknown,
   onSelect,
-  onOpenRoom,
 }: {
   room: OfficeRoomData;
   selectedId: string;
+  statusUnknown: boolean;
   onSelect: (employeeId: string) => void;
-  onOpenRoom: (roomId: string) => void;
 }) {
   return (
     <article className={styles.room} data-executive={room.executive ? "true" : "false"}>
       <header className={styles.roomHeader}>
         <h2>{room.name}</h2>
         <span>
-          <UsersRound aria-hidden="true" /> {room.occupied}/{room.capacity}
+          <UsersRound aria-hidden="true" /> {room.executive ? "视觉占位" : `${room.employees.length}/${room.capacity}`}
         </span>
       </header>
       <div className={styles.roomScene}>
@@ -322,36 +429,36 @@ function OfficeRoom({
           sizes="(max-width: 1200px) 24vw, 280px"
           src={room.image}
         />
-        <button
-          aria-label={`放大查看${room.name}`}
-          className={styles.roomExpandHotspot}
-          onClick={() => onOpenRoom(room.id)}
-          title="点击空白区域放大查看"
-          type="button"
-        />
         {!room.executive
-          ? room.employees.map((employeeItem) => (
+          ? room.employees.map((employee) => (
               <Workstation
-                employee={employeeItem}
-                key={employeeItem.id}
+                employee={employee}
+                key={employee.id}
                 onSelect={onSelect}
-                selected={employeeItem.id === selectedId}
+                selected={employee.id === selectedId}
+                statusUnknown={statusUnknown}
               />
             ))
           : null}
-        {room.executive ? (
-          <button
-            aria-label="查看王总"
-            className={[styles.executiveHotspot, selectedId === "ceo" ? styles.selected : ""].join(" ")}
-            onClick={(event) => {
-              event.stopPropagation();
-              onSelect("ceo");
-            }}
-            type="button"
-          >
-            <Nameplate employee={room.employees[0]} />
-          </button>
+        {room.deskForeground ? (
+          <Image
+            alt=""
+            className={styles.deskForeground}
+            fill
+            sizes="(max-width: 1200px) 24vw, 280px"
+            src={room.deskForeground}
+          />
         ) : null}
+        {room.monitorForeground ? (
+          <Image
+            alt=""
+            className={styles.monitorForeground}
+            fill
+            sizes="(max-width: 1200px) 24vw, 280px"
+            src={room.monitorForeground}
+          />
+        ) : null}
+        {room.executive ? <div className={styles.executiveHotspot} /> : null}
       </div>
     </article>
   );
@@ -360,46 +467,114 @@ function OfficeRoom({
 function Workstation({
   employee,
   selected,
+  statusUnknown,
   onSelect,
 }: {
   employee: OfficeEmployee;
   selected: boolean;
+  statusUnknown: boolean;
   onSelect: (employeeId: string) => void;
 }) {
+  const stateClass = statusUnknown ? styles.error : employee.state === "working" ? styles.running : styles.idle;
+  const positionStyle = {
+    left: `${employee.left}%`,
+    top: `${employee.top}%`,
+    width: `${employee.size}%`,
+  };
   return (
-    <button
-      aria-label={`${employee.name}，${STATUS_META[employee.status].label}`}
-      className={[styles.workstation, styles[employee.status], selected ? styles.selected : ""].join(" ")}
-      data-variant={employee.workstation}
-      onClick={(event) => {
-        event.stopPropagation();
-        onSelect(employee.id);
-      }}
-      style={{ left: `${employee.left}%`, top: `${employee.top}%` }}
-      type="button"
-    >
-      {employee.status !== "idle" ? <Nameplate employee={employee} /> : null}
-    </button>
+    <>
+      <span aria-hidden="true" className={styles.personBodyLayer} style={positionStyle}>
+        <Image
+          alt=""
+          className={styles.personBodyImage}
+          fill
+          sizes="(max-width: 1200px) 6vw, 60px"
+          src={personBodyAsset(employee)}
+        />
+      </span>
+      <span aria-hidden="true" className={styles.personHandsLayer} style={positionStyle}>
+        <Image
+          alt=""
+          className={styles.personHandsImage}
+          fill
+          sizes="(max-width: 1200px) 6vw, 60px"
+          src={personHandsAsset(employee)}
+        />
+      </span>
+      <button
+        aria-label={`${employee.display_name}，${statusUnknown ? "状态未知" : stateLabel(employee.state)}`}
+        className={[styles.workstation, stateClass, selected ? styles.selected : ""].join(" ")}
+        data-variant={employee.workstation_variant}
+        onClick={(event) => {
+          event.stopPropagation();
+          onSelect(employee.id);
+        }}
+        style={positionStyle}
+        type="button"
+      >
+        <Nameplate employee={employee} statusUnknown={statusUnknown} />
+      </button>
+    </>
   );
 }
 
-function Nameplate({ employee }: { employee: OfficeEmployee }) {
-  const status = STATUS_META[employee.status];
+function Nameplate({ employee, statusUnknown }: { employee: OfficeEmployee; statusUnknown: boolean }) {
   return (
     <span className={styles.nameplate}>
       <span className={styles.nameCopy}>
-        <strong>{employee.name}</strong>
+        <strong>{employee.display_name}</strong>
         <small>
-          <i /> {status.label}
+          <i /> {statusUnknown ? "状态未知" : stateLabel(employee.state)}
         </small>
       </span>
     </span>
   );
 }
 
-function EmployeeDetailPanel({ employee, onClose }: { employee: OfficeEmployee; onClose: () => void }) {
-  const status = STATUS_META[employee.status];
-  const [selectedTask, setSelectedTask] = useState("接口测试用例设计");
+function EmployeeDetailPanel({
+  employee,
+  loading,
+  error,
+  statusUnknown,
+  onClose,
+  onRefresh,
+}: {
+  employee: OfficeEmployeeViewModel | null;
+  loading: boolean;
+  error: string;
+  statusUnknown: boolean;
+  onClose: () => void;
+  onRefresh: () => void;
+}) {
+  const router = useRouter();
+
+  if (!employee) {
+    return (
+      <aside className={styles.detailPanel}>
+        <header className={styles.detailHeader}>
+          <h2>员工详情</h2>
+        </header>
+        <div className={styles.detailBody}>
+          <div className={styles.taskDetail}>
+            <strong>{loading ? "正在加载真实员工目录…" : "暂无可用智能体员工"}</strong>
+            <p>{error || "请确认已登录并刷新页面。"}</p>
+          </div>
+        </div>
+        <footer className={styles.detailActions}>
+          <button onClick={onRefresh} type="button">
+            <RefreshCw aria-hidden="true" />
+            重新加载
+          </button>
+        </footer>
+      </aside>
+    );
+  }
+
+  const currentTask = employee.currentTask;
+  const parallelTasks = employee.activeTasks.slice(1);
+  const status = statusUnknown ? "状态未知" : stateLabel(employee.state);
+  const avatar = personPortraitAsset(employee);
+
   return (
     <aside className={styles.detailPanel}>
       <header className={styles.detailHeader}>
@@ -412,121 +587,132 @@ function EmployeeDetailPanel({ employee, onClose }: { employee: OfficeEmployee; 
       <div className={styles.profile}>
         <div className={styles.profileAvatar}>
           <Image
-            alt={`${employee.name}的头像`}
+            alt={`${employee.display_name}的头像`}
             className={styles.profileAvatarImage}
             fill
-            sizes="56px"
-            src={DETAIL_PORTRAITS[employee.id] ?? EMPLOYEE_PORTRAITS[employee.workstation]}
+            sizes="72px"
+            src={avatar}
           />
         </div>
         <div>
           <h3>
-            {employee.name}
-            <span className={styles.profileStatus} data-status={employee.status}>
-              <i /> {status.detail}
+            {employee.display_name}
+            <span
+              className={styles.profileStatus}
+              data-status={statusUnknown ? "error" : runtimeDataStatus(employee.state)}
+            >
+              <i /> {status}
             </span>
           </h3>
           <p className={styles.profileMeta}>
             <Building2 aria-hidden="true" />
-            {employee.room === "ceo" ? "管理中心" : roomName(employee.room)} · {employee.role}
+            {employee.department_name} · {employee.role}
           </p>
           <p className={styles.profileMeta}>
             <MapPin aria-hidden="true" />
-            工位：{employee.seat}
+            工位：{employee.seat_code}
           </p>
           <p className={styles.profileMeta}>
-            <Mail aria-hidden="true" />
-            {employee.email}
+            <Bot aria-hidden="true" />
+            绑定能力：{employee.capability_name}
           </p>
         </div>
       </div>
 
-      <section aria-label="员工今日状态摘要" className={styles.detailSnapshot}>
+      <section aria-label="员工实时状态摘要" className={styles.detailSnapshot}>
         <div>
-          <span>今日专注</span>
-          <strong>3h 42m</strong>
+          <span>当前状态</span>
+          <strong>{status}</strong>
         </div>
         <div>
-          <span>完成任务</span>
-          <strong>3 / 4</strong>
+          <span>运行任务</span>
+          <strong>{statusUnknown ? "-" : employee.activeTasks.length}</strong>
         </div>
         <div>
-          <span>今日会议</span>
-          <strong>1 场</strong>
+          <span>最近更新</span>
+          <strong>{currentTask ? formatDateTime(currentTask.updated_at) : "-"}</strong>
         </div>
       </section>
 
       <nav aria-label="员工详情分类" className={styles.detailTabs}>
         <button className={styles.activeTab} type="button">
-          概览
+          当前工作
         </button>
-        <button type="button">状态</button>
-        <button type="button">统计</button>
-        <button type="button">项目</button>
+        <button type="button">工作轨迹</button>
+        <button type="button">历史记录</button>
       </nav>
 
       <div className={styles.detailBody}>
-        <DetailSection title="技能标签">
-          <div className={styles.skillList}>
-            {employee.skills.map((skill) => (
-              <span key={skill}>{skill}</span>
-            ))}
+        {error ? (
+          <div className={styles.taskDetail}>
+            <span>状态同步异常</span>
+            <strong>{error}</strong>
+            <p>已保留最后一次成功快照，可手动重新加载。</p>
+          </div>
+        ) : null}
+
+        <DetailSection title="能力说明">
+          <div className={styles.taskDetail}>
+            <strong>{employee.capability_name}</strong>
+            <p>{employee.description}</p>
           </div>
         </DetailSection>
-        <DetailSection title="今日工作安排">
-          <ol className={styles.timeline}>
-            <TimelineItem
-              active={selectedTask === "接口测试用例设计"}
-              label="接口测试用例设计"
-              onSelect={setSelectedTask}
-              status="进行中"
-              time="09:00-10:30"
-            />
-            <TimelineItem
-              active={selectedTask === "项目需求评审"}
-              label="项目需求评审"
-              onSelect={setSelectedTask}
-              status="已完成"
-              time="10:45-12:00"
-            />
-            <TimelineItem
-              active={selectedTask === "自动化测试脚本开发"}
-              label="自动化测试脚本开发"
-              onSelect={setSelectedTask}
-              status="待开始"
-              time="14:00-16:00"
-            />
-            <TimelineItem
-              active={selectedTask === "测试报告编写"}
-              label="测试报告编写"
-              onSelect={setSelectedTask}
-              status="待开始"
-              time="16:15-17:30"
-            />
-          </ol>
+
+        <DetailSection title="当前工作">
+          {currentTask ? <TaskCard task={currentTask} /> : <p>当前空闲，等待任务。</p>}
         </DetailSection>
-        <div className={styles.taskDetail}>
-          <span>当前任务</span>
-          <strong>{selectedTask}</strong>
-          <p>点击任务或对应工位，可快速切换员工详情。</p>
-        </div>
+
+        <DetailSection title="并行任务">
+          {parallelTasks.length > 0 ? (
+            <ol className={styles.timeline}>
+              {parallelTasks.map((task) => (
+                <li key={task.id}>
+                  <span className={styles.timelineDot} />
+                  <time>{formatDateTime(task.updated_at)}</time>
+                  <span className={styles.timelineTask}>{task.title}</span>
+                  <em>{task.status_label}</em>
+                </li>
+              ))}
+            </ol>
+          ) : (
+            <p>当前没有并行任务。</p>
+          )}
+        </DetailSection>
       </div>
 
       <footer className={styles.detailActions}>
-        <button type="button">
-          <MessageSquare aria-hidden="true" />
-          发送消息
+        <button
+          disabled={!currentTask?.detail_url}
+          onClick={() => currentTask?.detail_url && router.push(currentTask.detail_url)}
+          type="button"
+        >
+          <ExternalLink aria-hidden="true" />
+          打开任务详情
         </button>
-        <button type="button">
-          <CalendarDays aria-hidden="true" />
-          查看日程
+        <button onClick={onRefresh} type="button">
+          <RefreshCw aria-hidden="true" />
+          刷新状态
         </button>
-        <button type="button">
-          <Ellipsis aria-hidden="true" />
-          更多操作
+        <button onClick={() => router.push("/tasks")} type="button">
+          <CircleAlert aria-hidden="true" />
+          任务中心
         </button>
       </footer>
     </aside>
+  );
+}
+
+function TaskCard({ task }: { task: ApiTaskItem }) {
+  return (
+    <div className={styles.taskDetail}>
+      <span>
+        {task.project_name} · {task.module_label}
+      </span>
+      <strong>{task.title}</strong>
+      <p>
+        {task.status_label} · 更新于 {formatDateTime(task.updated_at)}
+      </p>
+    </div>
   );
 }
 
@@ -539,77 +725,77 @@ function DetailSection({ title, children }: { title: string; children: ReactNode
   );
 }
 
-function TimelineItem({
-  time,
-  label,
-  status,
-  active = false,
-  onSelect,
-}: {
-  time: string;
-  label: string;
-  status: string;
-  active?: boolean;
-  onSelect: (label: string) => void;
-}) {
-  return (
-    <li className={active ? styles.timelineActive : ""}>
-      <span className={styles.timelineDot} />
-      <time>{time}</time>
-      <button className={styles.timelineTask} onClick={() => onSelect(label)} type="button">
-        {label}
-      </button>
-      <em>{status}</em>
-    </li>
-  );
+function buildOfficeRooms(employees: OfficeEmployeeViewModel[]): OfficeRoomData[] {
+  const characterIds = assignCharacterIds(employees);
+  return ROOM_CONFIGS.map((config) => {
+    const seatLayout = ROOM_SEAT_LAYOUTS[config.id as keyof typeof ROOM_SEAT_LAYOUTS];
+    const roomEmployees = employees
+      .filter((employee) => employee.department_id === config.id)
+      .slice(0, ROOM_CAPACITY)
+      .map((employee) => ({
+        ...employee,
+        characterId: characterIds.get(employee.id) ?? BUILT_IN_CHARACTER_IDS[0],
+        ...(seatLayout?.[employee.seat_index] ??
+          seatLayout?.[seatLayout.length - 1] ??
+          ROOM_SEAT_LAYOUTS.requirement[0]),
+      }));
+    return {
+      ...config,
+      employees: roomEmployees,
+    };
+  });
 }
 
-function room(
-  id: string,
-  name: string,
-  occupied: number,
-  capacity: number,
-  image: string,
-  executive = false,
-): OfficeRoomData {
+function roomConfig(id: string, name: string, capacity: number, roomAssetId: string, executive = false) {
+  if (executive) {
+    return { id, name, capacity, image: roomAssetId, executive };
+  }
   return {
     id,
     name,
-    occupied,
     capacity,
-    image,
+    image: `${ASSET_ROOT}/rooms/${roomAssetId}-room-furniture-clean.png`,
+    deskForeground: `${ASSET_ROOT}/rooms/${roomAssetId}-room-desk-foreground.png`,
+    monitorForeground: `${ASSET_ROOT}/rooms/${roomAssetId}-room-monitor-foreground.png`,
     executive,
-    employees: EMPLOYEES.filter((employeeItem) => employeeItem.room === id),
   };
 }
 
-function employee(
-  id: string,
-  name: string,
-  role: string,
-  roomId: string,
-  seat: string,
-  status: EmployeeStatus,
-  workstation: WorkstationVariant,
-  left: number,
-  top: number,
-  skills: string[],
-): OfficeEmployee {
-  return {
-    id,
-    name,
-    role,
-    room: roomId,
-    seat,
-    status,
-    workstation,
-    left,
-    top,
-    skills,
-    email: `${id.replaceAll("-", "")}@siliconflow.ai`,
-  };
+function assignCharacterIds(employees: OfficeEmployeeViewModel[]) {
+  const availableCharacterIds = [...BUILT_IN_CHARACTER_IDS];
+  const assignedCharacterIds = new Map<string, BuiltInCharacterId>();
+
+  for (const employee of employees.slice(0, BUILT_IN_CHARACTER_IDS.length)) {
+    const preferredCharacterId = isBuiltInCharacterId(employee.id) ? employee.id : null;
+    const characterId = preferredCharacterId ?? availableCharacterIds[0];
+    assignedCharacterIds.set(employee.id, characterId);
+    availableCharacterIds.splice(availableCharacterIds.indexOf(characterId), 1);
+  }
+
+  return assignedCharacterIds;
 }
 
-function roomName(roomId: string) {
-  return ROOMS.find((roomItem) => roomItem.id === roomId)?.name ?? "硅基员工中心";
+function isBuiltInCharacterId(value: string): value is BuiltInCharacterId {
+  return BUILT_IN_CHARACTER_IDS.includes(value as BuiltInCharacterId);
+}
+
+function personBodyAsset(employee: OfficeEmployee) {
+  return PERSON_BODY_ASSETS[employee.characterId];
+}
+
+function personHandsAsset(employee: OfficeEmployee) {
+  return PERSON_HANDS_ASSETS[employee.characterId];
+}
+
+function personPortraitAsset(employee: OfficeEmployeeViewModel) {
+  const characterId = isBuiltInCharacterId(employee.id) ? employee.id : BUILT_IN_CHARACTER_IDS[0];
+  return PERSON_PORTRAIT_ASSETS[characterId];
+}
+
+function stateLabel(state: EmployeeRuntimeState) {
+  return state === "working" ? "工作中" : "空闲";
+}
+
+function runtimeDataStatus(state: EmployeeRuntimeState) {
+  return state === "working" ? "running" : "idle";
 }

@@ -188,6 +188,7 @@ async function observePage() {
     page_text_summary: textSummary,
     accessibility_tree: accessibilityTree,
     visible_text_blocks: visibleTextBlocks,
+    collections: facts.collections || [],
     elements,
     forms: facts.forms,
     dialogs: facts.dialogs,
@@ -1464,8 +1465,38 @@ async function collectDomFacts(browserPage) {
       if (name) return `${el.tagName.toLowerCase()}[name="${CSS.escape(name)}"]`;
       return uniqueCssPathOf(el);
     };
+    const collectionContainerSelector = 'article,[role="listitem"],[data-testid*="card" i],[data-test-id*="card" i],[data-test*="card" i],[class*="card" i]';
+    const collectionItemOf = (container) => {
+      if (!container) return null;
+      const texts = Array.from(container.querySelectorAll("h1,h2,h3,h4,h5,h6,[role='heading'],strong,b,span,div"))
+        .filter(visible)
+        .map((node) => clean(node.textContent, 80))
+        .filter(Boolean);
+      const heading = container.querySelector('h1,h2,h3,h4,h5,h6,[role="heading"]');
+      const name = clean(heading?.textContent, 80) || texts[0] || "";
+      const status = texts.find((text) => /^(草稿|已发布|未发布|已下线|已禁用|已启用)$/.test(text)) || "";
+      const type = texts.find((text) => /Agent$/i.test(text) && text !== name) || "";
+      if (!name || !type || !status) return null;
+      const actions = Array.from(container.querySelectorAll("button,a,[role='button'],[role='link']"))
+        .filter(visible)
+        .map((node) => labelOf(node))
+        .filter((text, index, values) => text && values.indexOf(text) === index);
+      const rawKey = container.getAttribute("data-testid")
+        || container.getAttribute("data-test-id")
+        || container.getAttribute("data-test")
+        || Array.from(container.classList).find((value) => /card|listitem/i.test(value))
+        || "collection_items";
+      return {
+        key: clean(rawKey, 80).replace(/[- ]+/g, "_"),
+        item_element: clean(rawKey, 80).replace(/[- ]+/g, "_").replace(/s$/, ""),
+        name,
+        type,
+        status,
+        actions,
+      };
+    };
     const contextOf = (el, ownName = "") => {
-      const container = el.closest('article,[role="listitem"],[data-testid*="card" i],[data-test-id*="card" i],[data-test*="card" i],[class*="card" i]');
+      const container = el.closest(collectionContainerSelector);
       if (!container || container === el) return {};
       const heading = container.querySelector('h1,h2,h3,h4,h5,h6,[role="heading"]');
       const titleCandidates = [
@@ -1479,11 +1510,19 @@ async function collectDomFacts(browserPage) {
         .filter((text) => text && text !== ownName && text.length <= 80 && !/^(已发布|未发布|分析|使用|对话历史|更多|编辑|删除|\.\.\.)$/.test(text));
       const containerName = firstMeaningful([...titleCandidates, ...texts]);
       if (!containerName || containerName === ownName) return {};
+      const collectionItem = collectionItemOf(container);
       return {
         container_role: container.getAttribute("role") || container.tagName.toLowerCase(),
         container_name: containerName,
         container_test_id: container.getAttribute("data-testid") || container.getAttribute("data-test-id") || container.getAttribute("data-test") || "",
         stable_text: containerName,
+        ...(collectionItem ? {
+          collection_key: collectionItem.key,
+          collection_item_name: collectionItem.name,
+          collection_item_type: collectionItem.type,
+          collection_item_status: collectionItem.status,
+          collection_actions: collectionItem.actions,
+        } : {}),
       };
     };
     const overlaySelector = [
@@ -1653,6 +1692,17 @@ async function collectDomFacts(browserPage) {
       .filter(visible)
       .slice(0, 20)
       .map((item) => clean(item.textContent));
+    const collectionItems = Array.from(document.querySelectorAll(collectionContainerSelector))
+      .filter(visible)
+      .map(collectionItemOf)
+      .filter(Boolean);
+    const collections = Array.from(new Set(collectionItems.map((item) => item.key))).map((key) => ({
+      key,
+      item_element: collectionItems.find((item) => item.key === key)?.item_element || "collection_item",
+      items: collectionItems
+        .filter((item) => item.key === key)
+        .map(({ name, type, status, actions }) => ({ name, type, status, actions })),
+    }));
     return {
       title: document.title || location.pathname || location.href,
       interaction_scope: activeOverlay ? "overlay" : "page",
@@ -1693,6 +1743,7 @@ async function collectDomFacts(browserPage) {
       forms,
       tables,
       breadcrumbs,
+      collections,
     };
   });
 }

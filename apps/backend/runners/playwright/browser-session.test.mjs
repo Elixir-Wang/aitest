@@ -132,6 +132,8 @@ describe("browser session observation", () => {
         <body>
           <article class="agent-card">
             <h3>无插件智能体2</h3>
+            <span>已发布</span>
+            <span>自主规划 Agent</span>
             <div class="actions">
               <button>分析</button>
               <button>使用</button>
@@ -140,6 +142,8 @@ describe("browser session observation", () => {
           </article>
           <article class="agent-card">
             <h3>测试_自主规划智能体</h3>
+            <span>草稿</span>
+            <span>自主规划 Agent</span>
             <div class="actions">
               <button>分析</button>
               <button>使用</button>
@@ -158,6 +162,31 @@ describe("browser session observation", () => {
       assert.equal(target.primary_selector.kind, "contextual");
       assert.match(target.primary_selector.code, /测试_自主规划智能体/);
       assert.notEqual(target.primary_selector.kind, "css");
+      assert.equal(target.context.collection_key, "agent_cards");
+      assert.equal(target.context.collection_item_name, "测试_自主规划智能体");
+      assert.equal(target.context.collection_item_type, "自主规划 Agent");
+      assert.equal(target.context.collection_item_status, "草稿");
+      assert.deepEqual(target.context.collection_actions, ["分析", "使用", "对话历史"]);
+      assert.deepEqual(observed.collections, [
+        {
+          key: "agent_cards",
+          item_element: "agent_card",
+          items: [
+            {
+              name: "无插件智能体2",
+              type: "自主规划 Agent",
+              status: "已发布",
+              actions: ["分析", "使用", "对话历史"],
+            },
+            {
+              name: "测试_自主规划智能体",
+              type: "自主规划 Agent",
+              status: "草稿",
+              actions: ["分析", "使用", "对话历史"],
+            },
+          ],
+        },
+      ]);
     } finally {
       await session.close();
     }

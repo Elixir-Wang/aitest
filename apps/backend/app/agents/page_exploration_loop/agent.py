@@ -11,6 +11,7 @@ from app.agents.page_exploration_loop.prompts.system_prompt import LOOP_SYSTEM_P
 from app.agents.page_exploration_loop.schemas import ActionDecision
 from app.agents.page_exploration_loop.tools import get_loop_tools
 from app.agents.shared.invalid_tool_call_recovery import InvalidToolCallRecoveryMiddleware
+from app.agents.shared.structured_output import structured_output_runnable
 
 
 def page_exploration_loop_agent(model, *, tools=None, max_actions: int = 80):
@@ -33,5 +34,5 @@ def page_exploration_loop_agent(model, *, tools=None, max_actions: int = 80):
 
 
 def loop_action_decider(model: BaseChatModel):
-    """Return a structured-output model used by the deterministic Loop runner."""
-    return model.with_structured_output(ActionDecision)
+    """Return a cross-provider structured-output runnable for local decisions."""
+    return structured_output_runnable(model, ActionDecision)

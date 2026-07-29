@@ -213,6 +213,7 @@
 
 .roomScene {
   position: relative;
+  z-index: 2;
   width: 100%;
   flex: 0 0 auto;
   aspect-ratio: 1;
@@ -220,6 +221,7 @@
   background: #eef3f8;
   container-type: inline-size;
   isolation: isolate;
+  pointer-events: none;
 }
 
 .roomBackground {
@@ -242,21 +244,6 @@
   background: linear-gradient(180deg, rgb(236 243 252 / 2%), rgb(199 214 235 / 4%));
   content: "";
   pointer-events: none;
-}
-
-.roomExpandHotspot {
-  position: absolute;
-  inset: 0;
-  z-index: 1;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  cursor: zoom-in;
-}
-
-.roomExpandHotspot:focus-visible {
-  outline: 2px solid #2f6bff;
-  outline-offset: -3px;
 }
 
 .roomHeader {
@@ -292,17 +279,58 @@
 
 .workstation {
   position: absolute;
-  z-index: 4;
-  width: 40%;
+  z-index: 7;
   aspect-ratio: 1;
   padding: 0;
   border: 0;
   background: transparent;
   transform: translate(-50%, -50%);
+  pointer-events: auto;
 }
 
 .workstation {
   cursor: pointer;
+}
+
+.personBodyLayer,
+.personHandsLayer {
+  position: absolute;
+  aspect-ratio: 1;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.personBodyLayer {
+  z-index: 3;
+}
+
+.personHandsLayer {
+  z-index: 5;
+}
+
+.personBodyImage,
+.personHandsImage {
+  object-fit: contain;
+  object-position: center;
+}
+
+.personHandsImage {
+  clip-path: inset(82% 0 0);
+}
+
+.deskForeground,
+.monitorForeground {
+  object-fit: contain;
+  object-position: center top;
+  pointer-events: none;
+}
+
+.deskForeground {
+  z-index: 4;
+}
+
+.monitorForeground {
+  z-index: 6;
 }
 .workstation::before,
 .executiveHotspot::before {
@@ -326,8 +354,8 @@
 
 .nameplate {
   position: absolute;
-  top: 48%;
-  left: 82%;
+  top: 88%;
+  left: 130%;
   z-index: 6;
   display: flex;
   box-sizing: border-box;
@@ -449,50 +477,6 @@
 .executiveHotspot .nameplate {
   top: 52%;
   left: 84%;
-}
-
-.roomDialog {
-  width: min(920px, calc(100vw - 32px));
-  max-width: 920px;
-  gap: 14px;
-  padding: 20px;
-  border: 1px solid #dfe5ed;
-  border-radius: 14px;
-  background: #f7f9fc;
-  box-shadow: 0 24px 70px rgb(28 43 67 / 24%);
-}
-
-.roomDialogHeader {
-  padding-right: 34px;
-}
-
-.roomDialogHeader h2 {
-  margin: 0;
-  color: #17243d;
-  font-size: 18px;
-  font-weight: 700;
-}
-
-.roomDialogHeader p {
-  margin: 0;
-  color: #66758b;
-  font-size: 12px;
-}
-
-.roomPreviewScene {
-  position: relative;
-  width: 100%;
-  aspect-ratio: 1;
-  overflow: hidden;
-  border: 1px solid #dfe5ed;
-  border-radius: 10px;
-  background: #eef3f8;
-  container-type: inline-size;
-  isolation: isolate;
-}
-
-.roomPreviewScene .workstation {
-  cursor: pointer;
 }
 
 .detailPanel {
@@ -982,13 +966,6 @@
   border-color: #3d75f0;
   background: #3d75f0;
   color: #fff;
-}
-
-@media (max-width: 560px) {
-  .roomDialog {
-    width: calc(100vw - 20px);
-    padding: 14px;
-  }
 }
 
 @media (max-width: 1120px) {

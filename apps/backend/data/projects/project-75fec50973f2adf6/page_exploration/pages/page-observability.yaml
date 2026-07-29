@@ -1,0 +1,958 @@
+schema_version: '4.0'
+page:
+  id: page-observability
+  title: 百融百工
+  normalized_path: /observability
+objects:
+- key: observability
+  type: page
+  name: 百融百工
+states:
+- id: page-observability__root__001
+  type: root
+  object: observability
+elements:
+- key: button-创建智能体
+  object: observability
+  states:
+  - page-observability__root__001
+  role: button
+  name: 创建智能体
+  actions:
+  - click
+  locator:
+    strategy: role
+    role: button
+    name: 创建智能体
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: aside > div > div > div:nth-of-type(2) > button
+- key: clickable-探索广场
+  object: observability
+  states:
+  - page-observability__root__001
+  role: clickable
+  name: 探索广场
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 探索广场
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(4) > div > div > div:nth-of-type(1) > div:nth-of-type(2)
+      > span
+- key: clickable-批量任务
+  object: observability
+  states:
+  - page-observability__root__001
+  role: clickable
+  name: 批量任务
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 批量任务
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(4) > div > div > div:nth-of-type(2) > div:nth-of-type(2)
+      > span
+- key: clickable-hongbao.wang 所有者
+  object: observability
+  states:
+  - page-observability__root__001
+  role: clickable
+  name: hongbao.wang 所有者
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(2)
+- key: clickable-工作台
+  object: observability
+  states:
+  - page-observability__root__001
+  role: clickable
+  name: 工作台
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 工作台
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(1) > div:nth-of-type(4) > div:nth-of-type(1) > span
+- key: clickable-资源库
+  object: observability
+  states:
+  - page-observability__root__001
+  role: clickable
+  name: 资源库
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 资源库
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(4) > div:nth-of-type(2) > span
+- key: clickable-效果评测
+  object: observability
+  states:
+  - page-observability__root__001
+  role: clickable
+  name: 效果评测
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 效果评测
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(4) > div:nth-of-type(3) > span
+- key: clickable-发布管理
+  object: observability
+  states:
+  - page-observability__root__001
+  role: clickable
+  name: 发布管理
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 发布管理
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(4) > div > div > div:nth-of-type(3) > div:nth-of-type(2)
+      > div:nth-of-type(2) > div:nth-of-type(1)
+- key: clickable-线上观测
+  object: observability
+  states:
+  - page-observability__root__001
+  role: clickable
+  name: 线上观测
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(2) > div:nth-of-type(2) > div:nth-of-type(2) > span
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(4) > div > div > div:nth-of-type(3) > div:nth-of-type(2)
+      > div:nth-of-type(2) > div:nth-of-type(2)
+- key: clickable-自动优化
+  object: observability
+  states:
+  - page-observability__root__001
+  role: clickable
+  name: 自动优化
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 自动优化
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(2) > div:nth-of-type(2) > div:nth-of-type(3) > span
+- key: clickable-空间管理
+  object: observability
+  states:
+  - page-observability__root__001
+  role: clickable
+  name: 空间管理
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 空间管理
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(3) > div:nth-of-type(3) > div:nth-of-type(2) > div:nth-of-type(1)
+      > span
+- key: clickable-文档中心
+  object: observability
+  states:
+  - page-observability__root__001
+  role: clickable
+  name: 文档中心
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 文档中心
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(3) > div:nth-of-type(2) > div:nth-of-type(2) > span
+- key: clickable-收藏
+  object: observability
+  states:
+  - page-observability__root__001
+  role: clickable
+  name: 收藏
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 收藏
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div > div:nth-of-type(5) > div:nth-of-type(2) > div:nth-of-type(1)
+- key: clickable-点击【⭐️收藏】 可将智能体添加到这里
+  object: observability
+  states:
+  - page-observability__root__001
+  role: clickable
+  name: 点击【⭐️收藏】 可将智能体添加到这里
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(5) > div:nth-of-type(3)
+- key: clickable-hongbao-wang1
+  object: observability
+  states:
+  - page-observability__root__001
+  role: clickable
+  name: hongbao.wang1
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: hongbao.wang1
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(6) > div:nth-of-type(1) > div > div:nth-of-type(2)
+- key: textbox-搜索
+  object: observability
+  states:
+  - page-observability__root__001
+  role: textbox
+  name: 搜索
+  actions:
+  - fill
+  locator:
+    strategy: role
+    role: textbox
+    name: 搜索
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(1) > div > div > div > div:nth-of-type(1) > div > div >
+      div:nth-of-type(1) > div > div > input
+- key: clickable-结果即刻交付 首个聚焦结果交付的智能体平台，快速激活业务价值，使AI普惠千业万户
+  object: observability
+  states:
+  - page-observability__root__001
+  role: clickable
+  name: 结果即刻交付 首个聚焦结果交付的智能体平台，快速激活业务价值，使AI普惠千业万户
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: body > div:nth-of-type(1) > div > div > div > div:nth-of-type(1) > div
+      > div > div:nth-of-type(2) > div:nth-of-type(1) > div
+- key: clickable-全部 已订阅 最近使用 语言 选择语言 类型 全部 排序 按发布时间排序
+  object: observability
+  states:
+  - page-observability__root__001
+  role: clickable
+  name: 全部 已订阅 最近使用 语言 选择语言 类型 全部 排序 按发布时间排序
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: body > div:nth-of-type(1) > div > div > div > div:nth-of-type(1) > div
+      > div > div:nth-of-type(2) > div:nth-of-type(2) > div:nth-of-type(1)
+- key: clickable-全部
+  object: observability
+  states:
+  - page-observability__root__001
+  role: clickable
+  name: 全部
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(2)
+      > div > div > span:nth-of-type(2)
+- key: clickable-已订阅
+  object: observability
+  states:
+  - page-observability__root__001
+  role: clickable
+  name: 已订阅
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 已订阅
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(1) > div > div > div:nth-of-type(2) > div:nth-of-type(2)
+      > div:nth-of-type(1) > div:nth-of-type(1) > span:nth-of-type(2)
+- key: clickable-最近使用
+  object: observability
+  states:
+  - page-observability__root__001
+  role: clickable
+  name: 最近使用
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 最近使用
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(1) > span:nth-of-type(3)
+- key: clickable-语言 选择语言 类型 全部 排序 按发布时间排序
+  object: observability
+  states:
+  - page-observability__root__001
+  role: clickable
+  name: 语言 选择语言 类型 全部 排序 按发布时间排序
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(2) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(2)
+- key: clickable-语言 选择语言
+  object: observability
+  states:
+  - page-observability__root__001
+  role: clickable
+  name: 语言 选择语言
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 语言 选择语言
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(2) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(2)
+      > div:nth-of-type(1)
+- key: clickable-选择语言
+  object: observability
+  states:
+  - page-observability__root__001
+  role: clickable
+  name: 选择语言
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 选择语言
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1)
+      > div
+- key: clickable-类型 全部
+  object: observability
+  states:
+  - page-observability__root__001
+  role: clickable
+  name: 类型 全部
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(2) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(2)
+      > div:nth-of-type(2)
+- key: clickable-排序 按发布时间排序
+  object: observability
+  states:
+  - page-observability__root__001
+  role: clickable
+  name: 排序 按发布时间排序
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(3)
+- key: clickable-按发布时间排序
+  object: observability
+  states:
+  - page-observability__root__001
+  role: clickable
+  name: 按发布时间排序
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(3) > div > div > span:nth-of-type(2)
+- key: clickable-官方
+  object: observability
+  states:
+  - page-observability__root__001
+  role: clickable
+  name: 官方
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(1) > div > div > div > div:nth-of-type(1) > div > div >
+      div:nth-of-type(2) > div:nth-of-type(2) > div:nth-of-type(2) > span:nth-of-type(1)
+- key: clickable-客服场景
+  object: observability
+  states:
+  - page-observability__root__001
+  role: clickable
+  name: 客服场景
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 客服场景
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(2) > div:nth-of-type(2) > div:nth-of-type(2) > span:nth-of-type(2)
+- key: clickable-营销场景
+  object: observability
+  states:
+  - page-observability__root__001
+  role: clickable
+  name: 营销场景
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 营销场景
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(2) > div:nth-of-type(2) > div:nth-of-type(2) > span:nth-of-type(3)
+- key: clickable-合规与风控
+  object: observability
+  states:
+  - page-observability__root__001
+  role: clickable
+  name: 合规与风控
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 合规与风控
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: span:nth-of-type(4)
+- key: clickable-金融业务
+  object: observability
+  states:
+  - page-observability__root__001
+  role: clickable
+  name: 金融业务
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 金融业务
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: span:nth-of-type(5)
+- key: clickable-保险场景
+  object: observability
+  states:
+  - page-observability__root__001
+  role: clickable
+  name: 保险场景
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 保险场景
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: span:nth-of-type(6)
+- key: clickable-产品服务
+  object: observability
+  states:
+  - page-observability__root__001
+  role: clickable
+  name: 产品服务
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 产品服务
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: span:nth-of-type(7)
+- key: clickable-零售场景
+  object: observability
+  states:
+  - page-observability__root__001
+  role: clickable
+  name: 零售场景
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 零售场景
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: span:nth-of-type(8)
+- key: clickable-人力资源
+  object: observability
+  states:
+  - page-observability__root__001
+  role: clickable
+  name: 人力资源
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 人力资源
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: span:nth-of-type(9)
+- key: clickable-报告生成
+  object: observability
+  states:
+  - page-observability__root__001
+  role: clickable
+  name: 报告生成
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 报告生成
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: span:nth-of-type(10)
+- key: clickable-其他
+  object: observability
+  states:
+  - page-observability__root__001
+  role: clickable
+  name: 其他
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 其他
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: span:nth-of-type(11)
+- key: clickable-电销总结 知识库 百融云创的电销总结专家，精准总结电销人员与客户的通话记录内容 使用说明：输入客电销人员与客户的通话记录内容，智能体会按规范进行内容总结，包含但不限于接听情况、客户需求、收入状况、购买能力、产品认知、购买意愿等信息
+    官方 21
+  object: observability
+  states:
+  - page-observability__root__001
+  role: clickable
+  name: 电销总结 知识库 百融云创的电销总结专家，精准总结电销人员与客户的通话记录内容 使用说明：输入客电销人员与客户的通话记录内容，智能体会按规范进行内容总结，包含但不限于接听情况、客户需求、收入状况、购买能力、产品认知、购买意愿等信息
+    官方 21
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: body > div:nth-of-type(1) > div > div > div > div:nth-of-type(1) > div
+      > div > div:nth-of-type(2) > div:nth-of-type(3) > div:nth-of-type(1)
+- key: clickable-电销总结 知识库
+  object: observability
+  states:
+  - page-observability__root__001
+  role: clickable
+  name: 电销总结 知识库
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(1) > div > div > div:nth-of-type(2) > div:nth-of-type(3)
+      > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1)
+- key: clickable-知识库
+  object: observability
+  states:
+  - page-observability__root__001
+  role: clickable
+  name: 知识库
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1)
+      > div:nth-of-type(2) > div:nth-of-type(2)
+- key: clickable-官方 21
+  object: observability
+  states:
+  - page-observability__root__001
+  role: clickable
+  name: 官方 21
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(2) > div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(2)
+- key: clickable-创建智能体 广场 探索广场 应用 批量任务 hongbao.wang 所有者 创作中心 工作台 资源库 效果评测 运行中心 发布管理
+    线上观测 自动优化 管理中心 空间管理 文档中心 收藏 点击【⭐️收藏】 可将智能体添加到这里 hongbao.wang1 探索广场 结果即刻交付 首个聚焦结果交付的智能体平台，快速激活
+  object: observability
+  states:
+  - page-observability__root__001
+  role: clickable
+  name: 创建智能体 广场 探索广场 应用 批量任务 hongbao.wang 所有者 创作中心 工作台 资源库 效果评测 运行中心 发布管理 线上观测 自动优化
+    管理中心 空间管理 文档中心 收藏 点击【⭐️收藏】 可将智能体添加到这里 hongbao.wang1 探索广场 结果即刻交付 首个聚焦结果交付的智能体平台，快速激活
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: body > div:nth-of-type(1) > div
+- key: clickable-创建智能体 广场 探索广场 应用 批量任务 hongbao.wang 所有者 创作中心 工作台 资源库 效果评测 运行中心 发布管理
+    线上观测 自动优化 管理中心 空间管理 文档中心 收藏 点击【⭐️收藏】 可将智能体添加到这里 hongbao.wang1
+  object: observability
+  states:
+  - page-observability__root__001
+  role: clickable
+  name: 创建智能体 广场 探索广场 应用 批量任务 hongbao.wang 所有者 创作中心 工作台 资源库 效果评测 运行中心 发布管理 线上观测 自动优化
+    管理中心 空间管理 文档中心 收藏 点击【⭐️收藏】 可将智能体添加到这里 hongbao.wang1
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: aside > div > div
+- key: clickable-创建智能体
+  object: observability
+  states:
+  - page-observability__root__001
+  role: clickable
+  name: 创建智能体
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(2) > button > span > span
+- key: clickable-广场 探索广场 应用 批量任务 hongbao.wang 所有者 创作中心 工作台 资源库 效果评测 运行中心 发布管理 线上观测
+    自动优化 管理中心 空间管理 文档中心
+  object: observability
+  states:
+  - page-observability__root__001
+  role: clickable
+  name: 广场 探索广场 应用 批量任务 hongbao.wang 所有者 创作中心 工作台 资源库 效果评测 运行中心 发布管理 线上观测 自动优化 管理中心
+    空间管理 文档中心
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: aside > div > div > div:nth-of-type(4) > div > div
+- key: clickable-广场 探索广场
+  object: observability
+  states:
+  - page-observability__root__001
+  role: clickable
+  name: 广场 探索广场
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: aside > div > div > div:nth-of-type(4) > div > div > div:nth-of-type(1)
+- key: clickable-广场
+  object: observability
+  states:
+  - page-observability__root__001
+  role: clickable
+  name: 广场
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 广场
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div > div:nth-of-type(4) > div > div > div:nth-of-type(1) > div:nth-of-type(1)
+- key: clickable-状态 请选择
+  object: observability
+  states:
+  - page-observability__root__001
+  role: clickable
+  name: 状态 请选择
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 状态 请选择
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(1) > div > div > div > div > div > div > div:nth-of-type(2)
+      > div > div > div:nth-of-type(2)
+- key: textbox-搜索名称
+  object: observability
+  states:
+  - page-observability__root__001
+  role: textbox
+  name: 搜索名称
+  actions:
+  - fill
+  locator:
+    strategy: role
+    role: textbox
+    name: 搜索名称
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(1) > div > div > div > div > div > div > div:nth-of-type(2)
+      > div > div > div:nth-of-type(1) > input
+- key: clickable-请选择
+  object: observability
+  states:
+  - page-observability__root__001
+  role: clickable
+  name: 请选择
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 请选择
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div > div > div > div > div > div:nth-of-type(2) > div > div > div:nth-of-type(2)
+      > div
+- key: button-新建任务
+  object: observability
+  states:
+  - page-observability__root__001
+  role: button
+  name: 新建任务
+  actions:
+  - click
+  locator:
+    strategy: role
+    role: button
+    name: 新建任务
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div > div > div > div > div > div:nth-of-type(2) > div > button
+- key: clickable-创建智能体 广场 探索广场 应用 批量任务 hongbao.wang 所有者 创作中心 工作台 资源库 效果评测 运行中心 发布管理
+    线上观测 自动优化 管理中心 空间管理 文档中心 收藏 点击【⭐️收藏】 可将智能体添加到这里 hongbao.wang1 线上观测 状态 请选择 新建任务
+  object: observability
+  states:
+  - page-observability__root__001
+  role: clickable
+  name: 创建智能体 广场 探索广场 应用 批量任务 hongbao.wang 所有者 创作中心 工作台 资源库 效果评测 运行中心 发布管理 线上观测 自动优化
+    管理中心 空间管理 文档中心 收藏 点击【⭐️收藏】 可将智能体添加到这里 hongbao.wang1 线上观测 状态 请选择 新建任务
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: body > div:nth-of-type(1) > div
+- key: clickable-应用 批量任务
+  object: observability
+  states:
+  - page-observability__root__001
+  role: clickable
+  name: 应用 批量任务
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(4) > div > div > div:nth-of-type(2)
+- key: clickable-应用
+  object: observability
+  states:
+  - page-observability__root__001
+  role: clickable
+  name: 应用
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 应用
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(4) > div > div > div:nth-of-type(2) > div:nth-of-type(1)
+- key: clickable-hongbao.wang 所有者 创作中心 工作台 资源库 效果评测 运行中心 发布管理 线上观测 自动优化 管理中心 空间管理
+    文档中心
+  object: observability
+  states:
+  - page-observability__root__001
+  role: clickable
+  name: hongbao.wang 所有者 创作中心 工作台 资源库 效果评测 运行中心 发布管理 线上观测 自动优化 管理中心 空间管理 文档中心
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(4) > div > div > div:nth-of-type(3)
+- key: clickable-hongbao.wang 所有者 创作中心 工作台 资源库 效果评测
+  object: observability
+  states:
+  - page-observability__root__001
+  role: clickable
+  name: hongbao.wang 所有者 创作中心 工作台 资源库 效果评测
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(4) > div > div > div:nth-of-type(3) > div:nth-of-type(1)
+- key: clickable-hongbao-wang
+  object: observability
+  states:
+  - page-observability__root__001
+  role: clickable
+  name: hongbao.wang
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: hongbao.wang
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(2) > div > div
+      > div > div:nth-of-type(1) > span:nth-of-type(1)
+- key: clickable-所有者
+  object: observability
+  states:
+  - page-observability__root__001
+  role: clickable
+  name: 所有者
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 所有者
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(2) > div > div
+      > div > div:nth-of-type(1) > span:nth-of-type(2)
+- key: clickable-创作中心
+  object: observability
+  states:
+  - page-observability__root__001
+  role: clickable
+  name: 创作中心
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 创作中心
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(3)
+- key: clickable-工作台 资源库 效果评测
+  object: observability
+  states:
+  - page-observability__root__001
+  role: clickable
+  name: 工作台 资源库 效果评测
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(4)
+- key: clickable-运行中心 发布管理 线上观测 自动优化
+  object: observability
+  states:
+  - page-observability__root__001
+  role: clickable
+  name: 运行中心 发布管理 线上观测 自动优化
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(4) > div > div > div:nth-of-type(3) > div:nth-of-type(2)
+- key: clickable-运行中心
+  object: observability
+  states:
+  - page-observability__root__001
+  role: clickable
+  name: 运行中心
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 运行中心
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(4) > div > div > div:nth-of-type(3) > div:nth-of-type(2)
+      > div:nth-of-type(1)
+- key: clickable-发布管理 线上观测 自动优化
+  object: observability
+  states:
+  - page-observability__root__001
+  role: clickable
+  name: 发布管理 线上观测 自动优化
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(4) > div > div > div:nth-of-type(3) > div:nth-of-type(2)
+      > div:nth-of-type(2)
+- key: clickable-管理中心 空间管理 文档中心
+  object: observability
+  states:
+  - page-observability__root__001
+  role: clickable
+  name: 管理中心 空间管理 文档中心
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(3) > div:nth-of-type(3)
+- key: clickable-管理中心
+  object: observability
+  states:
+  - page-observability__root__001
+  role: clickable
+  name: 管理中心
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 管理中心
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(3) > div:nth-of-type(3) > div:nth-of-type(1)
+- key: clickable-空间管理 文档中心
+  object: observability
+  states:
+  - page-observability__root__001
+  role: clickable
+  name: 空间管理 文档中心
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(3) > div:nth-of-type(3) > div:nth-of-type(2)
+- key: clickable-收藏 点击【⭐️收藏】 可将智能体添加到这里
+  object: observability
+  states:
+  - page-observability__root__001
+  role: clickable
+  name: 收藏 点击【⭐️收藏】 可将智能体添加到这里
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: aside > div > div > div:nth-of-type(5)
+quality:
+  status: complete

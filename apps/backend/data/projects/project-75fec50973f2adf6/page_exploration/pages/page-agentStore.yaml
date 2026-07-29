@@ -1,0 +1,2437 @@
+schema_version: '4.0'
+page:
+  id: page-agentStore
+  title: 百融百工
+  normalized_path: /agentStore
+objects:
+- key: agentStore
+  type: page
+  name: 百融百工
+- key: page-agentStore__popover__310a02b3
+  type: popover
+  name: 全选 中文 英文 法语 印尼语 日语 葡萄牙语 俄语 西班牙语 泰语 阿语
+  parent: agentStore
+- key: page-agentStore__popover__44679188
+  type: popover
+  name: 全选 中文 英文 法语 印尼语 日语 葡萄牙语 俄语 西班牙语 泰语 阿语
+  parent: agentStore
+- key: page-agentStore__popover__8340fbad
+  type: popover
+  name: hongbao.wang 所有者 Cybotstar-专业服务 空间管理者 创建空间
+  parent: agentStore
+- key: page-agentStore__popover__b5baf3c6
+  type: popover
+  name: 全选 中文 英文 法语 印尼语 日语 葡萄牙语 俄语 西班牙语 泰语 阿语
+  parent: agentStore
+states:
+- id: page-agentStore__root__001
+  type: root
+  object: agentStore
+- id: page-agentStore__popover__310a02b3
+  type: popover
+  object: page-agentStore__popover__310a02b3
+  parent: page-agentStore__root__001
+- id: page-agentStore__popover__44679188
+  type: popover
+  object: page-agentStore__popover__44679188
+  parent: page-agentStore__root__001
+- id: page-agentStore__popover__8340fbad
+  type: popover
+  object: page-agentStore__popover__8340fbad
+  parent: page-agentStore__root__001
+- id: page-agentStore__popover__b5baf3c6
+  type: popover
+  object: page-agentStore__popover__b5baf3c6
+  parent: page-agentStore__root__001
+elements:
+- key: button-创建智能体
+  object: page-agentStore__popover__44679188
+  states:
+  - page-agentStore__root__001
+  - page-agentStore__popover__310a02b3
+  - page-agentStore__popover__44679188
+  - page-agentStore__popover__8340fbad
+  - page-agentStore__popover__b5baf3c6
+  role: button
+  name: 创建智能体
+  actions:
+  - click
+  locator:
+    strategy: role
+    role: button
+    name: 创建智能体
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div > div > div:nth-of-type(2) > button
+- key: clickable-探索广场
+  object: page-agentStore__popover__44679188
+  states:
+  - page-agentStore__root__001
+  - page-agentStore__popover__310a02b3
+  - page-agentStore__popover__44679188
+  - page-agentStore__popover__8340fbad
+  - page-agentStore__popover__b5baf3c6
+  role: clickable
+  name: 探索广场
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: body > div:nth-of-type(1) > div > div > div > div:nth-of-type(1) > div
+      > div > div:nth-of-type(1)
+- key: clickable-批量任务
+  object: page-agentStore__popover__44679188
+  states:
+  - page-agentStore__root__001
+  - page-agentStore__popover__310a02b3
+  - page-agentStore__popover__44679188
+  - page-agentStore__popover__8340fbad
+  - page-agentStore__popover__b5baf3c6
+  role: clickable
+  name: 批量任务
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 批量任务
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(4) > div > div > div:nth-of-type(2) > div:nth-of-type(2)
+- key: clickable-hongbao.wang 所有者
+  object: page-agentStore__popover__44679188
+  states:
+  - page-agentStore__root__001
+  - page-agentStore__popover__310a02b3
+  - page-agentStore__popover__44679188
+  - page-agentStore__popover__8340fbad
+  - page-agentStore__popover__b5baf3c6
+  role: clickable
+  name: hongbao.wang 所有者
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(4) > div > div > div:nth-of-type(3) > div:nth-of-type(1)
+      > div:nth-of-type(2) > div > div > div > div:nth-of-type(1)
+- key: clickable-工作台
+  object: page-agentStore__popover__44679188
+  states:
+  - page-agentStore__root__001
+  - page-agentStore__popover__310a02b3
+  - page-agentStore__popover__44679188
+  - page-agentStore__popover__8340fbad
+  - page-agentStore__popover__b5baf3c6
+  role: clickable
+  name: 工作台
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 工作台
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(4) > div:nth-of-type(1)
+- key: clickable-资源库
+  object: page-agentStore__popover__44679188
+  states:
+  - page-agentStore__root__001
+  - page-agentStore__popover__310a02b3
+  - page-agentStore__popover__44679188
+  - page-agentStore__popover__8340fbad
+  - page-agentStore__popover__b5baf3c6
+  role: clickable
+  name: 资源库
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 资源库
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(1) > div:nth-of-type(4) > div:nth-of-type(2)
+- key: clickable-效果评测
+  object: page-agentStore__popover__44679188
+  states:
+  - page-agentStore__root__001
+  - page-agentStore__popover__310a02b3
+  - page-agentStore__popover__44679188
+  - page-agentStore__popover__8340fbad
+  - page-agentStore__popover__b5baf3c6
+  role: clickable
+  name: 效果评测
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 效果评测
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(4) > div:nth-of-type(3)
+- key: clickable-发布管理
+  object: page-agentStore__popover__44679188
+  states:
+  - page-agentStore__root__001
+  - page-agentStore__popover__310a02b3
+  - page-agentStore__popover__44679188
+  - page-agentStore__popover__8340fbad
+  - page-agentStore__popover__b5baf3c6
+  role: clickable
+  name: 发布管理
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 发布管理
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(4) > div > div > div:nth-of-type(3) > div:nth-of-type(2)
+      > div:nth-of-type(2) > div:nth-of-type(1)
+- key: clickable-线上观测
+  object: page-agentStore__popover__44679188
+  states:
+  - page-agentStore__root__001
+  - page-agentStore__popover__310a02b3
+  - page-agentStore__popover__44679188
+  - page-agentStore__popover__8340fbad
+  - page-agentStore__popover__b5baf3c6
+  role: clickable
+  name: 线上观测
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 线上观测
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(4) > div > div > div:nth-of-type(3) > div:nth-of-type(2)
+      > div:nth-of-type(2) > div:nth-of-type(2)
+- key: clickable-自动优化
+  object: page-agentStore__popover__44679188
+  states:
+  - page-agentStore__root__001
+  - page-agentStore__popover__310a02b3
+  - page-agentStore__popover__44679188
+  - page-agentStore__popover__8340fbad
+  - page-agentStore__popover__b5baf3c6
+  role: clickable
+  name: 自动优化
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 自动优化
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(2) > div:nth-of-type(2) > div:nth-of-type(3)
+- key: clickable-空间管理
+  object: page-agentStore__popover__44679188
+  states:
+  - page-agentStore__root__001
+  - page-agentStore__popover__310a02b3
+  - page-agentStore__popover__44679188
+  - page-agentStore__popover__8340fbad
+  - page-agentStore__popover__b5baf3c6
+  role: clickable
+  name: 空间管理
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 空间管理
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(3) > div:nth-of-type(3) > div:nth-of-type(2) > div:nth-of-type(1)
+- key: clickable-文档中心
+  object: page-agentStore__popover__44679188
+  states:
+  - page-agentStore__root__001
+  - page-agentStore__popover__310a02b3
+  - page-agentStore__popover__44679188
+  - page-agentStore__popover__8340fbad
+  - page-agentStore__popover__b5baf3c6
+  role: clickable
+  name: 文档中心
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 文档中心
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(3) > div:nth-of-type(3) > div:nth-of-type(2) > div:nth-of-type(2)
+- key: clickable-收藏
+  object: page-agentStore__popover__44679188
+  states:
+  - page-agentStore__root__001
+  - page-agentStore__popover__310a02b3
+  - page-agentStore__popover__44679188
+  - page-agentStore__popover__8340fbad
+  - page-agentStore__popover__b5baf3c6
+  role: clickable
+  name: 收藏
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 收藏
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div > div:nth-of-type(5) > div:nth-of-type(2)
+- key: clickable-点击【⭐️收藏】 可将智能体添加到这里
+  object: page-agentStore__popover__44679188
+  states:
+  - page-agentStore__root__001
+  - page-agentStore__popover__310a02b3
+  - page-agentStore__popover__44679188
+  - page-agentStore__popover__8340fbad
+  - page-agentStore__popover__b5baf3c6
+  role: clickable
+  name: 点击【⭐️收藏】 可将智能体添加到这里
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(5) > div:nth-of-type(3) > div
+- key: clickable-hongbao-wang1
+  object: page-agentStore__popover__44679188
+  states:
+  - page-agentStore__root__001
+  - page-agentStore__popover__310a02b3
+  - page-agentStore__popover__44679188
+  - page-agentStore__popover__8340fbad
+  - page-agentStore__popover__b5baf3c6
+  role: clickable
+  name: hongbao.wang1
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: hongbao.wang1
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(6) > div:nth-of-type(1) > div > div:nth-of-type(2)
+- key: textbox-搜索
+  object: page-agentStore__popover__44679188
+  states:
+  - page-agentStore__root__001
+  - page-agentStore__popover__310a02b3
+  - page-agentStore__popover__44679188
+  - page-agentStore__popover__8340fbad
+  - page-agentStore__popover__b5baf3c6
+  role: textbox
+  name: 搜索
+  actions:
+  - fill
+  locator:
+    strategy: role
+    role: textbox
+    name: 搜索
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(1) > div > div > div > div:nth-of-type(1) > div > div >
+      div:nth-of-type(1) > div > div > input
+- key: clickable-结果即刻交付 首个聚焦结果交付的智能体平台，快速激活业务价值，使AI普惠千业万户
+  object: page-agentStore__popover__44679188
+  states:
+  - page-agentStore__root__001
+  - page-agentStore__popover__310a02b3
+  - page-agentStore__popover__44679188
+  - page-agentStore__popover__8340fbad
+  - page-agentStore__popover__b5baf3c6
+  role: clickable
+  name: 结果即刻交付 首个聚焦结果交付的智能体平台，快速激活业务价值，使AI普惠千业万户
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: body > div:nth-of-type(1) > div > div > div > div:nth-of-type(1) > div
+      > div > div:nth-of-type(2) > div:nth-of-type(1) > div
+- key: clickable-全部 已订阅 最近使用 语言 选择语言 类型 全部 排序 按发布时间排序
+  object: page-agentStore__popover__44679188
+  states:
+  - page-agentStore__root__001
+  - page-agentStore__popover__310a02b3
+  - page-agentStore__popover__44679188
+  - page-agentStore__popover__8340fbad
+  - page-agentStore__popover__b5baf3c6
+  role: clickable
+  name: 全部 已订阅 最近使用 语言 选择语言 类型 全部 排序 按发布时间排序
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: body > div:nth-of-type(1) > div > div > div > div:nth-of-type(1) > div
+      > div > div:nth-of-type(2) > div:nth-of-type(2) > div:nth-of-type(1)
+- key: clickable-已订阅
+  object: page-agentStore__popover__44679188
+  states:
+  - page-agentStore__root__001
+  - page-agentStore__popover__310a02b3
+  - page-agentStore__popover__44679188
+  - page-agentStore__popover__8340fbad
+  - page-agentStore__popover__b5baf3c6
+  role: clickable
+  name: 已订阅
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 已订阅
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(1) > div > div > div:nth-of-type(2) > div:nth-of-type(2)
+      > div:nth-of-type(1) > div:nth-of-type(1) > span:nth-of-type(2)
+- key: clickable-最近使用
+  object: page-agentStore__popover__44679188
+  states:
+  - page-agentStore__root__001
+  - page-agentStore__popover__310a02b3
+  - page-agentStore__popover__44679188
+  - page-agentStore__popover__8340fbad
+  - page-agentStore__popover__b5baf3c6
+  role: clickable
+  name: 最近使用
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 最近使用
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(1) > span:nth-of-type(3)
+- key: clickable-语言 选择语言 类型 全部 排序 按发布时间排序
+  object: page-agentStore__popover__44679188
+  states:
+  - page-agentStore__root__001
+  - page-agentStore__popover__310a02b3
+  - page-agentStore__popover__44679188
+  - page-agentStore__popover__8340fbad
+  - page-agentStore__popover__b5baf3c6
+  role: clickable
+  name: 语言 选择语言 类型 全部 排序 按发布时间排序
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(2) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(2)
+- key: clickable-语言 选择语言
+  object: page-agentStore__popover__44679188
+  states:
+  - page-agentStore__root__001
+  - page-agentStore__popover__310a02b3
+  - page-agentStore__popover__44679188
+  - page-agentStore__popover__8340fbad
+  - page-agentStore__popover__b5baf3c6
+  role: clickable
+  name: 语言 选择语言
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 语言 选择语言
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(2) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(2)
+      > div:nth-of-type(1)
+- key: clickable-选择语言
+  object: page-agentStore__popover__44679188
+  states:
+  - page-agentStore__root__001
+  - page-agentStore__popover__310a02b3
+  - page-agentStore__popover__44679188
+  - page-agentStore__popover__8340fbad
+  - page-agentStore__popover__b5baf3c6
+  role: clickable
+  name: 选择语言
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 选择语言
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1)
+      > div
+- key: clickable-类型 全部
+  object: page-agentStore__popover__44679188
+  states:
+  - page-agentStore__root__001
+  - page-agentStore__popover__310a02b3
+  - page-agentStore__popover__44679188
+  - page-agentStore__popover__8340fbad
+  - page-agentStore__popover__b5baf3c6
+  role: clickable
+  name: 类型 全部
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(2) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(2)
+      > div:nth-of-type(2)
+- key: clickable-全部
+  object: page-agentStore__popover__44679188
+  states:
+  - page-agentStore__root__001
+  - page-agentStore__popover__310a02b3
+  - page-agentStore__popover__44679188
+  - page-agentStore__popover__8340fbad
+  - page-agentStore__popover__b5baf3c6
+  role: clickable
+  name: 全部
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(2)
+      > div > div > span:nth-of-type(2)
+- key: clickable-排序 按发布时间排序
+  object: page-agentStore__popover__44679188
+  states:
+  - page-agentStore__root__001
+  - page-agentStore__popover__310a02b3
+  - page-agentStore__popover__44679188
+  - page-agentStore__popover__8340fbad
+  - page-agentStore__popover__b5baf3c6
+  role: clickable
+  name: 排序 按发布时间排序
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(3)
+- key: clickable-按发布时间排序
+  object: page-agentStore__popover__44679188
+  states:
+  - page-agentStore__root__001
+  - page-agentStore__popover__310a02b3
+  - page-agentStore__popover__44679188
+  - page-agentStore__popover__8340fbad
+  - page-agentStore__popover__b5baf3c6
+  role: clickable
+  name: 按发布时间排序
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(3) > div > div > span:nth-of-type(2)
+- key: clickable-官方
+  object: page-agentStore__popover__44679188
+  states:
+  - page-agentStore__root__001
+  - page-agentStore__popover__310a02b3
+  - page-agentStore__popover__44679188
+  - page-agentStore__popover__8340fbad
+  - page-agentStore__popover__b5baf3c6
+  role: clickable
+  name: 官方
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(1) > div > div > div > div:nth-of-type(1) > div > div >
+      div:nth-of-type(2) > div:nth-of-type(2) > div:nth-of-type(2) > span:nth-of-type(1)
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(1) > div > div > div > div > div > div > div:nth-of-type(2)
+      > div:nth-of-type(2) > div:nth-of-type(2) > span:nth-of-type(1)
+- key: clickable-客服场景
+  object: page-agentStore__popover__44679188
+  states:
+  - page-agentStore__root__001
+  - page-agentStore__popover__310a02b3
+  - page-agentStore__popover__44679188
+  - page-agentStore__popover__8340fbad
+  - page-agentStore__popover__b5baf3c6
+  role: clickable
+  name: 客服场景
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 客服场景
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(2) > div:nth-of-type(2) > div:nth-of-type(2) > span:nth-of-type(2)
+- key: clickable-营销场景
+  object: page-agentStore__popover__44679188
+  states:
+  - page-agentStore__root__001
+  - page-agentStore__popover__310a02b3
+  - page-agentStore__popover__44679188
+  - page-agentStore__popover__8340fbad
+  - page-agentStore__popover__b5baf3c6
+  role: clickable
+  name: 营销场景
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 营销场景
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(2) > div:nth-of-type(2) > div:nth-of-type(2) > span:nth-of-type(3)
+- key: clickable-合规与风控
+  object: page-agentStore__popover__44679188
+  states:
+  - page-agentStore__root__001
+  - page-agentStore__popover__310a02b3
+  - page-agentStore__popover__44679188
+  - page-agentStore__popover__8340fbad
+  - page-agentStore__popover__b5baf3c6
+  role: clickable
+  name: 合规与风控
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 合规与风控
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: span:nth-of-type(4)
+- key: clickable-金融业务
+  object: page-agentStore__popover__44679188
+  states:
+  - page-agentStore__root__001
+  - page-agentStore__popover__310a02b3
+  - page-agentStore__popover__44679188
+  - page-agentStore__popover__8340fbad
+  - page-agentStore__popover__b5baf3c6
+  role: clickable
+  name: 金融业务
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 金融业务
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: span:nth-of-type(5)
+- key: clickable-保险场景
+  object: page-agentStore__popover__44679188
+  states:
+  - page-agentStore__root__001
+  - page-agentStore__popover__310a02b3
+  - page-agentStore__popover__44679188
+  - page-agentStore__popover__8340fbad
+  - page-agentStore__popover__b5baf3c6
+  role: clickable
+  name: 保险场景
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 保险场景
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: span:nth-of-type(6)
+- key: clickable-产品服务
+  object: page-agentStore__popover__44679188
+  states:
+  - page-agentStore__root__001
+  - page-agentStore__popover__310a02b3
+  - page-agentStore__popover__44679188
+  - page-agentStore__popover__8340fbad
+  - page-agentStore__popover__b5baf3c6
+  role: clickable
+  name: 产品服务
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 产品服务
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: span:nth-of-type(7)
+- key: clickable-零售场景
+  object: page-agentStore__popover__44679188
+  states:
+  - page-agentStore__root__001
+  - page-agentStore__popover__310a02b3
+  - page-agentStore__popover__44679188
+  - page-agentStore__popover__8340fbad
+  - page-agentStore__popover__b5baf3c6
+  role: clickable
+  name: 零售场景
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 零售场景
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: span:nth-of-type(8)
+- key: clickable-人力资源
+  object: page-agentStore__popover__44679188
+  states:
+  - page-agentStore__root__001
+  - page-agentStore__popover__310a02b3
+  - page-agentStore__popover__44679188
+  - page-agentStore__popover__8340fbad
+  - page-agentStore__popover__b5baf3c6
+  role: clickable
+  name: 人力资源
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 人力资源
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: span:nth-of-type(9)
+- key: clickable-报告生成
+  object: page-agentStore__popover__44679188
+  states:
+  - page-agentStore__root__001
+  - page-agentStore__popover__310a02b3
+  - page-agentStore__popover__44679188
+  - page-agentStore__popover__8340fbad
+  - page-agentStore__popover__b5baf3c6
+  role: clickable
+  name: 报告生成
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 报告生成
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: span:nth-of-type(10)
+- key: clickable-其他
+  object: page-agentStore__popover__44679188
+  states:
+  - page-agentStore__root__001
+  - page-agentStore__popover__310a02b3
+  - page-agentStore__popover__44679188
+  - page-agentStore__popover__8340fbad
+  - page-agentStore__popover__b5baf3c6
+  role: clickable
+  name: 其他
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 其他
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: span:nth-of-type(11)
+- key: clickable-智能面试 知识库 百融云创AI智能面试官，通过预设问题（如行为面试题、技术测试题）考察求职者的专业能力与综合素质。减少性别、年龄等主观因素影响，提升招聘公平性。根据回答内容生成量化评分，为HR提供候选人优先级排序。适用于校园招聘、大规模社会招聘及远程面试，尤其适合需要高效处理海量申请的岗位。化解时间协调难题，消除偏见，
+  object: page-agentStore__popover__44679188
+  states:
+  - page-agentStore__root__001
+  - page-agentStore__popover__44679188
+  - page-agentStore__popover__b5baf3c6
+  role: clickable
+  name: 智能面试 知识库 百融云创AI智能面试官，通过预设问题（如行为面试题、技术测试题）考察求职者的专业能力与综合素质。减少性别、年龄等主观因素影响，提升招聘公平性。根据回答内容生成量化评分，为HR提供候选人优先级排序。适用于校园招聘、大规模社会招聘及远程面试，尤其适合需要高效处理海量申请的岗位。化解时间协调难题，消除偏见，
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: body > div:nth-of-type(1) > div > div > div > div:nth-of-type(1) > div
+      > div > div:nth-of-type(2) > div:nth-of-type(3) > div:nth-of-type(1)
+- key: clickable-知识库
+  object: page-agentStore__popover__44679188
+  states:
+  - page-agentStore__root__001
+  - page-agentStore__popover__310a02b3
+  - page-agentStore__popover__44679188
+  - page-agentStore__popover__b5baf3c6
+  role: clickable
+  name: 知识库
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1)
+      > div:nth-of-type(2) > div:nth-of-type(2)
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(3) > div > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2)
+      > div:nth-of-type(2)
+- key: clickable-官方 744
+  object: page-agentStore__popover__44679188
+  states:
+  - page-agentStore__root__001
+  - page-agentStore__popover__44679188
+  - page-agentStore__popover__b5baf3c6
+  role: clickable
+  name: 官方 744
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(2) > div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(2)
+- key: clickable-744
+  object: page-agentStore__popover__44679188
+  states:
+  - page-agentStore__root__001
+  - page-agentStore__popover__44679188
+  - page-agentStore__popover__b5baf3c6
+  role: clickable
+  name: '744'
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: '744'
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(2)
+      > div
+- key: clickable-培训及考核 知识库 对话流 百融云创培训及考核智能助手，基于知识库数据，依托大模型语义理解与反馈以及评估分析能力，自动陪使用者进行个性化培训与考核。通过标准化内容与即时反馈，缩短周期、统一标准，适配多领域，提升培训规模化效率与质量，助力快速响应知识更新需求。
+    官方 213
+  object: page-agentStore__popover__44679188
+  states:
+  - page-agentStore__root__001
+  - page-agentStore__popover__44679188
+  - page-agentStore__popover__b5baf3c6
+  role: clickable
+  name: 培训及考核 知识库 对话流 百融云创培训及考核智能助手，基于知识库数据，依托大模型语义理解与反馈以及评估分析能力，自动陪使用者进行个性化培训与考核。通过标准化内容与即时反馈，缩短周期、统一标准，适配多领域，提升培训规模化效率与质量，助力快速响应知识更新需求。
+    官方 213
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(2) > div:nth-of-type(3) > div:nth-of-type(2)
+- key: clickable-培训及考核 知识库 对话流
+  object: page-agentStore__popover__44679188
+  states:
+  - page-agentStore__root__001
+  - page-agentStore__popover__44679188
+  - page-agentStore__popover__b5baf3c6
+  role: clickable
+  name: 培训及考核 知识库 对话流
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(2) > div:nth-of-type(3) > div:nth-of-type(2) > div:nth-of-type(1)
+      > div:nth-of-type(1)
+- key: clickable-知识库 对话流
+  object: page-agentStore__popover__44679188
+  states:
+  - page-agentStore__root__001
+  - page-agentStore__popover__310a02b3
+  - page-agentStore__popover__44679188
+  - page-agentStore__popover__b5baf3c6
+  role: clickable
+  name: 知识库 对话流
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(3) > div:nth-of-type(4) > div:nth-of-type(1) > div:nth-of-type(1)
+      > div:nth-of-type(2) > div:nth-of-type(2)
+- key: clickable-官方 213
+  object: page-agentStore__popover__44679188
+  states:
+  - page-agentStore__root__001
+  - page-agentStore__popover__44679188
+  - page-agentStore__popover__b5baf3c6
+  role: clickable
+  name: 官方 213
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(2) > div:nth-of-type(3) > div:nth-of-type(2) > div:nth-of-type(2)
+- key: clickable-213
+  object: page-agentStore__popover__44679188
+  states:
+  - page-agentStore__root__001
+  - page-agentStore__popover__44679188
+  - page-agentStore__popover__b5baf3c6
+  role: clickable
+  name: '213'
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: '213'
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(2) > div:nth-of-type(3) > div:nth-of-type(2) > div:nth-of-type(2)
+      > div:nth-of-type(2) > div
+- key: clickable-年审报告 知识库 对话流 插件 百融云创年审报告助手。自动生成年审报告，省时精准，减少错误，助力中小企业高效合规。根据公司年报数据，自动生成年审报告，实现数据精准提取与报告结构化输出。智能解析年报中资产、负债、营业收入、营业成本、利润等关键信息，自动匹配年审指标要求，快速生成年审报告，助力企业高效完成年审流程，减少人为
+  object: page-agentStore__popover__44679188
+  states:
+  - page-agentStore__root__001
+  - page-agentStore__popover__44679188
+  - page-agentStore__popover__b5baf3c6
+  role: clickable
+  name: 年审报告 知识库 对话流 插件 百融云创年审报告助手。自动生成年审报告，省时精准，减少错误，助力中小企业高效合规。根据公司年报数据，自动生成年审报告，实现数据精准提取与报告结构化输出。智能解析年报中资产、负债、营业收入、营业成本、利润等关键信息，自动匹配年审指标要求，快速生成年审报告，助力企业高效完成年审流程，减少人为
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(2) > div:nth-of-type(3) > div:nth-of-type(3)
+- key: clickable-年审报告 知识库 对话流 插件
+  object: page-agentStore__popover__44679188
+  states:
+  - page-agentStore__root__001
+  - page-agentStore__popover__44679188
+  - page-agentStore__popover__b5baf3c6
+  role: clickable
+  name: 年审报告 知识库 对话流 插件
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(3) > div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(1)
+- key: clickable-知识库 对话流 插件
+  object: page-agentStore__popover__44679188
+  states:
+  - page-agentStore__root__001
+  - page-agentStore__popover__44679188
+  - page-agentStore__popover__b5baf3c6
+  role: clickable
+  name: 知识库 对话流 插件
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2)
+      > div:nth-of-type(2)
+- key: clickable-官方 227
+  object: page-agentStore__popover__44679188
+  states:
+  - page-agentStore__root__001
+  - page-agentStore__popover__44679188
+  - page-agentStore__popover__b5baf3c6
+  role: clickable
+  name: 官方 227
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(2) > div:nth-of-type(3) > div:nth-of-type(3) > div:nth-of-type(2)
+- key: clickable-227
+  object: page-agentStore__popover__44679188
+  states:
+  - page-agentStore__root__001
+  - page-agentStore__popover__44679188
+  - page-agentStore__popover__b5baf3c6
+  role: clickable
+  name: '227'
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: '227'
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(2) > div:nth-of-type(3) > div:nth-of-type(3) > div:nth-of-type(2)
+      > div:nth-of-type(2) > div
+- key: clickable-信贷报告 知识库 对话流 百融云创信贷报告生成助手。基于年报、财报等企业数据，依托报告模块框架，借助大模型语义理解与复杂文档解析能力，自动生成信贷报告。精准提取企业财务指标、经营状况等关键信息，智能分析风险点，结构化输出包含企业概要、基本信息分析、经营情况分析、财务情况分析、综合风险评估分析等模块，为企业信贷快速审批提
+  object: page-agentStore__popover__44679188
+  states:
+  - page-agentStore__root__001
+  - page-agentStore__popover__44679188
+  - page-agentStore__popover__b5baf3c6
+  role: clickable
+  name: 信贷报告 知识库 对话流 百融云创信贷报告生成助手。基于年报、财报等企业数据，依托报告模块框架，借助大模型语义理解与复杂文档解析能力，自动生成信贷报告。精准提取企业财务指标、经营状况等关键信息，智能分析风险点，结构化输出包含企业概要、基本信息分析、经营情况分析、财务情况分析、综合风险评估分析等模块，为企业信贷快速审批提
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(3) > div:nth-of-type(4)
+- key: clickable-信贷报告 知识库 对话流
+  object: page-agentStore__popover__44679188
+  states:
+  - page-agentStore__root__001
+  - page-agentStore__popover__44679188
+  - page-agentStore__popover__b5baf3c6
+  role: clickable
+  name: 信贷报告 知识库 对话流
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(3) > div:nth-of-type(4) > div:nth-of-type(1) > div:nth-of-type(1)
+- key: clickable-官方 722
+  object: agentStore
+  states:
+  - page-agentStore__root__001
+  role: clickable
+  name: 官方 722
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(3) > div:nth-of-type(4) > div:nth-of-type(2)
+- key: clickable-智能面试 知识库
+  object: page-agentStore__popover__44679188
+  states:
+  - page-agentStore__root__001
+  - page-agentStore__popover__44679188
+  - page-agentStore__popover__b5baf3c6
+  role: clickable
+  name: 智能面试 知识库
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(1) > div > div > div:nth-of-type(2) > div:nth-of-type(3)
+      > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1)
+- key: clickable-创建智能体 广场 探索广场 应用 批量任务 hongbao.wang 所有者 创作中心 工作台 资源库 效果评测 运行中心 发布管理
+    线上观测 自动优化 管理中心 空间管理 文档中心 收藏 点击【⭐️收藏】 可将智能体添加到这里 hongbao.wang1 探索广场 结果即刻交付 首个聚焦结果交付的智能体平台，快速激活
+  object: page-agentStore__popover__44679188
+  states:
+  - page-agentStore__root__001
+  - page-agentStore__popover__8340fbad
+  - page-agentStore__popover__44679188
+  role: clickable
+  name: 创建智能体 广场 探索广场 应用 批量任务 hongbao.wang 所有者 创作中心 工作台 资源库 效果评测 运行中心 发布管理 线上观测 自动优化
+    管理中心 空间管理 文档中心 收藏 点击【⭐️收藏】 可将智能体添加到这里 hongbao.wang1 探索广场 结果即刻交付 首个聚焦结果交付的智能体平台，快速激活
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: body > div:nth-of-type(1) > div
+- key: clickable-创建智能体 广场 探索广场 应用 批量任务 hongbao.wang 所有者 创作中心 工作台 资源库 效果评测 运行中心 发布管理
+    线上观测 自动优化 管理中心 空间管理 文档中心 收藏 点击【⭐️收藏】 可将智能体添加到这里 hongbao.wang1
+  object: page-agentStore__popover__44679188
+  states:
+  - page-agentStore__root__001
+  - page-agentStore__popover__8340fbad
+  - page-agentStore__popover__44679188
+  role: clickable
+  name: 创建智能体 广场 探索广场 应用 批量任务 hongbao.wang 所有者 创作中心 工作台 资源库 效果评测 运行中心 发布管理 线上观测 自动优化
+    管理中心 空间管理 文档中心 收藏 点击【⭐️收藏】 可将智能体添加到这里 hongbao.wang1
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: aside > div > div
+- key: clickable-创建智能体
+  object: page-agentStore__popover__44679188
+  states:
+  - page-agentStore__root__001
+  - page-agentStore__popover__8340fbad
+  - page-agentStore__popover__44679188
+  role: clickable
+  name: 创建智能体
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(2) > button > span > span
+- key: clickable-广场 探索广场 应用 批量任务 hongbao.wang 所有者 创作中心 工作台 资源库 效果评测 运行中心 发布管理 线上观测
+    自动优化 管理中心 空间管理 文档中心
+  object: agentStore
+  states:
+  - page-agentStore__root__001
+  - page-agentStore__popover__8340fbad
+  role: clickable
+  name: 广场 探索广场 应用 批量任务 hongbao.wang 所有者 创作中心 工作台 资源库 效果评测 运行中心 发布管理 线上观测 自动优化 管理中心
+    空间管理 文档中心
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: aside > div > div > div:nth-of-type(4) > div > div
+- key: clickable-广场 探索广场
+  object: agentStore
+  states:
+  - page-agentStore__root__001
+  - page-agentStore__popover__8340fbad
+  role: clickable
+  name: 广场 探索广场
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: aside > div > div > div:nth-of-type(4) > div > div > div:nth-of-type(1)
+- key: clickable-广场
+  object: agentStore
+  states:
+  - page-agentStore__root__001
+  - page-agentStore__popover__8340fbad
+  role: clickable
+  name: 广场
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 广场
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div > div:nth-of-type(4) > div > div > div:nth-of-type(1) > div:nth-of-type(1)
+- key: clickable-应用 批量任务
+  object: agentStore
+  states:
+  - page-agentStore__root__001
+  - page-agentStore__popover__8340fbad
+  role: clickable
+  name: 应用 批量任务
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(4) > div > div > div:nth-of-type(2)
+- key: clickable-应用
+  object: agentStore
+  states:
+  - page-agentStore__root__001
+  - page-agentStore__popover__8340fbad
+  role: clickable
+  name: 应用
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 应用
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(4) > div > div > div:nth-of-type(2) > div:nth-of-type(1)
+- key: clickable-hongbao.wang 所有者 创作中心 工作台 资源库 效果评测 运行中心 发布管理 线上观测 自动优化 管理中心 空间管理
+    文档中心
+  object: agentStore
+  states:
+  - page-agentStore__root__001
+  - page-agentStore__popover__8340fbad
+  role: clickable
+  name: hongbao.wang 所有者 创作中心 工作台 资源库 效果评测 运行中心 发布管理 线上观测 自动优化 管理中心 空间管理 文档中心
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(4) > div > div > div:nth-of-type(3)
+- key: clickable-hongbao.wang 所有者 创作中心 工作台 资源库 效果评测
+  object: agentStore
+  states:
+  - page-agentStore__root__001
+  - page-agentStore__popover__8340fbad
+  role: clickable
+  name: hongbao.wang 所有者 创作中心 工作台 资源库 效果评测
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(4) > div > div > div:nth-of-type(3) > div:nth-of-type(1)
+- key: clickable-hongbao-wang
+  object: agentStore
+  states:
+  - page-agentStore__root__001
+  - page-agentStore__popover__8340fbad
+  role: clickable
+  name: hongbao.wang
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(2) > div > div
+      > div > div:nth-of-type(1) > span:nth-of-type(1)
+- key: clickable-市场解读报告 知识库 对话流 百融云创市场解读报告助手，通过导入用户画像信息结合模拟市场信息自动化生成市场解读报告，支持动态内容调整，报告从持仓市场透视、行业动向追踪、机会信息解读、风险信号预警、报告生成时间和免责提示多维度生成，不仅生成速度快还顺应市场变化，满足用户个性化需求，提升客户交易意愿。
+    官方 106
+  object: agentStore
+  states:
+  - page-agentStore__root__001
+  - page-agentStore__popover__310a02b3
+  role: clickable
+  name: 市场解读报告 知识库 对话流 百融云创市场解读报告助手，通过导入用户画像信息结合模拟市场信息自动化生成市场解读报告，支持动态内容调整，报告从持仓市场透视、行业动向追踪、机会信息解读、风险信号预警、报告生成时间和免责提示多维度生成，不仅生成速度快还顺应市场变化，满足用户个性化需求，提升客户交易意愿。
+    官方 106
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: body > div:nth-of-type(1) > div > div > div > div:nth-of-type(1) > div
+      > div > div:nth-of-type(2) > div:nth-of-type(3) > div:nth-of-type(1)
+- key: clickable-市场解读报告 知识库 对话流
+  object: agentStore
+  states:
+  - page-agentStore__root__001
+  - page-agentStore__popover__310a02b3
+  role: clickable
+  name: 市场解读报告 知识库 对话流
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(1) > div > div > div:nth-of-type(2) > div:nth-of-type(3)
+      > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1)
+- key: clickable-官方 106
+  object: agentStore
+  states:
+  - page-agentStore__root__001
+  - page-agentStore__popover__310a02b3
+  role: clickable
+  name: 官方 106
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(2) > div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(2)
+- key: clickable-106
+  object: agentStore
+  states:
+  - page-agentStore__root__001
+  - page-agentStore__popover__310a02b3
+  role: clickable
+  name: '106'
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(2)
+      > div
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(2)
+      > div
+- key: clickable-智能问数-基金 知识库 数据库 百融云创基金智能问数助手，基于数据库中多维度数据，依托大模型的语义理解和逻辑转化能力，将用户的自然语言转化成可视化图表，实现对基金数据的智能问数。支持自然语言查询，快速理解业务人员需求，精准定位数据并对数据进行处理，以多种方式可视化展示结果，生成表格及专业分析，提升数据处理效率，降低技术
+  object: agentStore
+  states:
+  - page-agentStore__root__001
+  - page-agentStore__popover__310a02b3
+  role: clickable
+  name: 智能问数-基金 知识库 数据库 百融云创基金智能问数助手，基于数据库中多维度数据，依托大模型的语义理解和逻辑转化能力，将用户的自然语言转化成可视化图表，实现对基金数据的智能问数。支持自然语言查询，快速理解业务人员需求，精准定位数据并对数据进行处理，以多种方式可视化展示结果，生成表格及专业分析，提升数据处理效率，降低技术
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(2) > div:nth-of-type(3) > div:nth-of-type(2)
+- key: clickable-智能问数-基金 知识库 数据库
+  object: agentStore
+  states:
+  - page-agentStore__root__001
+  - page-agentStore__popover__310a02b3
+  role: clickable
+  name: 智能问数-基金 知识库 数据库
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(2) > div:nth-of-type(3) > div:nth-of-type(2) > div:nth-of-type(1)
+      > div:nth-of-type(1)
+- key: clickable-知识库 数据库
+  object: agentStore
+  states:
+  - page-agentStore__root__001
+  - page-agentStore__popover__310a02b3
+  role: clickable
+  name: 知识库 数据库
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2)
+      > div:nth-of-type(2)
+- key: clickable-官方 167
+  object: agentStore
+  states:
+  - page-agentStore__root__001
+  - page-agentStore__popover__310a02b3
+  role: clickable
+  name: 官方 167
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(2) > div:nth-of-type(3) > div:nth-of-type(2) > div:nth-of-type(2)
+- key: clickable-167
+  object: agentStore
+  states:
+  - page-agentStore__root__001
+  - page-agentStore__popover__310a02b3
+  role: clickable
+  name: '167'
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: '167'
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(2) > div:nth-of-type(3) > div:nth-of-type(2) > div:nth-of-type(2)
+      > div:nth-of-type(2) > div
+- key: clickable-智能问数-银行 知识库 数据库 百融云创银行智能问数助手，基于数据库中数据，依托大模型的语义理解和逻辑转化能力，将用户的自然语言转化成可视化图表，实现对银行数据的智能问数。支持自然语言查询，快速理解业务人员需求，精准定位数据并对数据进行处理，以多种方式可视化展示结果，生成表格及专业分析，提升数据处理效率，降低技术门槛，
+  object: agentStore
+  states:
+  - page-agentStore__root__001
+  - page-agentStore__popover__310a02b3
+  role: clickable
+  name: 智能问数-银行 知识库 数据库 百融云创银行智能问数助手，基于数据库中数据，依托大模型的语义理解和逻辑转化能力，将用户的自然语言转化成可视化图表，实现对银行数据的智能问数。支持自然语言查询，快速理解业务人员需求，精准定位数据并对数据进行处理，以多种方式可视化展示结果，生成表格及专业分析，提升数据处理效率，降低技术门槛，
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(2) > div:nth-of-type(3) > div:nth-of-type(3)
+- key: clickable-智能问数-银行 知识库 数据库
+  object: agentStore
+  states:
+  - page-agentStore__root__001
+  - page-agentStore__popover__310a02b3
+  role: clickable
+  name: 智能问数-银行 知识库 数据库
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(3) > div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(1)
+- key: clickable-官方 135
+  object: agentStore
+  states:
+  - page-agentStore__root__001
+  - page-agentStore__popover__310a02b3
+  role: clickable
+  name: 官方 135
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(2) > div:nth-of-type(3) > div:nth-of-type(3) > div:nth-of-type(2)
+- key: clickable-135
+  object: agentStore
+  states:
+  - page-agentStore__root__001
+  - page-agentStore__popover__310a02b3
+  role: clickable
+  name: '135'
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: '135'
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(2) > div:nth-of-type(3) > div:nth-of-type(3) > div:nth-of-type(2)
+      > div:nth-of-type(2) > div
+- key: clickable-金融知识助手 知识库 百融云创金融知识助手，专业解答金融领域相关疑问 使用说明：输入金融相关问题（含银行服务、金融产品、理财知识、信贷业务等），智能体将依托权威知识库，精准、严谨地输出对应解答，涵盖核心概念、规则要点、逻辑梳理等关键信息
+    官方 32
+  object: agentStore
+  states:
+  - page-agentStore__root__001
+  - page-agentStore__popover__310a02b3
+  role: clickable
+  name: 金融知识助手 知识库 百融云创金融知识助手，专业解答金融领域相关疑问 使用说明：输入金融相关问题（含银行服务、金融产品、理财知识、信贷业务等），智能体将依托权威知识库，精准、严谨地输出对应解答，涵盖核心概念、规则要点、逻辑梳理等关键信息
+    官方 32
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: body > div:nth-of-type(1) > div > div > div > div:nth-of-type(1) > div
+      > div > div:nth-of-type(2) > div:nth-of-type(3) > div
+- key: clickable-金融知识助手 知识库
+  object: agentStore
+  states:
+  - page-agentStore__root__001
+  - page-agentStore__popover__310a02b3
+  role: clickable
+  name: 金融知识助手 知识库
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(1) > div > div > div:nth-of-type(2) > div:nth-of-type(3)
+      > div > div:nth-of-type(1) > div:nth-of-type(1)
+- key: clickable-官方 32
+  object: agentStore
+  states:
+  - page-agentStore__root__001
+  role: clickable
+  name: 官方 32
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(2) > div:nth-of-type(3) > div > div:nth-of-type(2)
+- key: checkbox-全选
+  object: page-agentStore__popover__44679188
+  states:
+  - page-agentStore__popover__310a02b3
+  - page-agentStore__popover__44679188
+  - page-agentStore__popover__b5baf3c6
+  role: checkbox
+  name: 全选
+  actions:
+  - click
+  locator:
+    strategy: role
+    role: checkbox
+    name: 全选
+    exact: true
+  fallback_locator:
+    strategy: label
+    value: 全选
+- key: clickable-电销总结 知识库 百融云创的电销总结专家，精准总结电销人员与客户的通话记录内容 使用说明：输入客电销人员与客户的通话记录内容，智能体会按规范进行内容总结，包含但不限于接听情况、客户需求、收入状况、购买能力、产品认知、购买意愿等信息
+    官方 21
+  object: agentStore
+  states:
+  - page-agentStore__popover__44679188
+  - page-agentStore__root__001
+  role: clickable
+  name: 电销总结 知识库 百融云创的电销总结专家，精准总结电销人员与客户的通话记录内容 使用说明：输入客电销人员与客户的通话记录内容，智能体会按规范进行内容总结，包含但不限于接听情况、客户需求、收入状况、购买能力、产品认知、购买意愿等信息
+    官方 21
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: body > div:nth-of-type(1) > div > div > div > div:nth-of-type(1) > div
+      > div > div:nth-of-type(2) > div:nth-of-type(3) > div:nth-of-type(1)
+- key: clickable-电销总结 知识库
+  object: agentStore
+  states:
+  - page-agentStore__popover__44679188
+  - page-agentStore__root__001
+  role: clickable
+  name: 电销总结 知识库
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(1) > div > div > div:nth-of-type(2) > div:nth-of-type(3)
+      > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1)
+- key: clickable-官方 21
+  object: agentStore
+  states:
+  - page-agentStore__popover__44679188
+  - page-agentStore__root__001
+  role: clickable
+  name: 官方 21
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(2) > div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(2)
+- key: clickable-21
+  object: agentStore
+  states:
+  - page-agentStore__popover__44679188
+  - page-agentStore__root__001
+  role: clickable
+  name: '21'
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(2)
+      > div
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(2)
+      > div
+- key: clickable-电销质检 知识库 对话流 百融云创电销质检助手，可识别发话角色并对电销人员发话内容进行合规性质检 使用说明：上传电销人员与客户的通话录音文件，通过分析电销人员发话内容，判断发言是否合规，不合规输出相关违规标签、违规理由并对内容进行简单总结后输出最终质检得分
+    官方 48
+  object: agentStore
+  states:
+  - page-agentStore__popover__44679188
+  - page-agentStore__root__001
+  role: clickable
+  name: 电销质检 知识库 对话流 百融云创电销质检助手，可识别发话角色并对电销人员发话内容进行合规性质检 使用说明：上传电销人员与客户的通话录音文件，通过分析电销人员发话内容，判断发言是否合规，不合规输出相关违规标签、违规理由并对内容进行简单总结后输出最终质检得分
+    官方 48
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: body > div:nth-of-type(1) > div > div > div > div:nth-of-type(1) > div
+      > div > div:nth-of-type(2) > div:nth-of-type(3) > div
+- key: clickable-电销质检 知识库 对话流
+  object: agentStore
+  states:
+  - page-agentStore__popover__44679188
+  - page-agentStore__root__001
+  role: clickable
+  name: 电销质检 知识库 对话流
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(1) > div > div > div:nth-of-type(2) > div:nth-of-type(3)
+      > div > div:nth-of-type(1) > div:nth-of-type(1)
+- key: clickable-官方 48
+  object: agentStore
+  states:
+  - page-agentStore__popover__44679188
+  - page-agentStore__root__001
+  role: clickable
+  name: 官方 48
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(2) > div:nth-of-type(3) > div > div:nth-of-type(2)
+- key: clickable-48
+  object: agentStore
+  states:
+  - page-agentStore__popover__44679188
+  - page-agentStore__root__001
+  role: clickable
+  name: '48'
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: '48'
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(2) > div:nth-of-type(3) > div > div:nth-of-type(2) > div:nth-of-type(2)
+      > div
+- key: clickable-所有者
+  object: agentStore
+  states:
+  - page-agentStore__root__001
+  role: clickable
+  name: 所有者
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 所有者
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(2) > div > div
+      > div > div:nth-of-type(1) > span:nth-of-type(2)
+- key: clickable-创作中心
+  object: agentStore
+  states:
+  - page-agentStore__root__001
+  role: clickable
+  name: 创作中心
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 创作中心
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(3)
+- key: clickable-工作台 资源库 效果评测
+  object: agentStore
+  states:
+  - page-agentStore__root__001
+  role: clickable
+  name: 工作台 资源库 效果评测
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(4)
+- key: clickable-运行中心 发布管理 线上观测 自动优化
+  object: agentStore
+  states:
+  - page-agentStore__root__001
+  role: clickable
+  name: 运行中心 发布管理 线上观测 自动优化
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(4) > div > div > div:nth-of-type(3) > div:nth-of-type(2)
+- key: clickable-运行中心
+  object: agentStore
+  states:
+  - page-agentStore__root__001
+  role: clickable
+  name: 运行中心
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 运行中心
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(4) > div > div > div:nth-of-type(3) > div:nth-of-type(2)
+      > div:nth-of-type(1)
+- key: clickable-天气查询助手 知识库 对话流 插件 百融云创天气查询助手，查询实时天气信息 使用说明：输入需要查询的城市及天气查询意图，即可返回实时天气信息"
+    官方 266
+  object: agentStore
+  states:
+  - page-agentStore__root__001
+  role: clickable
+  name: 天气查询助手 知识库 对话流 插件 百融云创天气查询助手，查询实时天气信息 使用说明：输入需要查询的城市及天气查询意图，即可返回实时天气信息" 官方
+    266
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: body > div:nth-of-type(1) > div > div > div > div:nth-of-type(1) > div
+      > div > div:nth-of-type(2) > div:nth-of-type(3) > div
+- key: clickable-天气查询助手 知识库 对话流 插件
+  object: agentStore
+  states:
+  - page-agentStore__root__001
+  role: clickable
+  name: 天气查询助手 知识库 对话流 插件
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(1) > div > div > div:nth-of-type(2) > div:nth-of-type(3)
+      > div > div:nth-of-type(1) > div:nth-of-type(1)
+- key: clickable-官方 266
+  object: agentStore
+  states:
+  - page-agentStore__root__001
+  role: clickable
+  name: 官方 266
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(2) > div:nth-of-type(3) > div > div:nth-of-type(2)
+- key: clickable-266
+  object: agentStore
+  states:
+  - page-agentStore__root__001
+  role: clickable
+  name: '266'
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: '266'
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(2) > div:nth-of-type(3) > div > div:nth-of-type(2) > div:nth-of-type(2)
+      > div
+- key: clickable-变量命名助手 知识库 百融云创变量命名助手，输入需要命名的内容，结合上下文分析变量功能，自动生成语义明确的变量名称。统一命名习惯，减少命名争议。支持大驼峰、小驼峰、下划线三种格式。
+    官方 144
+  object: agentStore
+  states:
+  - page-agentStore__root__001
+  role: clickable
+  name: 变量命名助手 知识库 百融云创变量命名助手，输入需要命名的内容，结合上下文分析变量功能，自动生成语义明确的变量名称。统一命名习惯，减少命名争议。支持大驼峰、小驼峰、下划线三种格式。
+    官方 144
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(2) > div:nth-of-type(3) > div:nth-of-type(2)
+- key: clickable-变量命名助手 知识库
+  object: agentStore
+  states:
+  - page-agentStore__root__001
+  role: clickable
+  name: 变量命名助手 知识库
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(2) > div:nth-of-type(3) > div:nth-of-type(2) > div:nth-of-type(1)
+      > div:nth-of-type(1)
+- key: clickable-官方 144
+  object: agentStore
+  states:
+  - page-agentStore__root__001
+  role: clickable
+  name: 官方 144
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(2) > div:nth-of-type(3) > div:nth-of-type(2) > div:nth-of-type(2)
+- key: clickable-144
+  object: agentStore
+  states:
+  - page-agentStore__root__001
+  role: clickable
+  name: '144'
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: '144'
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(2) > div:nth-of-type(3) > div:nth-of-type(2) > div:nth-of-type(2)
+      > div:nth-of-type(2) > div
+- key: clickable-联网检索助手 知识库 对话流 插件 百融云创联网检索助手，查询实时联网信息 使用说明：输入需要查询的意图，即可返回实时联网检索信息
+    官方 19
+  object: agentStore
+  states:
+  - page-agentStore__root__001
+  role: clickable
+  name: 联网检索助手 知识库 对话流 插件 百融云创联网检索助手，查询实时联网信息 使用说明：输入需要查询的意图，即可返回实时联网检索信息 官方 19
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(2) > div:nth-of-type(3) > div:nth-of-type(3)
+- key: clickable-联网检索助手 知识库 对话流 插件
+  object: agentStore
+  states:
+  - page-agentStore__root__001
+  role: clickable
+  name: 联网检索助手 知识库 对话流 插件
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(3) > div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(1)
+- key: clickable-官方 19
+  object: agentStore
+  states:
+  - page-agentStore__root__001
+  role: clickable
+  name: 官方 19
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(2) > div:nth-of-type(3) > div:nth-of-type(3) > div:nth-of-type(2)
+- key: clickable-19
+  object: agentStore
+  states:
+  - page-agentStore__root__001
+  role: clickable
+  name: '19'
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: '19'
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(2) > div:nth-of-type(3) > div:nth-of-type(3) > div:nth-of-type(2)
+      > div:nth-of-type(2) > div
+- key: clickable-股票查询助手 知识库 插件 百融云创股票查询助手，用于查询企业股票价格情况，输入企业名称+查询意图，即可开启查询流程，例如：帮我查询下百融云创的股票价格。
+    官方 47
+  object: agentStore
+  states:
+  - page-agentStore__root__001
+  role: clickable
+  name: 股票查询助手 知识库 插件 百融云创股票查询助手，用于查询企业股票价格情况，输入企业名称+查询意图，即可开启查询流程，例如：帮我查询下百融云创的股票价格。
+    官方 47
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(3) > div:nth-of-type(4)
+- key: clickable-股票查询助手 知识库 插件
+  object: agentStore
+  states:
+  - page-agentStore__root__001
+  role: clickable
+  name: 股票查询助手 知识库 插件
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(3) > div:nth-of-type(4) > div:nth-of-type(1) > div:nth-of-type(1)
+- key: clickable-知识库 插件
+  object: agentStore
+  states:
+  - page-agentStore__root__001
+  role: clickable
+  name: 知识库 插件
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(3) > div:nth-of-type(4) > div:nth-of-type(1) > div:nth-of-type(1)
+      > div:nth-of-type(2) > div:nth-of-type(2)
+- key: clickable-官方 47
+  object: agentStore
+  states:
+  - page-agentStore__root__001
+  role: clickable
+  name: 官方 47
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(3) > div:nth-of-type(4) > div:nth-of-type(2)
+- key: popover-hongbao.wang 所有者 Cybotstar-专业服务 空间管理者 创建空间
+  object: page-agentStore__popover__8340fbad
+  states:
+  - page-agentStore__popover__8340fbad
+  role: popover
+  name: hongbao.wang 所有者 Cybotstar-专业服务 空间管理者 创建空间
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(18) > div:nth-of-type(2)
+- key: clickable-Cybotstar-专业服务 空间管理者
+  object: page-agentStore__popover__8340fbad
+  states:
+  - page-agentStore__popover__8340fbad
+  role: clickable
+  name: Cybotstar-专业服务 空间管理者
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(2) > div > div > div:nth-of-type(1) > div > div > div:nth-of-type(2)
+      > div > div:nth-of-type(1)
+- key: clickable-创建空间
+  object: page-agentStore__popover__8340fbad
+  states:
+  - page-agentStore__popover__8340fbad
+  role: clickable
+  name: 创建空间
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(18) > div:nth-of-type(2) > div > div > div:nth-of-type(3)
+- key: clickable-界面语言
+  object: page-agentStore__popover__8340fbad
+  states:
+  - page-agentStore__popover__8340fbad
+  role: clickable
+  name: 界面语言
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 界面语言
+    exact: true
+- key: clickable-意见反馈
+  object: page-agentStore__popover__8340fbad
+  states:
+  - page-agentStore__popover__8340fbad
+  role: clickable
+  name: 意见反馈
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 意见反馈
+    exact: true
+- key: clickable-退出登录
+  object: page-agentStore__popover__8340fbad
+  states:
+  - page-agentStore__popover__8340fbad
+  role: clickable
+  name: 退出登录
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 退出登录
+    exact: true
+- key: clickable-智能客服-零售 知识库 百融云创的零售销售智能客服。基于知识库上传知识，实现精准推荐合适商品、清晰全面解答商品问题、精准解析优惠活动规则并分享实用凑单技巧和售后秒级响应全链路优化体验，使消费者安心放心购物，拥有愉快顺畅的购物体验。
+    官方 89
+  object: agentStore
+  states:
+  - page-agentStore__root__001
+  role: clickable
+  name: 智能客服-零售 知识库 百融云创的零售销售智能客服。基于知识库上传知识，实现精准推荐合适商品、清晰全面解答商品问题、精准解析优惠活动规则并分享实用凑单技巧和售后秒级响应全链路优化体验，使消费者安心放心购物，拥有愉快顺畅的购物体验。
+    官方 89
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: body > div:nth-of-type(1) > div > div > div > div:nth-of-type(1) > div
+      > div > div:nth-of-type(2) > div:nth-of-type(3) > div:nth-of-type(1)
+- key: clickable-智能客服-零售 知识库
+  object: agentStore
+  states:
+  - page-agentStore__root__001
+  role: clickable
+  name: 智能客服-零售 知识库
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(1) > div > div > div:nth-of-type(2) > div:nth-of-type(3)
+      > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1)
+- key: clickable-官方 89
+  object: agentStore
+  states:
+  - page-agentStore__root__001
+  role: clickable
+  name: 官方 89
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(2) > div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(2)
+- key: clickable-89
+  object: agentStore
+  states:
+  - page-agentStore__root__001
+  role: clickable
+  name: '89'
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: '89'
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(2)
+      > div
+- key: clickable-投诉处理-零售 知识库 百融云创零售业投诉处理智能客服。通过友好礼貌引导消费者说明投诉核心问题、询问零售商品或购买店铺相关信息、精准解析问题关键，投诉问题全链路高效跟进解决，助力投诉处理自动化，提升消费者体验感。
+    官方 49
+  object: agentStore
+  states:
+  - page-agentStore__root__001
+  role: clickable
+  name: 投诉处理-零售 知识库 百融云创零售业投诉处理智能客服。通过友好礼貌引导消费者说明投诉核心问题、询问零售商品或购买店铺相关信息、精准解析问题关键，投诉问题全链路高效跟进解决，助力投诉处理自动化，提升消费者体验感。
+    官方 49
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(2) > div:nth-of-type(3) > div:nth-of-type(2)
+- key: clickable-投诉处理-零售 知识库
+  object: agentStore
+  states:
+  - page-agentStore__root__001
+  role: clickable
+  name: 投诉处理-零售 知识库
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(2) > div:nth-of-type(3) > div:nth-of-type(2) > div:nth-of-type(1)
+      > div:nth-of-type(1)
+- key: clickable-官方 49
+  object: agentStore
+  states:
+  - page-agentStore__root__001
+  role: clickable
+  name: 官方 49
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(2) > div:nth-of-type(3) > div:nth-of-type(2) > div:nth-of-type(2)
+- key: clickable-49
+  object: agentStore
+  states:
+  - page-agentStore__root__001
+  role: clickable
+  name: '49'
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: '49'
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(2) > div:nth-of-type(3) > div:nth-of-type(2) > div:nth-of-type(2)
+      > div:nth-of-type(2) > div
+- key: clickable-证件信息提取 知识库 对话流 百融云创的证件信息提取助手，对照片中的证件信息进行识别和提取。 使用说明：上传需要提取信息的证件图片，点击“提交”，即可输出提取到的证件信息，包括但不限于姓名、性别、出生日期、出生地址等个人信息。
+    官方 52
+  object: agentStore
+  states:
+  - page-agentStore__root__001
+  role: clickable
+  name: 证件信息提取 知识库 对话流 百融云创的证件信息提取助手，对照片中的证件信息进行识别和提取。 使用说明：上传需要提取信息的证件图片，点击“提交”，即可输出提取到的证件信息，包括但不限于姓名、性别、出生日期、出生地址等个人信息。
+    官方 52
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(2) > div:nth-of-type(3) > div:nth-of-type(3)
+- key: clickable-证件信息提取 知识库 对话流
+  object: agentStore
+  states:
+  - page-agentStore__root__001
+  role: clickable
+  name: 证件信息提取 知识库 对话流
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(3) > div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(1)
+- key: clickable-官方 52
+  object: agentStore
+  states:
+  - page-agentStore__root__001
+  role: clickable
+  name: 官方 52
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(2) > div:nth-of-type(3) > div:nth-of-type(3) > div:nth-of-type(2)
+- key: clickable-52
+  object: agentStore
+  states:
+  - page-agentStore__root__001
+  role: clickable
+  name: '52'
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: '52'
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(2) > div:nth-of-type(3) > div:nth-of-type(3) > div:nth-of-type(2)
+      > div:nth-of-type(2) > div
+- key: clickable-智能读表 知识库 对话流 百融云创的智能读表助手，对照片中的水表、电表信息进行识别和提取。 使用说明：上传需要提取信息的水表、电表图片，点击“提交”，即可输出提取到的设备ID和目前状态。
+    官方 24
+  object: agentStore
+  states:
+  - page-agentStore__root__001
+  role: clickable
+  name: 智能读表 知识库 对话流 百融云创的智能读表助手，对照片中的水表、电表信息进行识别和提取。 使用说明：上传需要提取信息的水表、电表图片，点击“提交”，即可输出提取到的设备ID和目前状态。
+    官方 24
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(3) > div:nth-of-type(4)
+- key: clickable-智能读表 知识库 对话流
+  object: agentStore
+  states:
+  - page-agentStore__root__001
+  role: clickable
+  name: 智能读表 知识库 对话流
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(3) > div:nth-of-type(4) > div:nth-of-type(1) > div:nth-of-type(1)
+- key: clickable-官方 24
+  object: agentStore
+  states:
+  - page-agentStore__root__001
+  role: clickable
+  name: 官方 24
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(3) > div:nth-of-type(4) > div:nth-of-type(2)
+- key: clickable-合规审核 知识库 对话流 百融云创合规审核助手。智能合规审核，一键上传文件，分钟级自动比对法规，确保其符合法律法规、行业标准及企业内部政策，清晰且可执行，以维护交易安全。精准高效降本，助力企业合规管理以及风险核对，实现合规审核自动化。
+    官方 190
+  object: agentStore
+  states:
+  - page-agentStore__root__001
+  role: clickable
+  name: 合规审核 知识库 对话流 百融云创合规审核助手。智能合规审核，一键上传文件，分钟级自动比对法规，确保其符合法律法规、行业标准及企业内部政策，清晰且可执行，以维护交易安全。精准高效降本，助力企业合规管理以及风险核对，实现合规审核自动化。
+    官方 190
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: body > div:nth-of-type(1) > div > div > div > div:nth-of-type(1) > div
+      > div > div:nth-of-type(2) > div:nth-of-type(3) > div:nth-of-type(1)
+- key: clickable-合规审核 知识库 对话流
+  object: agentStore
+  states:
+  - page-agentStore__root__001
+  role: clickable
+  name: 合规审核 知识库 对话流
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(1) > div > div > div:nth-of-type(2) > div:nth-of-type(3)
+      > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1)
+- key: clickable-官方 190
+  object: agentStore
+  states:
+  - page-agentStore__root__001
+  role: clickable
+  name: 官方 190
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(2) > div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(2)
+- key: clickable-190
+  object: agentStore
+  states:
+  - page-agentStore__root__001
+  role: clickable
+  name: '190'
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: '190'
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(2)
+      > div
+- key: clickable-合同审核 知识库 对话流 百融云创合同审核助手，支持AI自动进行合同审核，找出异常及需要修改的内容。 官方 53
+  object: agentStore
+  states:
+  - page-agentStore__root__001
+  role: clickable
+  name: 合同审核 知识库 对话流 百融云创合同审核助手，支持AI自动进行合同审核，找出异常及需要修改的内容。 官方 53
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(2) > div:nth-of-type(3) > div:nth-of-type(2)
+- key: clickable-合同审核 知识库 对话流
+  object: agentStore
+  states:
+  - page-agentStore__root__001
+  role: clickable
+  name: 合同审核 知识库 对话流
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(2) > div:nth-of-type(3) > div:nth-of-type(2) > div:nth-of-type(1)
+      > div:nth-of-type(1)
+- key: clickable-官方 53
+  object: agentStore
+  states:
+  - page-agentStore__root__001
+  role: clickable
+  name: 官方 53
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(2) > div:nth-of-type(3) > div:nth-of-type(2) > div:nth-of-type(2)
+- key: clickable-53
+  object: agentStore
+  states:
+  - page-agentStore__root__001
+  role: clickable
+  name: '53'
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: '53'
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(2) > div:nth-of-type(3) > div:nth-of-type(2) > div:nth-of-type(2)
+      > div:nth-of-type(2) > div
+- key: clickable-查询企业行政处罚信息助手 知识库 对话流 百融云创企业行政处罚信息查询助手，专门查询企业的各类行政处罚信息。 使用说明：输入目标企业名称，即可查询该企业的行政处罚记录；若未查询到相关结果，将自动提示查询结果为空。
+    宣城市千口甘食品有限责任公司、宣城市恒华建材有限公司 官方 20
+  object: agentStore
+  states:
+  - page-agentStore__root__001
+  role: clickable
+  name: 查询企业行政处罚信息助手 知识库 对话流 百融云创企业行政处罚信息查询助手，专门查询企业的各类行政处罚信息。 使用说明：输入目标企业名称，即可查询该企业的行政处罚记录；若未查询到相关结果，将自动提示查询结果为空。
+    宣城市千口甘食品有限责任公司、宣城市恒华建材有限公司 官方 20
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(2) > div:nth-of-type(3) > div:nth-of-type(3)
+- key: clickable-查询企业行政处罚信息助手 知识库 对话流
+  object: agentStore
+  states:
+  - page-agentStore__root__001
+  role: clickable
+  name: 查询企业行政处罚信息助手 知识库 对话流
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(3) > div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(1)
+- key: clickable-官方 20
+  object: agentStore
+  states:
+  - page-agentStore__root__001
+  role: clickable
+  name: 官方 20
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(2) > div:nth-of-type(3) > div:nth-of-type(3) > div:nth-of-type(2)
+- key: clickable-20
+  object: agentStore
+  states:
+  - page-agentStore__root__001
+  role: clickable
+  name: '20'
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(2) > div:nth-of-type(3) > div:nth-of-type(3) > div:nth-of-type(2)
+      > div:nth-of-type(2) > div
+- key: clickable-查询企业环保处罚信息助手 知识库 对话流 百融云创企业环保处罚信息查询助手，用于查询企业的环保处罚相关记录。 使用说明：输入需查询的企业名称，系统将检索该企业的环保处罚信息；若未检索到相关内容，将自动提示查询结果为空。
+    湖州展望药业有限公司、武汉瑞亿汽车零部件有限公司 官方 6
+  object: agentStore
+  states:
+  - page-agentStore__root__001
+  role: clickable
+  name: 查询企业环保处罚信息助手 知识库 对话流 百融云创企业环保处罚信息查询助手，用于查询企业的环保处罚相关记录。 使用说明：输入需查询的企业名称，系统将检索该企业的环保处罚信息；若未检索到相关内容，将自动提示查询结果为空。
+    湖州展望药业有限公司、武汉瑞亿汽车零部件有限公司 官方 6
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(3) > div:nth-of-type(4)
+- key: clickable-查询企业环保处罚信息助手 知识库 对话流
+  object: agentStore
+  states:
+  - page-agentStore__root__001
+  role: clickable
+  name: 查询企业环保处罚信息助手 知识库 对话流
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(3) > div:nth-of-type(4) > div:nth-of-type(1) > div:nth-of-type(1)
+- key: clickable-官方 6
+  object: agentStore
+  states:
+  - page-agentStore__root__001
+  role: clickable
+  name: 官方 6
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(3) > div:nth-of-type(4) > div:nth-of-type(2)
+- key: clickable-慢病关怀 知识库 对话流 百融云创慢病关怀智能助手，当检测慢病老人到状态异常时，借助大模型语义理解和智能外呼能力，健康监测+上门护理一键预约，实现自动询问老人近况、发起上门护理预约、解答护理相关疑问和收集服务满意度，具备通过获取和分析历史对话进而获取关键信息（预约上门时间、满意度）自动发送邮件同步结果功能，为老年人提供
+  object: page-agentStore__popover__b5baf3c6
+  states:
+  - page-agentStore__popover__b5baf3c6
+  role: clickable
+  name: 慢病关怀 知识库 对话流 百融云创慢病关怀智能助手，当检测慢病老人到状态异常时，借助大模型语义理解和智能外呼能力，健康监测+上门护理一键预约，实现自动询问老人近况、发起上门护理预约、解答护理相关疑问和收集服务满意度，具备通过获取和分析历史对话进而获取关键信息（预约上门时间、满意度）自动发送邮件同步结果功能，为老年人提供
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: body > div:nth-of-type(1) > div > div > div > div:nth-of-type(1) > div
+      > div > div:nth-of-type(2) > div:nth-of-type(3) > div:nth-of-type(1)
+- key: clickable-慢病关怀 知识库 对话流
+  object: page-agentStore__popover__b5baf3c6
+  states:
+  - page-agentStore__popover__b5baf3c6
+  role: clickable
+  name: 慢病关怀 知识库 对话流
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(1) > div > div > div:nth-of-type(2) > div:nth-of-type(3)
+      > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1)
+- key: clickable-官方 180
+  object: page-agentStore__popover__b5baf3c6
+  states:
+  - page-agentStore__popover__b5baf3c6
+  role: clickable
+  name: 官方 180
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(2) > div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(2)
+- key: clickable-180
+  object: page-agentStore__popover__b5baf3c6
+  states:
+  - page-agentStore__popover__b5baf3c6
+  role: clickable
+  name: '180'
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: '180'
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(2)
+      > div
+- key: clickable-家属综合服务 知识库 对话流 百融云创家属综合服务助手，基于与老人的通话记录，提炼总结老人近况和约定上门护理时间相关信息，借助自动外呼能力，告知家属并进行主动营销，具备家属续费提醒、慢性疾病保险推荐和收到购买意向后自动微信联系家属发送链接服务，全方面守护老人。
+    官方 59
+  object: page-agentStore__popover__b5baf3c6
+  states:
+  - page-agentStore__popover__b5baf3c6
+  role: clickable
+  name: 家属综合服务 知识库 对话流 百融云创家属综合服务助手，基于与老人的通话记录，提炼总结老人近况和约定上门护理时间相关信息，借助自动外呼能力，告知家属并进行主动营销，具备家属续费提醒、慢性疾病保险推荐和收到购买意向后自动微信联系家属发送链接服务，全方面守护老人。
+    官方 59
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(2) > div:nth-of-type(3) > div:nth-of-type(2)
+- key: clickable-家属综合服务 知识库 对话流
+  object: page-agentStore__popover__b5baf3c6
+  states:
+  - page-agentStore__popover__b5baf3c6
+  role: clickable
+  name: 家属综合服务 知识库 对话流
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(2) > div:nth-of-type(3) > div:nth-of-type(2) > div:nth-of-type(1)
+      > div:nth-of-type(1)
+- key: clickable-官方 59
+  object: page-agentStore__popover__b5baf3c6
+  states:
+  - page-agentStore__popover__b5baf3c6
+  role: clickable
+  name: 官方 59
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(2) > div:nth-of-type(3) > div:nth-of-type(2) > div:nth-of-type(2)
+- key: clickable-59
+  object: page-agentStore__popover__b5baf3c6
+  states:
+  - page-agentStore__popover__b5baf3c6
+  role: clickable
+  name: '59'
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: '59'
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(2) > div:nth-of-type(3) > div:nth-of-type(2) > div:nth-of-type(2)
+      > div:nth-of-type(2) > div
+- key: clickable-健康管家 知识库 对话流 百融云创智能健康管家，与老人家属通话时，具备自动转述老人近况和已预约上门护理时间相关信息、家属续费提醒、升级服务套餐推荐、收到家属同意续费或需要升级服务后自动发送邮件同步链接功能，结合多渠道交互（企微）能力，可实现与家属进行微信联系，精准守护省心省力。
+    官方 70
+  object: page-agentStore__popover__b5baf3c6
+  states:
+  - page-agentStore__popover__b5baf3c6
+  role: clickable
+  name: 健康管家 知识库 对话流 百融云创智能健康管家，与老人家属通话时，具备自动转述老人近况和已预约上门护理时间相关信息、家属续费提醒、升级服务套餐推荐、收到家属同意续费或需要升级服务后自动发送邮件同步链接功能，结合多渠道交互（企微）能力，可实现与家属进行微信联系，精准守护省心省力。
+    官方 70
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(2) > div:nth-of-type(3) > div:nth-of-type(3)
+- key: clickable-健康管家 知识库 对话流
+  object: page-agentStore__popover__b5baf3c6
+  states:
+  - page-agentStore__popover__b5baf3c6
+  role: clickable
+  name: 健康管家 知识库 对话流
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(3) > div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(1)
+- key: clickable-官方 70
+  object: page-agentStore__popover__b5baf3c6
+  states:
+  - page-agentStore__popover__b5baf3c6
+  role: clickable
+  name: 官方 70
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(2) > div:nth-of-type(3) > div:nth-of-type(3) > div:nth-of-type(2)
+- key: clickable-70
+  object: page-agentStore__popover__b5baf3c6
+  states:
+  - page-agentStore__popover__b5baf3c6
+  role: clickable
+  name: '70'
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: '70'
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(2) > div:nth-of-type(3) > div:nth-of-type(3) > div:nth-of-type(2)
+      > div:nth-of-type(2) > div
+- key: clickable-智能核保 知识库 对话流 多模态核保智能助手，专注识别病历单，解析病例信息并评估投保风险，辅助输出是否建议承保的结论。 使用说明：输入病历单图片，智能体将按规范进行多模态识别与结构化解析，提取关键医疗信息，结合风险评估模型进行分析，输出核保判断及参考结论，并提示相关风险要点与决策依据。
+    官方 5
+  object: page-agentStore__popover__b5baf3c6
+  states:
+  - page-agentStore__popover__b5baf3c6
+  role: clickable
+  name: 智能核保 知识库 对话流 多模态核保智能助手，专注识别病历单，解析病例信息并评估投保风险，辅助输出是否建议承保的结论。 使用说明：输入病历单图片，智能体将按规范进行多模态识别与结构化解析，提取关键医疗信息，结合风险评估模型进行分析，输出核保判断及参考结论，并提示相关风险要点与决策依据。
+    官方 5
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(3) > div:nth-of-type(4)
+- key: clickable-智能核保 知识库 对话流
+  object: page-agentStore__popover__b5baf3c6
+  states:
+  - page-agentStore__popover__b5baf3c6
+  role: clickable
+  name: 智能核保 知识库 对话流
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(3) > div:nth-of-type(4) > div:nth-of-type(1) > div:nth-of-type(1)
+- key: clickable-32
+  object: agentStore
+  states:
+  - page-agentStore__root__001
+  role: clickable
+  name: '32'
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(2) > div:nth-of-type(3) > div > div:nth-of-type(2) > div:nth-of-type(2)
+      > div
+transitions:
+- id: page-agentStore__root__001--click--clickable-选择语言
+  from_state: page-agentStore__root__001
+  action: click
+  target: clickable-选择语言
+  to_state: page-agentStore__popover__310a02b3
+  url_changed: false
+- id: page-agentStore__root__001--click--clickable-语言 选择语言
+  from_state: page-agentStore__root__001
+  action: click
+  target: clickable-语言 选择语言
+  to_state: page-agentStore__popover__44679188
+  url_changed: false
+- id: page-agentStore__root__001--click--clickable-hongbao.wang 所有者
+  from_state: page-agentStore__root__001
+  action: click
+  target: clickable-hongbao.wang 所有者
+  to_state: page-agentStore__popover__8340fbad
+  url_changed: false
+- id: page-agentStore__root__001--click--clickable-全部 已订阅 最近使用 语言 选择语言 类型 全部 排序 按发布时间排序
+  from_state: page-agentStore__root__001
+  action: click
+  target: clickable-全部 已订阅 最近使用 语言 选择语言 类型 全部 排序 按发布时间排序
+  to_state: page-agentStore__popover__b5baf3c6
+  url_changed: false
+quality:
+  status: complete

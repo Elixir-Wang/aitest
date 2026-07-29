@@ -530,7 +530,7 @@ def _artifact_quality_warnings(page_artifacts: list[tuple[Path, dict]]) -> list[
         if not states:
             warnings.append(f"{path.name} 未记录页面状态。")
             continue
-        if _artifact_element_count(states) == 0:
+        if _artifact_element_count(artifact) == 0:
             warnings.append(f"{path.name} 没有采集到可操作元素。")
         quality = artifact.get("quality") if isinstance(artifact.get("quality"), dict) else {}
         for key in ("warnings", "issues"):
@@ -542,9 +542,15 @@ def _artifact_quality_warnings(page_artifacts: list[tuple[Path, dict]]) -> list[
     return warnings
 
 
-def _artifact_element_count(states: list[dict]) -> int:
+def _artifact_element_count(artifact_or_states: dict | list[dict]) -> int:
+    if isinstance(artifact_or_states, dict):
+        elements = artifact_or_states.get("elements")
+        if isinstance(elements, list):
+            return len(elements)
+        states = artifact_or_states.get("states")
+        artifact_or_states = states if isinstance(states, list) else []
     total = 0
-    for state in states:
+    for state in artifact_or_states:
         if not isinstance(state, dict):
             continue
         elements = state.get("elements")
@@ -563,8 +569,7 @@ def _render_page_element_badge(element: dict) -> str:
     name = source.get("name", "") or ""
     key = element.get("key", "")
 
-    # 优先用 key（语义 ID），其次用 name
-    display = key or name
+    display = name or key
     if len(display) > 40:
         display = display[:37] + "..."
 
@@ -790,9 +795,9 @@ def _render_page_section(
     db_info = db_pages.get(page_id, {})
     title = db_info.get("title") or page.get("title") or page_id
     structure_summary = db_info.get("structure_summary") or artifact_data.get("_db_summary", "")
-    url = db_info.get("url") or page.get("url", "")
+    url = db_info.get("url") or page.get("url") or page.get("normalized_path", "")
 
-    element_count = _artifact_element_count(states)
+    element_count = _artifact_element_count(artifact_data)
     if element_count == 0 and structure_summary:
         # 从 DB 的 structure_summary 中提取元素数量（如"发现 23 个元素"）
         import re
@@ -802,7 +807,8 @@ def _render_page_section(
 
     lines: list[str] = []
 
-    short = _short_url(url)
+    normalized_path = _string(page.get("normalized_path")).strip()
+    short = normalized_path if normalized_path and not db_info.get("url") and not page.get("url") else _short_url(url)
     lines.append(f"### {title}")
     lines.append("")
     lines.append(f"| | |")
@@ -814,7 +820,11 @@ def _render_page_section(
     lines.append("")
 
     # 展开所有元素
-    all_elements: list[dict] = []
+    all_elements = [
+        element
+        for element in artifact_data.get("elements", [])
+        if isinstance(element, dict)
+    ]
     for state in states:
         if not isinstance(state, dict):
             continue
@@ -1019,8 +1029,8 @@ def _write_exploration_report(
         # 按访问顺序排序（timeline 中的首次出现顺序）
         page_order = _page_visit_order(timeline_events)
 
-    for artifact in page_artifacts:
-        lines.extend(_render_page_section(artifact, db_pages, page_order))
+        for artifact in page_artifacts:
+            lines.extend(_render_page_section(artifact, db_pages, page_order))
     else:
         lines.append("_本次探索未产生页面产物。_")
     lines.append("")

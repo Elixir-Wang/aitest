@@ -442,6 +442,9 @@ def snapshot_with_runtime_context(url: str | None = None) -> SnapshotResult | No
             for item in result.get("visible_text_blocks", [])
             if str(item).strip()
         ],
+        collections=[
+            item for item in result.get("collections", []) if isinstance(item, dict)
+        ],
         state_signature=str(result.get("state_signature") or ""),
     )
 

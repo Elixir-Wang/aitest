@@ -1,0 +1,1456 @@
+schema_version: '4.0'
+page:
+  id: page-homeland
+  title: 百融百工
+  normalized_path: /homeland
+objects:
+- key: homeland
+  type: page
+  name: 百融百工
+- key: page-homeland__popover__5b93103e
+  type: popover
+  name: hongbao.wang 所有者 Cybotstar-专业服务 空间管理者 创建空间
+  parent: homeland
+  container_locator:
+    strategy: css
+    value: .change-space-dropdown
+- key: page-homeland__popover__b2ac6ca5
+  type: popover
+  name: 创建智能体 自主规划 Agent 能够自主规划任务，适用于大部分场景 Multi-Agent 在一个智能体中设置多个Agent，以处理复杂任务 写作
+    Agent 通过创建模板，完成复杂写作内容生成 端到端语音 Agent（仅限定制） 毫秒级低延时，拟人化高表现力 任务流 Agent 面向自动化任务，通过流程编排实现任务
+  parent: homeland
+- key: page-homeland__popover__b6838705
+  type: popover
+  name: hongbao.wang 所有者 Cybotstar-专业服务 空间管理者 创建空间
+  parent: homeland
+- key: page-homeland__popover__75a7aa1a
+  type: popover
+  name: 邀请成员 邀请外部成员 邀请外部成员加入团队后，成为空间管理者 复制链接 链接有效期： 24小时
+  parent: homeland
+- key: page-homeland__popover__7b3c3825
+  type: popover
+  name: 创建智能体 自主规划 Agent 能够自主规划任务，适用于大部分场景 Multi-Agent 在一个智能体中设置多个Agent，以处理复杂任务 写作
+    Agent 通过创建模板，完成复杂写作内容生成 端到端语音 Agent（仅限定制） 毫秒级低延时，拟人化高表现力 任务流 Agent 面向自动化任务，通过流程编排实现任务
+  parent: homeland
+  container_locator:
+    strategy: css
+    value: .create-agent-dropdown
+states:
+- id: page-homeland__root__001
+  type: root
+  object: homeland
+- id: page-homeland__popover__5b93103e
+  type: popover
+  object: page-homeland__popover__5b93103e
+  parent: page-homeland__root__001
+- id: page-homeland__popover__b2ac6ca5
+  type: popover
+  object: page-homeland__popover__b2ac6ca5
+  parent: page-homeland__root__001
+- id: page-homeland__popover__b6838705
+  type: popover
+  object: page-homeland__popover__b6838705
+  parent: page-homeland__root__001
+- id: page-homeland__popover__75a7aa1a
+  type: popover
+  object: page-homeland__popover__75a7aa1a
+  parent: page-homeland__popover__b6838705
+- id: page-homeland__popover__7b3c3825
+  type: popover
+  object: page-homeland__popover__7b3c3825
+  parent: page-homeland__popover__75a7aa1a
+elements:
+- key: button-创建智能体
+  object: page-homeland__popover__7b3c3825
+  states:
+  - page-homeland__root__001
+  - page-homeland__popover__5b93103e
+  - page-homeland__popover__b2ac6ca5
+  - page-homeland__popover__b6838705
+  - page-homeland__popover__75a7aa1a
+  - page-homeland__popover__7b3c3825
+  role: button
+  name: 创建智能体
+  actions:
+  - click
+  locator:
+    strategy: role
+    role: button
+    name: 创建智能体
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: aside > div > div > div:nth-of-type(2) > button
+- key: clickable-探索广场
+  object: page-homeland__popover__7b3c3825
+  states:
+  - page-homeland__root__001
+  - page-homeland__popover__5b93103e
+  - page-homeland__popover__b2ac6ca5
+  - page-homeland__popover__b6838705
+  - page-homeland__popover__75a7aa1a
+  - page-homeland__popover__7b3c3825
+  role: clickable
+  name: 探索广场
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 探索广场
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(4) > div > div > div:nth-of-type(1) > div:nth-of-type(2)
+      > span
+- key: clickable-批量任务
+  object: page-homeland__popover__7b3c3825
+  states:
+  - page-homeland__root__001
+  - page-homeland__popover__5b93103e
+  - page-homeland__popover__b2ac6ca5
+  - page-homeland__popover__b6838705
+  - page-homeland__popover__75a7aa1a
+  - page-homeland__popover__7b3c3825
+  role: clickable
+  name: 批量任务
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 批量任务
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(4) > div > div > div:nth-of-type(2) > div:nth-of-type(2)
+      > span
+- key: clickable-hongbao.wang 所有者
+  object: page-homeland__popover__7b3c3825
+  states:
+  - page-homeland__root__001
+  - page-homeland__popover__5b93103e
+  - page-homeland__popover__b2ac6ca5
+  - page-homeland__popover__b6838705
+  - page-homeland__popover__75a7aa1a
+  - page-homeland__popover__7b3c3825
+  role: clickable
+  name: hongbao.wang 所有者
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(4) > div > div > div:nth-of-type(3) > div:nth-of-type(1)
+      > div:nth-of-type(2)
+- key: clickable-工作台
+  object: page-homeland__popover__7b3c3825
+  states:
+  - page-homeland__root__001
+  - page-homeland__popover__5b93103e
+  - page-homeland__popover__b2ac6ca5
+  - page-homeland__popover__b6838705
+  - page-homeland__popover__75a7aa1a
+  - page-homeland__popover__7b3c3825
+  role: clickable
+  name: 工作台
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 工作台
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(4) > div:nth-of-type(1)
+      > span
+- key: clickable-资源库
+  object: page-homeland__popover__7b3c3825
+  states:
+  - page-homeland__root__001
+  - page-homeland__popover__5b93103e
+  - page-homeland__popover__b2ac6ca5
+  - page-homeland__popover__b6838705
+  - page-homeland__popover__75a7aa1a
+  - page-homeland__popover__7b3c3825
+  role: clickable
+  name: 资源库
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 资源库
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(4) > div:nth-of-type(2) > span
+- key: clickable-效果评测
+  object: page-homeland__popover__7b3c3825
+  states:
+  - page-homeland__root__001
+  - page-homeland__popover__5b93103e
+  - page-homeland__popover__b2ac6ca5
+  - page-homeland__popover__b6838705
+  - page-homeland__popover__75a7aa1a
+  - page-homeland__popover__7b3c3825
+  role: clickable
+  name: 效果评测
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 效果评测
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(4) > div:nth-of-type(3) > span
+- key: clickable-发布管理
+  object: page-homeland__popover__7b3c3825
+  states:
+  - page-homeland__root__001
+  - page-homeland__popover__5b93103e
+  - page-homeland__popover__b2ac6ca5
+  - page-homeland__popover__b6838705
+  - page-homeland__popover__75a7aa1a
+  - page-homeland__popover__7b3c3825
+  role: clickable
+  name: 发布管理
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 发布管理
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(2) > div:nth-of-type(2) > div:nth-of-type(1) > span
+- key: clickable-线上观测
+  object: page-homeland__popover__7b3c3825
+  states:
+  - page-homeland__root__001
+  - page-homeland__popover__5b93103e
+  - page-homeland__popover__b2ac6ca5
+  - page-homeland__popover__b6838705
+  - page-homeland__popover__75a7aa1a
+  - page-homeland__popover__7b3c3825
+  role: clickable
+  name: 线上观测
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 线上观测
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(2) > div:nth-of-type(2) > div:nth-of-type(2) > span
+- key: clickable-自动优化
+  object: page-homeland__popover__7b3c3825
+  states:
+  - page-homeland__root__001
+  - page-homeland__popover__5b93103e
+  - page-homeland__popover__b2ac6ca5
+  - page-homeland__popover__b6838705
+  - page-homeland__popover__75a7aa1a
+  - page-homeland__popover__7b3c3825
+  role: clickable
+  name: 自动优化
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 自动优化
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(2) > div:nth-of-type(2) > div:nth-of-type(3) > span
+- key: clickable-空间管理
+  object: page-homeland__popover__7b3c3825
+  states:
+  - page-homeland__root__001
+  - page-homeland__popover__5b93103e
+  - page-homeland__popover__b2ac6ca5
+  - page-homeland__popover__b6838705
+  - page-homeland__popover__75a7aa1a
+  - page-homeland__popover__7b3c3825
+  role: clickable
+  name: 空间管理
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 空间管理
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(3) > div:nth-of-type(3) > div:nth-of-type(2) > div:nth-of-type(1)
+      > span
+- key: clickable-文档中心
+  object: page-homeland__popover__7b3c3825
+  states:
+  - page-homeland__root__001
+  - page-homeland__popover__5b93103e
+  - page-homeland__popover__b2ac6ca5
+  - page-homeland__popover__b6838705
+  - page-homeland__popover__75a7aa1a
+  - page-homeland__popover__7b3c3825
+  role: clickable
+  name: 文档中心
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 文档中心
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(3) > div:nth-of-type(3) > div:nth-of-type(2) > div:nth-of-type(2)
+- key: clickable-收藏
+  object: page-homeland__popover__7b3c3825
+  states:
+  - page-homeland__root__001
+  - page-homeland__popover__5b93103e
+  - page-homeland__popover__b2ac6ca5
+  - page-homeland__popover__b6838705
+  - page-homeland__popover__75a7aa1a
+  - page-homeland__popover__7b3c3825
+  role: clickable
+  name: 收藏
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 收藏
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div > div:nth-of-type(5) > div:nth-of-type(2)
+- key: clickable-点击【⭐️收藏】 可将智能体添加到这里
+  object: page-homeland__popover__7b3c3825
+  states:
+  - page-homeland__root__001
+  - page-homeland__popover__5b93103e
+  - page-homeland__popover__b2ac6ca5
+  - page-homeland__popover__b6838705
+  - page-homeland__popover__75a7aa1a
+  - page-homeland__popover__7b3c3825
+  role: clickable
+  name: 点击【⭐️收藏】 可将智能体添加到这里
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(5) > div:nth-of-type(3) > div
+- key: clickable-hongbao-wang1
+  object: page-homeland__popover__7b3c3825
+  states:
+  - page-homeland__root__001
+  - page-homeland__popover__5b93103e
+  - page-homeland__popover__b2ac6ca5
+  - page-homeland__popover__b6838705
+  - page-homeland__popover__75a7aa1a
+  - page-homeland__popover__7b3c3825
+  role: clickable
+  name: hongbao.wang1
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(6) > div:nth-of-type(1) > div > div:nth-of-type(2)
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(6) > div:nth-of-type(1) > div > div:nth-of-type(2)
+- key: clickable-全部角色 邀请成员 空间成员设置 智能体设置 空间设置
+  object: page-homeland__popover__7b3c3825
+  states:
+  - page-homeland__root__001
+  - page-homeland__popover__5b93103e
+  - page-homeland__popover__b2ac6ca5
+  - page-homeland__popover__b6838705
+  - page-homeland__popover__75a7aa1a
+  - page-homeland__popover__7b3c3825
+  role: clickable
+  name: 全部角色 邀请成员 空间成员设置 智能体设置 空间设置
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: body > div:nth-of-type(1) > div > div > div > div > div > div > div:nth-of-type(2)
+      > div:nth-of-type(1)
+- key: clickable-全部角色
+  object: page-homeland__popover__7b3c3825
+  states:
+  - page-homeland__root__001
+  - page-homeland__popover__5b93103e
+  - page-homeland__popover__b2ac6ca5
+  - page-homeland__popover__b6838705
+  - page-homeland__popover__75a7aa1a
+  - page-homeland__popover__7b3c3825
+  role: clickable
+  name: 全部角色
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(1) > div:nth-of-type(1) > div > div:nth-of-type(1) > div
+      > span:nth-of-type(2)
+- key: textbox-请输入关键字查找
+  object: page-homeland__popover__7b3c3825
+  states:
+  - page-homeland__root__001
+  - page-homeland__popover__5b93103e
+  - page-homeland__popover__b2ac6ca5
+  - page-homeland__popover__b6838705
+  - page-homeland__popover__75a7aa1a
+  - page-homeland__popover__7b3c3825
+  role: textbox
+  name: 请输入关键字查找
+  actions:
+  - fill
+  locator:
+    strategy: role
+    role: textbox
+    name: 请输入关键字查找
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(1) > div > div:nth-of-type(2) > input
+- key: button-邀请成员
+  object: page-homeland__popover__7b3c3825
+  states:
+  - page-homeland__root__001
+  - page-homeland__popover__5b93103e
+  - page-homeland__popover__b2ac6ca5
+  - page-homeland__popover__b6838705
+  - page-homeland__popover__75a7aa1a
+  - page-homeland__popover__7b3c3825
+  role: button
+  name: 邀请成员
+  actions:
+  - click
+  locator:
+    strategy: role
+    role: button
+    name: 邀请成员
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(1) > div:nth-of-type(1) > div > div:nth-of-type(3) > button
+- key: clickable-空间成员设置
+  object: page-homeland__popover__7b3c3825
+  states:
+  - page-homeland__root__001
+  - page-homeland__popover__5b93103e
+  - page-homeland__popover__b2ac6ca5
+  - page-homeland__popover__b6838705
+  - page-homeland__popover__75a7aa1a
+  - page-homeland__popover__7b3c3825
+  role: clickable
+  name: 空间成员设置
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 空间成员设置
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(2) > div > div
+      > div:nth-of-type(2) > span
+- key: clickable-智能体设置
+  object: page-homeland__popover__7b3c3825
+  states:
+  - page-homeland__root__001
+  - page-homeland__popover__5b93103e
+  - page-homeland__popover__b2ac6ca5
+  - page-homeland__popover__b6838705
+  - page-homeland__popover__75a7aa1a
+  - page-homeland__popover__7b3c3825
+  role: clickable
+  name: 智能体设置
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 智能体设置
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(2) > div > div > div:nth-of-type(3) > span
+- key: clickable-空间设置
+  object: page-homeland__popover__7b3c3825
+  states:
+  - page-homeland__root__001
+  - page-homeland__popover__5b93103e
+  - page-homeland__popover__b2ac6ca5
+  - page-homeland__popover__b6838705
+  - page-homeland__popover__75a7aa1a
+  - page-homeland__popover__7b3c3825
+  role: clickable
+  name: 空间设置
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 空间设置
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(2) > div > div > div:nth-of-type(4) > span
+- key: clickable-上一页
+  object: page-homeland__popover__7b3c3825
+  states:
+  - page-homeland__root__001
+  - page-homeland__popover__5b93103e
+  - page-homeland__popover__b2ac6ca5
+  - page-homeland__popover__b6838705
+  - page-homeland__popover__75a7aa1a
+  - page-homeland__popover__7b3c3825
+  role: clickable
+  name: 上一页
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(2) > ul > li:nth-of-type(1)
+- key: clickable-1
+  object: page-homeland__popover__7b3c3825
+  states:
+  - page-homeland__root__001
+  - page-homeland__popover__5b93103e
+  - page-homeland__popover__b2ac6ca5
+  - page-homeland__popover__b6838705
+  - page-homeland__popover__75a7aa1a
+  - page-homeland__popover__7b3c3825
+  role: clickable
+  name: '1'
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(2) > ul > li:nth-of-type(2)
+- key: link-1
+  object: page-homeland__popover__7b3c3825
+  states:
+  - page-homeland__root__001
+  - page-homeland__popover__5b93103e
+  - page-homeland__popover__b2ac6ca5
+  - page-homeland__popover__b6838705
+  - page-homeland__popover__75a7aa1a
+  - page-homeland__popover__7b3c3825
+  role: link
+  name: '1'
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: li:nth-of-type(2) > a
+- key: clickable-下一页
+  object: page-homeland__popover__7b3c3825
+  states:
+  - page-homeland__root__001
+  - page-homeland__popover__5b93103e
+  - page-homeland__popover__b2ac6ca5
+  - page-homeland__popover__b6838705
+  - page-homeland__popover__75a7aa1a
+  - page-homeland__popover__7b3c3825
+  role: clickable
+  name: 下一页
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(2) > ul > li:nth-of-type(3)
+- key: clickable-创建智能体 广场 探索广场 应用 批量任务 hongbao.wang 所有者 创作中心 工作台 资源库 效果评测 运行中心 发布管理
+    线上观测 自动优化 管理中心 空间管理 文档中心 收藏 点击【⭐️收藏】 可将智能体添加到这里 hongbao.wang1 hongbao.wang 全部角色
+    邀请成员 空间成员设置 智
+  object: page-homeland__popover__7b3c3825
+  states:
+  - page-homeland__root__001
+  - page-homeland__popover__5b93103e
+  - page-homeland__popover__b2ac6ca5
+  - page-homeland__popover__b6838705
+  - page-homeland__popover__75a7aa1a
+  - page-homeland__popover__7b3c3825
+  role: clickable
+  name: 创建智能体 广场 探索广场 应用 批量任务 hongbao.wang 所有者 创作中心 工作台 资源库 效果评测 运行中心 发布管理 线上观测 自动优化
+    管理中心 空间管理 文档中心 收藏 点击【⭐️收藏】 可将智能体添加到这里 hongbao.wang1 hongbao.wang 全部角色 邀请成员 空间成员设置
+    智
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: body > div:nth-of-type(1) > div
+- key: clickable-创建智能体 广场 探索广场 应用 批量任务 hongbao.wang 所有者 创作中心 工作台 资源库 效果评测 运行中心 发布管理
+    线上观测 自动优化 管理中心 空间管理 文档中心 收藏 点击【⭐️收藏】 可将智能体添加到这里 hongbao.wang1
+  object: page-homeland__popover__7b3c3825
+  states:
+  - page-homeland__root__001
+  - page-homeland__popover__5b93103e
+  - page-homeland__popover__b2ac6ca5
+  - page-homeland__popover__b6838705
+  - page-homeland__popover__75a7aa1a
+  - page-homeland__popover__7b3c3825
+  role: clickable
+  name: 创建智能体 广场 探索广场 应用 批量任务 hongbao.wang 所有者 创作中心 工作台 资源库 效果评测 运行中心 发布管理 线上观测 自动优化
+    管理中心 空间管理 文档中心 收藏 点击【⭐️收藏】 可将智能体添加到这里 hongbao.wang1
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: aside > div > div
+- key: clickable-创建智能体
+  object: page-homeland__popover__7b3c3825
+  states:
+  - page-homeland__root__001
+  - page-homeland__popover__5b93103e
+  - page-homeland__popover__b2ac6ca5
+  - page-homeland__popover__b6838705
+  - page-homeland__popover__75a7aa1a
+  - page-homeland__popover__7b3c3825
+  role: clickable
+  name: 创建智能体
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(2) > button > span > span
+- key: clickable-广场 探索广场 应用 批量任务 hongbao.wang 所有者 创作中心 工作台 资源库 效果评测 运行中心 发布管理 线上观测
+    自动优化 管理中心 空间管理 文档中心
+  object: page-homeland__popover__7b3c3825
+  states:
+  - page-homeland__root__001
+  - page-homeland__popover__5b93103e
+  - page-homeland__popover__b2ac6ca5
+  - page-homeland__popover__b6838705
+  - page-homeland__popover__75a7aa1a
+  - page-homeland__popover__7b3c3825
+  role: clickable
+  name: 广场 探索广场 应用 批量任务 hongbao.wang 所有者 创作中心 工作台 资源库 效果评测 运行中心 发布管理 线上观测 自动优化 管理中心
+    空间管理 文档中心
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: aside > div > div > div:nth-of-type(4) > div > div
+- key: clickable-广场 探索广场
+  object: page-homeland__popover__7b3c3825
+  states:
+  - page-homeland__root__001
+  - page-homeland__popover__5b93103e
+  - page-homeland__popover__b2ac6ca5
+  - page-homeland__popover__b6838705
+  - page-homeland__popover__75a7aa1a
+  - page-homeland__popover__7b3c3825
+  role: clickable
+  name: 广场 探索广场
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: aside > div > div > div:nth-of-type(4) > div > div > div:nth-of-type(1)
+- key: clickable-广场
+  object: page-homeland__popover__7b3c3825
+  states:
+  - page-homeland__root__001
+  - page-homeland__popover__5b93103e
+  - page-homeland__popover__b2ac6ca5
+  - page-homeland__popover__b6838705
+  - page-homeland__popover__75a7aa1a
+  - page-homeland__popover__7b3c3825
+  role: clickable
+  name: 广场
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 广场
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div > div:nth-of-type(4) > div > div > div:nth-of-type(1) > div:nth-of-type(1)
+- key: clickable-应用 批量任务
+  object: page-homeland__popover__7b3c3825
+  states:
+  - page-homeland__root__001
+  - page-homeland__popover__5b93103e
+  - page-homeland__popover__b2ac6ca5
+  - page-homeland__popover__b6838705
+  - page-homeland__popover__75a7aa1a
+  - page-homeland__popover__7b3c3825
+  role: clickable
+  name: 应用 批量任务
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(4) > div > div > div:nth-of-type(2)
+- key: clickable-应用
+  object: page-homeland__popover__7b3c3825
+  states:
+  - page-homeland__root__001
+  - page-homeland__popover__5b93103e
+  - page-homeland__popover__b2ac6ca5
+  - page-homeland__popover__b6838705
+  - page-homeland__popover__75a7aa1a
+  - page-homeland__popover__7b3c3825
+  role: clickable
+  name: 应用
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 应用
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(4) > div > div > div:nth-of-type(2) > div:nth-of-type(1)
+- key: clickable-hongbao.wang 所有者 创作中心 工作台 资源库 效果评测 运行中心 发布管理 线上观测 自动优化 管理中心 空间管理
+    文档中心
+  object: page-homeland__popover__7b3c3825
+  states:
+  - page-homeland__root__001
+  - page-homeland__popover__5b93103e
+  - page-homeland__popover__b2ac6ca5
+  - page-homeland__popover__b6838705
+  - page-homeland__popover__75a7aa1a
+  - page-homeland__popover__7b3c3825
+  role: clickable
+  name: hongbao.wang 所有者 创作中心 工作台 资源库 效果评测 运行中心 发布管理 线上观测 自动优化 管理中心 空间管理 文档中心
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(4) > div > div > div:nth-of-type(3)
+- key: clickable-hongbao.wang 所有者 创作中心 工作台 资源库 效果评测
+  object: page-homeland__popover__7b3c3825
+  states:
+  - page-homeland__root__001
+  - page-homeland__popover__5b93103e
+  - page-homeland__popover__b2ac6ca5
+  - page-homeland__popover__b6838705
+  - page-homeland__popover__75a7aa1a
+  - page-homeland__popover__7b3c3825
+  role: clickable
+  name: hongbao.wang 所有者 创作中心 工作台 资源库 效果评测
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(4) > div > div > div:nth-of-type(3) > div:nth-of-type(1)
+- key: clickable-hongbao-wang
+  object: page-homeland__popover__7b3c3825
+  states:
+  - page-homeland__root__001
+  - page-homeland__popover__5b93103e
+  - page-homeland__popover__b2ac6ca5
+  - page-homeland__popover__b6838705
+  - page-homeland__popover__75a7aa1a
+  - page-homeland__popover__7b3c3825
+  role: clickable
+  name: hongbao.wang
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(2) > div > div
+      > div > div:nth-of-type(1) > span:nth-of-type(1)
+- key: clickable-所有者
+  object: page-homeland__popover__7b3c3825
+  states:
+  - page-homeland__root__001
+  - page-homeland__popover__5b93103e
+  - page-homeland__popover__b2ac6ca5
+  - page-homeland__popover__b6838705
+  - page-homeland__popover__75a7aa1a
+  - page-homeland__popover__7b3c3825
+  role: clickable
+  name: 所有者
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(2) > div > div
+      > div > div:nth-of-type(1) > span:nth-of-type(2)
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(2) > div > div
+      > div > div:nth-of-type(1) > span:nth-of-type(2)
+- key: clickable-创作中心
+  object: page-homeland__popover__7b3c3825
+  states:
+  - page-homeland__root__001
+  - page-homeland__popover__5b93103e
+  - page-homeland__popover__b2ac6ca5
+  - page-homeland__popover__b6838705
+  - page-homeland__popover__75a7aa1a
+  - page-homeland__popover__7b3c3825
+  role: clickable
+  name: 创作中心
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 创作中心
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(3)
+- key: clickable-工作台 资源库 效果评测
+  object: page-homeland__popover__7b3c3825
+  states:
+  - page-homeland__root__001
+  - page-homeland__popover__5b93103e
+  - page-homeland__popover__b2ac6ca5
+  - page-homeland__popover__b6838705
+  - page-homeland__popover__75a7aa1a
+  - page-homeland__popover__7b3c3825
+  role: clickable
+  name: 工作台 资源库 效果评测
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(4)
+- key: clickable-运行中心 发布管理 线上观测 自动优化
+  object: page-homeland__popover__7b3c3825
+  states:
+  - page-homeland__root__001
+  - page-homeland__popover__5b93103e
+  - page-homeland__popover__b2ac6ca5
+  - page-homeland__popover__b6838705
+  - page-homeland__popover__75a7aa1a
+  - page-homeland__popover__7b3c3825
+  role: clickable
+  name: 运行中心 发布管理 线上观测 自动优化
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(4) > div > div > div:nth-of-type(3) > div:nth-of-type(2)
+- key: clickable-运行中心
+  object: page-homeland__popover__7b3c3825
+  states:
+  - page-homeland__root__001
+  - page-homeland__popover__5b93103e
+  - page-homeland__popover__b2ac6ca5
+  - page-homeland__popover__b6838705
+  - page-homeland__popover__75a7aa1a
+  - page-homeland__popover__7b3c3825
+  role: clickable
+  name: 运行中心
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 运行中心
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(4) > div > div > div:nth-of-type(3) > div:nth-of-type(2)
+      > div:nth-of-type(1)
+- key: clickable-发布管理 线上观测 自动优化
+  object: page-homeland__popover__7b3c3825
+  states:
+  - page-homeland__root__001
+  - page-homeland__popover__5b93103e
+  - page-homeland__popover__b2ac6ca5
+  - page-homeland__popover__b6838705
+  - page-homeland__popover__75a7aa1a
+  - page-homeland__popover__7b3c3825
+  role: clickable
+  name: 发布管理 线上观测 自动优化
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(4) > div > div > div:nth-of-type(3) > div:nth-of-type(2)
+      > div:nth-of-type(2)
+- key: clickable-管理中心 空间管理 文档中心
+  object: page-homeland__popover__7b3c3825
+  states:
+  - page-homeland__root__001
+  - page-homeland__popover__5b93103e
+  - page-homeland__popover__b2ac6ca5
+  - page-homeland__popover__b6838705
+  - page-homeland__popover__7b3c3825
+  role: clickable
+  name: 管理中心 空间管理 文档中心
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(3) > div:nth-of-type(3)
+- key: clickable-管理中心
+  object: page-homeland__popover__7b3c3825
+  states:
+  - page-homeland__root__001
+  - page-homeland__popover__5b93103e
+  - page-homeland__popover__b2ac6ca5
+  - page-homeland__popover__b6838705
+  - page-homeland__popover__7b3c3825
+  role: clickable
+  name: 管理中心
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 管理中心
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(3) > div:nth-of-type(3) > div:nth-of-type(1)
+- key: clickable-空间管理 文档中心
+  object: page-homeland__popover__7b3c3825
+  states:
+  - page-homeland__root__001
+  - page-homeland__popover__b2ac6ca5
+  - page-homeland__popover__7b3c3825
+  role: clickable
+  name: 空间管理 文档中心
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(3) > div:nth-of-type(3) > div:nth-of-type(2)
+- key: clickable-收藏 点击【⭐️收藏】 可将智能体添加到这里
+  object: homeland
+  states:
+  - page-homeland__root__001
+  role: clickable
+  name: 收藏 点击【⭐️收藏】 可将智能体添加到这里
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: aside > div > div > div:nth-of-type(5)
+- key: clickable-textin测试（全部可管理）
+  object: page-homeland__popover__7b3c3825
+  states:
+  - page-homeland__root__001
+  - page-homeland__popover__5b93103e
+  - page-homeland__popover__b2ac6ca5
+  - page-homeland__popover__b6838705
+  - page-homeland__popover__75a7aa1a
+  - page-homeland__popover__7b3c3825
+  role: clickable
+  name: textin测试（全部可管理）
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: textin测试（全部可管理）
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: td:nth-of-type(4) > div > div > div
+- key: clickable-空间成员设置 智能体设置 空间设置
+  object: homeland
+  states:
+  - page-homeland__root__001
+  role: clickable
+  name: 空间成员设置 智能体设置 空间设置
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: body > div:nth-of-type(1) > div > div > div > div > div > div > div:nth-of-type(2)
+      > div:nth-of-type(1)
+- key: clickable-转让空间 将空间所有权转移给其他成员 转让空间
+  object: homeland
+  states:
+  - page-homeland__root__001
+  role: clickable
+  name: 转让空间 将空间所有权转移给其他成员 转让空间
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(1) > div > div > div > div > div > div > div:nth-of-type(2)
+      > div:nth-of-type(2) > div:nth-of-type(3) > div > div:nth-of-type(1)
+- key: clickable-转让空间
+  object: homeland
+  states:
+  - page-homeland__root__001
+  role: clickable
+  name: 转让空间
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(3) > div > div:nth-of-type(1) > div:nth-of-type(4)
+- key: clickable-将空间所有权转移给其他成员
+  object: homeland
+  states:
+  - page-homeland__root__001
+  role: clickable
+  name: 将空间所有权转移给其他成员
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 将空间所有权转移给其他成员
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(3) > div > div:nth-of-type(1) > div:nth-of-type(3)
+- key: button-转让空间
+  object: homeland
+  states:
+  - page-homeland__root__001
+  role: button
+  name: 转让空间
+  actions:
+  - click
+  locator:
+    strategy: role
+    role: button
+    name: 转让空间
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(1) > div:nth-of-type(4) > button
+- key: clickable-删除空间 空间删除后所有资产将无法恢复，请谨慎操作 删除空间
+  object: homeland
+  states:
+  - page-homeland__root__001
+  role: clickable
+  name: 删除空间 空间删除后所有资产将无法恢复，请谨慎操作 删除空间
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(2) > div:nth-of-type(3) > div > div:nth-of-type(2)
+- key: clickable-删除空间
+  object: homeland
+  states:
+  - page-homeland__root__001
+  role: clickable
+  name: 删除空间
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(3) > div > div:nth-of-type(2) > div:nth-of-type(4)
+- key: clickable-空间删除后所有资产将无法恢复，请谨慎操作
+  object: homeland
+  states:
+  - page-homeland__root__001
+  role: clickable
+  name: 空间删除后所有资产将无法恢复，请谨慎操作
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 空间删除后所有资产将无法恢复，请谨慎操作
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(2) > div:nth-of-type(3) > div > div:nth-of-type(2) > div:nth-of-type(3)
+- key: button-删除空间
+  object: homeland
+  states:
+  - page-homeland__root__001
+  role: button
+  name: 删除空间
+  actions:
+  - click
+  locator:
+    strategy: role
+    role: button
+    name: 删除空间
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(2) > div:nth-of-type(4) > button
+- key: clickable-创建智能体 广场 探索广场 应用 批量任务 hongbao.wang 所有者 创作中心 工作台 资源库 效果评测 运行中心 发布管理
+    线上观测 自动优化 管理中心 空间管理 文档中心 收藏 点击【⭐️收藏】 可将智能体添加到这里 hongbao.wang1 hongbao.wang 空间成员设置
+    智能体设置 空间设置
+  object: homeland
+  states:
+  - page-homeland__root__001
+  role: clickable
+  name: 创建智能体 广场 探索广场 应用 批量任务 hongbao.wang 所有者 创作中心 工作台 资源库 效果评测 运行中心 发布管理 线上观测 自动优化
+    管理中心 空间管理 文档中心 收藏 点击【⭐️收藏】 可将智能体添加到这里 hongbao.wang1 hongbao.wang 空间成员设置 智能体设置
+    空间设置
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: body > div:nth-of-type(1) > div
+- key: clickable-自主规划Agent8个
+  object: homeland
+  states:
+  - page-homeland__root__001
+  role: clickable
+  name: 自主规划Agent8个
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 自主规划Agent8个
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(2) > div:nth-of-type(2) > div > div:nth-of-type(1) > div:nth-of-type(1)
+      > span
+- key: clickable-语音测试
+  object: homeland
+  states:
+  - page-homeland__root__001
+  role: clickable
+  name: 语音测试
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: li:nth-of-type(1) > div
+- key: clickable-textin测试
+  object: homeland
+  states:
+  - page-homeland__root__001
+  role: clickable
+  name: textin测试
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: textin测试
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: li:nth-of-type(2) > div
+- key: clickable-卡片测试
+  object: homeland
+  states:
+  - page-homeland__root__001
+  role: clickable
+  name: 卡片测试
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 卡片测试
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: li:nth-of-type(3) > div
+- key: clickable-标准智能体测试
+  object: homeland
+  states:
+  - page-homeland__root__001
+  role: clickable
+  name: 标准智能体测试
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 标准智能体测试
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: li:nth-of-type(4) > div
+- key: clickable-无插件智能体2
+  object: homeland
+  states:
+  - page-homeland__root__001
+  role: clickable
+  name: 无插件智能体2
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 无插件智能体2
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: li:nth-of-type(5) > div
+- key: clickable-对话流超长文本性能优化
+  object: homeland
+  states:
+  - page-homeland__root__001
+  role: clickable
+  name: 对话流超长文本性能优化
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 对话流超长文本性能优化
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: li:nth-of-type(6) > div
+- key: clickable-explorebot-2026
+  object: homeland
+  states:
+  - page-homeland__root__001
+  role: clickable
+  name: ExploreBot_2026
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: ExploreBot_2026
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: li:nth-of-type(7) > div
+- key: clickable-哈哈
+  object: homeland
+  states:
+  - page-homeland__root__001
+  role: clickable
+  name: 哈哈
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 哈哈
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: li:nth-of-type(8) > div
+- key: clickable-写作Agent0个
+  object: homeland
+  states:
+  - page-homeland__root__001
+  role: clickable
+  name: 写作Agent0个
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 写作Agent0个
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(2) > div:nth-of-type(2) > div > div:nth-of-type(1) > div:nth-of-type(3)
+      > span
+- key: clickable-任务流 Agent0个
+  object: homeland
+  states:
+  - page-homeland__root__001
+  role: clickable
+  name: 任务流 Agent0个
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 任务流 Agent0个
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(5) > span
+- key: popover-hongbao.wang 所有者 Cybotstar-专业服务 空间管理者 创建空间
+  object: page-homeland__popover__b6838705
+  states:
+  - page-homeland__popover__5b93103e
+  - page-homeland__popover__b6838705
+  role: popover
+  name: hongbao.wang 所有者 Cybotstar-专业服务 空间管理者 创建空间
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(21) > div:nth-of-type(2)
+- key: clickable-Cybotstar-专业服务 空间管理者
+  object: page-homeland__popover__b6838705
+  states:
+  - page-homeland__popover__5b93103e
+  - page-homeland__popover__b6838705
+  role: clickable
+  name: Cybotstar-专业服务 空间管理者
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(2) > div > div > div:nth-of-type(1) > div > div > div:nth-of-type(2)
+      > div > div:nth-of-type(1)
+- key: clickable-创建空间
+  object: page-homeland__popover__b6838705
+  states:
+  - page-homeland__popover__5b93103e
+  - page-homeland__popover__b6838705
+  role: clickable
+  name: 创建空间
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(21) > div:nth-of-type(2) > div > div > div:nth-of-type(3)
+- key: popover-创建智能体 自主规划 Agent 能够自主规划任务，适用于大部分场景 Multi-Agent 在一个智能体中设置多个Agent，以处理复杂任务
+    写作 Agent 通过创建模板，完成复杂写作内容生成 端到端语音 Agent（仅限定制） 毫秒级低延时，拟人化高表现力 任务流 Agent 面向自动化任务，通过流程编排实现任务
+  object: page-homeland__popover__7b3c3825
+  states:
+  - page-homeland__popover__b2ac6ca5
+  - page-homeland__popover__7b3c3825
+  role: popover
+  name: 创建智能体 自主规划 Agent 能够自主规划任务，适用于大部分场景 Multi-Agent 在一个智能体中设置多个Agent，以处理复杂任务 写作
+    Agent 通过创建模板，完成复杂写作内容生成 端到端语音 Agent（仅限定制） 毫秒级低延时，拟人化高表现力 任务流 Agent 面向自动化任务，通过流程编排实现任务
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(19) > div:nth-of-type(2)
+- key: clickable-自主规划 Agent 能够自主规划任务，适用于大部分场景
+  object: page-homeland__popover__7b3c3825
+  states:
+  - page-homeland__popover__b2ac6ca5
+  - page-homeland__popover__7b3c3825
+  role: clickable
+  name: 自主规划 Agent 能够自主规划任务，适用于大部分场景
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(2) > div > div > ul > li:nth-of-type(1)
+- key: clickable-Multi-Agent 在一个智能体中设置多个Agent，以处理复杂任务
+  object: page-homeland__popover__7b3c3825
+  states:
+  - page-homeland__popover__b2ac6ca5
+  - page-homeland__popover__7b3c3825
+  role: clickable
+  name: Multi-Agent 在一个智能体中设置多个Agent，以处理复杂任务
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: Multi-Agent 在一个智能体中设置多个Agent，以处理复杂任务
+    exact: true
+- key: clickable-写作 Agent 通过创建模板，完成复杂写作内容生成
+  object: page-homeland__popover__7b3c3825
+  states:
+  - page-homeland__popover__b2ac6ca5
+  - page-homeland__popover__7b3c3825
+  role: clickable
+  name: 写作 Agent 通过创建模板，完成复杂写作内容生成
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(2) > div > div > ul > li:nth-of-type(3)
+- key: clickable-端到端语音 Agent（仅限定制） 毫秒级低延时，拟人化高表现力
+  object: page-homeland__popover__7b3c3825
+  states:
+  - page-homeland__popover__b2ac6ca5
+  - page-homeland__popover__7b3c3825
+  role: clickable
+  name: 端到端语音 Agent（仅限定制） 毫秒级低延时，拟人化高表现力
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(2) > div > div > ul > li:nth-of-type(4)
+- key: clickable-任务流 Agent 面向自动化任务，通过流程编排实现任务自动化处理
+  object: page-homeland__popover__7b3c3825
+  states:
+  - page-homeland__popover__b2ac6ca5
+  - page-homeland__popover__7b3c3825
+  role: clickable
+  name: 任务流 Agent 面向自动化任务，通过流程编排实现任务自动化处理
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: li:nth-of-type(5)
+- key: clickable-界面语言
+  object: page-homeland__popover__b6838705
+  states:
+  - page-homeland__popover__b6838705
+  role: clickable
+  name: 界面语言
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 界面语言
+    exact: true
+- key: clickable-意见反馈
+  object: page-homeland__popover__b6838705
+  states:
+  - page-homeland__popover__b6838705
+  role: clickable
+  name: 意见反馈
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 意见反馈
+    exact: true
+- key: clickable-退出登录
+  object: page-homeland__popover__b6838705
+  states:
+  - page-homeland__popover__b6838705
+  role: clickable
+  name: 退出登录
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 退出登录
+    exact: true
+- key: clickable-邀请外部成员加入团队后，成为空间管理者
+  object: page-homeland__popover__75a7aa1a
+  states:
+  - page-homeland__popover__75a7aa1a
+  role: clickable
+  name: 邀请外部成员加入团队后，成为空间管理者
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: p:nth-of-type(2) > div > div > span:nth-of-type(2)
+- key: button-复制链接
+  object: page-homeland__popover__75a7aa1a
+  states:
+  - page-homeland__popover__75a7aa1a
+  role: button
+  name: 复制链接
+  actions:
+  - click
+  locator:
+    strategy: role
+    role: button
+    name: 复制链接
+    exact: true
+- key: clickable-24小时
+  object: page-homeland__popover__75a7aa1a
+  states:
+  - page-homeland__popover__75a7aa1a
+  role: clickable
+  name: 24小时
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: p:nth-of-type(4) > div > div > div > div > span:nth-of-type(2)
+transitions:
+- id: page-homeland__root__001--click--clickable-所有者
+  from_state: page-homeland__root__001
+  action: click
+  target: clickable-所有者
+  to_state: page-homeland__popover__5b93103e
+  url_changed: false
+- id: page-homeland__root__001--click--clickable-创建智能体
+  from_state: page-homeland__root__001
+  action: click
+  target: clickable-创建智能体
+  to_state: page-homeland__popover__b2ac6ca5
+  url_changed: false
+- id: page-homeland__root__001--click--clickable-hongbao.wang 所有者
+  from_state: page-homeland__root__001
+  action: click
+  target: clickable-hongbao.wang 所有者
+  to_state: page-homeland__popover__b6838705
+  url_changed: false
+- id: page-homeland__popover__b6838705--click--button-邀请成员
+  from_state: page-homeland__popover__b6838705
+  action: click
+  target: button-邀请成员
+  to_state: page-homeland__popover__75a7aa1a
+  url_changed: false
+- id: page-homeland__popover__75a7aa1a--click--button-创建智能体
+  from_state: page-homeland__popover__75a7aa1a
+  action: click
+  target: button-创建智能体
+  to_state: page-homeland__popover__7b3c3825
+  url_changed: false
+quality:
+  status: complete

@@ -10,7 +10,7 @@ import shutil
 import yaml
 
 
-MERGE_COLLECTIONS = ("regions", "elements", "states", "interactions", "blockers")
+MERGE_COLLECTIONS = ("objects", "states", "elements", "collections", "transitions")
 
 
 def capture_loop_baseline(*, root: Path, run_id: str) -> Path:
@@ -119,19 +119,22 @@ def _merge_edges(*, current_path: Path, baseline_path: Path, summary: dict[str, 
 
 
 def _stable_key(item: dict[str, Any]) -> str:
-    return str(item.get("stable_key") or item.get("id") or item.get("element_id") or item.get("state_signature") or "").strip()
+    return str(item.get("key") or item.get("id") or "").strip()
 
 
 def _same_page_identity(base: dict[str, Any], delta: dict[str, Any]) -> bool:
     left = base.get("page") if isinstance(base.get("page"), dict) else base
     right = delta.get("page") if isinstance(delta.get("page"), dict) else delta
-    left_key = left.get("identity_key") or left.get("page_id") or left.get("canonical_path")
-    right_key = right.get("identity_key") or right.get("page_id") or right.get("canonical_path")
+    left_key = left.get("id") or left.get("normalized_path")
+    right_key = right.get("id") or right.get("normalized_path")
     return not left_key or not right_key or left_key == right_key
 
 
 def _compatible(base: dict[str, Any], delta: dict[str, Any]) -> bool:
-    return all(not base.get(key) or not delta.get(key) or base[key] == delta[key] for key in ("page_id", "region_id", "state_signature", "role"))
+    return all(
+        not base.get(key) or not delta.get(key) or base[key] == delta[key]
+        for key in ("id", "key", "role", "type", "from_state", "action", "target")
+    )
 
 
 def _read_yaml(path: Path) -> dict[str, Any]:

@@ -2,10 +2,13 @@
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
+from app.agents.page_exploration_loop.services.checkpoint import load_checkpoint
+from app.core import settings
 from app.dependencies.auth import current_user
 from app.core.db import connect
 from app.repositories import project_repo
 from app.services.page_exploration import page_exploration_service
+from app.services.page_exploration.coverage_registry import build_coverage_view, load_coverage
 from app.services.page_exploration.replay import OperationsStore, ReplayError, ReplayRunService, ReplayService
 from app.services.page_exploration.replay.models import ReplayOperation
 from app.api.v1.page_exploration.schemas import ReplayOperationRequest, SaveReplayOperationRequest
@@ -32,6 +35,21 @@ def _ensure_project_access(actor: dict, project_id: str, *, write: bool = False,
     scope = str(actor_value("project_scope"))
     if role != "admin" and scope != "全部项目" and scope != str(project["name"]):
         raise HTTPException(status_code=403, detail="无权访问该项目。")
+
+
+@router.get("/projects/{project_id}/coverage", response_model=dict)
+def get_project_exploration_coverage(
+    project_id: str,
+    run_id: str | None = Query(default=None),
+    actor=Depends(current_user),
+) -> dict:
+    _ensure_project_access(actor, project_id)
+    root = settings.PROJECT_FILE_STORAGE_ROOT
+    checkpoint = None
+    if run_id:
+        state = load_checkpoint(root / project_id / "page_exploration" / "runs" / run_id)
+        checkpoint = state.to_dict() if state is not None else None
+    return build_coverage_view(load_coverage(root, project_id), checkpoint=checkpoint)
 
 
 @router.get("/projects/{project_id}/operations", response_model=dict)

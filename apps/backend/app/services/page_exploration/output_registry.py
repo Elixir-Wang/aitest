@@ -13,6 +13,7 @@ from app.agents.page_exploration.utils.element_key import build_element_key, slu
 from app.core import settings
 from app.core.db import connect as default_connect
 from app.repositories import exploration_run_repo as default_exploration_run_repo
+from app.services.page_exploration.artifact_normalizer import normalize_snapshot_artifact
 from app.services.page_exploration.report_writer import (
     _artifact_quality_warnings,
     _exploration_completion_status,
@@ -352,56 +353,14 @@ def _checkpoint_snapshot_artifact_from_event(event: dict, *, project_id: str, ru
     normalized_path = _normalize_snapshot_url_path(url)
     page_id = make_page_id(normalized_path)
     run_dir = _project_file_storage_root() / project_id / "page_exploration" / "runs" / run_id
-    elements = snapshot.get("elements") if isinstance(snapshot.get("elements"), list) else []
-    accessibility_tree = snapshot.get("accessibility_tree") if isinstance(snapshot.get("accessibility_tree"), list) else []
-    artifact_elements = _snapshot_elements_for_artifact(elements, accessibility_tree)
-    visible_text_blocks = snapshot.get("visible_text_blocks") if isinstance(snapshot.get("visible_text_blocks"), list) else []
-    assertion_texts = _snapshot_assertion_texts(
-        title=title,
-        visible_text_blocks=visible_text_blocks,
-        elements=artifact_elements,
-    )
-    state_context = snapshot.get("state_context") if isinstance(snapshot.get("state_context"), dict) else {}
-    state_id = _string(state_context.get("state_id") or "snapshot-current")
-    state_type = _string(state_context.get("state_type") or "root")
-    observed_state = {
-        "id": state_id,
-        "type": state_type,
-        "title": title,
-        "url": url,
-        "elements": artifact_elements,
-        "assertion_texts": assertion_texts,
-        "children": [],
-    }
-    triggered_by = state_context.get("triggered_by")
-    if isinstance(triggered_by, dict):
-        observed_state["triggered_by"] = triggered_by
-    overlay = snapshot.get("overlay")
-    if state_type != "root" and isinstance(overlay, dict):
-        observed_state["container"] = _snapshot_overlay_container(overlay)
-
-    existing_states: list[dict] = []
     existing_path = _project_file_storage_root() / project_id / "page_exploration" / "pages" / f"{page_id}.yaml"
+    existing_artifact: dict | None = None
     if existing_path.exists():
         import yaml
         existing = yaml.safe_load(existing_path.read_text(encoding="utf-8")) or {}
-        if isinstance(existing.get("states"), list):
-            existing_states = existing["states"]
-    states = _upsert_snapshot_state(
-        existing_states,
-        observed_state,
-        parent_state_id=_string(state_context.get("parent_state_id")),
-    )
-    artifact = {
-        "schema_version": "3.0",
-        "page": {
-            "id": page_id,
-            "title": title,
-            "url": url,
-            "normalized_path": normalized_path,
-        },
-        "states": states,
-    }
+        if isinstance(existing, dict) and existing.get("schema_version") == "4.0":
+            existing_artifact = existing
+    artifact = normalize_snapshot_artifact(snapshot, existing=existing_artifact)
 
     saved_path = Path(
         _save_project_page_artifact(
@@ -570,15 +529,14 @@ def _inline_save_page(
         "title": page_data.get("title", ""),
         "normalized_path": normalized_path,
     }
-    elements = page_data.get("elements")
-    if isinstance(elements, list) and elements:
-        page_payload["elements"] = elements
-
     full_page_data = {
-        "schema_version": "3.0",
+        "schema_version": "4.0",
         "page": page_payload,
-        "states": page_data.get("states", []),
     }
+    for key in ("objects", "states", "elements", "collections", "transitions", "quality"):
+        value = page_data.get(key)
+        if value not in (None, [], {}):
+            full_page_data[key] = value
     _update_project_pages_index(
         project_id=project_id,
         file_name=page_file.name,
@@ -590,10 +548,6 @@ def _inline_save_page(
             "captured_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         },
     )
-    quality = page_data.get("quality")
-    if isinstance(quality, dict) and quality:
-        full_page_data["quality"] = quality
-
     with open(page_file, "w", encoding="utf-8") as f:
         yaml.safe_dump(full_page_data, f, allow_unicode=True, default_flow_style=False, sort_keys=False)
     return True
@@ -697,7 +651,11 @@ def _save_project_page_artifact(
         page_data={
             "title": title,
             "structure_summary": structure_summary,
+            "objects": artifact.get("objects", []),
             "states": artifact.get("states", []),
+            "elements": artifact.get("elements", []),
+            "collections": artifact.get("collections", []),
+            "transitions": artifact.get("transitions", []),
             "quality": artifact.get("quality", {}),
             "metadata": {
                 **(artifact.get("metadata") if isinstance(artifact.get("metadata"), dict) else {}),

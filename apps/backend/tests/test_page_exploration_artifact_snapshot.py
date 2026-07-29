@@ -539,13 +539,18 @@ def test_invoke_agent_checkpoints_snapshot_as_page_artifact(monkeypatch, tmp_pat
     data = yaml.safe_load(page_path.read_text(encoding="utf-8"))
     assert data["page"]["id"] == "page-workspace"
     assert data["page"]["normalized_path"] == "/workspace"
-    assert data["schema_version"] == "3.0"
+    assert data["schema_version"] == "4.0"
     assert "url" not in data["page"]
-    assert data["states"][0]["elements"][0]["locators"][0]["code"] == "getByRole('button', { name: '创建智能体' })"
+    assert data["elements"][0]["locator"] == {
+        "strategy": "role",
+        "role": "button",
+        "name": "创建智能体",
+        "exact": True,
+    }
     assert "accessibility_tree" not in data["states"][0]
     assert "visible_text_blocks" not in data["states"][0]
     assert data["states"][0]["type"] == "root"
-    assert "Multi-Agent" in data["states"][0]["assertion_texts"]
+    assert "assertion_texts" not in data["states"][0]
     assert "elements" not in data["page"]
     assert "env_urls" not in data["page"]
     assert "last_explored" not in data["page"]
@@ -729,12 +734,18 @@ def test_snapshot_checkpoint_keeps_overlay_elements_out_of_root(monkeypatch, tmp
     import yaml
     data = yaml.safe_load(page_path.read_text(encoding="utf-8"))
     root_state = data["states"][0]
-    child = root_state["children"][0]
-    assert [item["name"] for item in root_state["elements"]] == ["创建智能体"]
-    assert root_state["elements"][0]["key"] == root_element_key
-    assert [item["name"] for item in child["elements"]] == ["创建"]
-    assert child["triggered_by"]["element_key"] == root_element_key
-    assert "getByRole('dialog'" in child["elements"][0]["locators"][0]["code"]
+    child = data["states"][1]
+    assert root_state["id"] == "page-workspace__root__001"
+    assert child["parent"] == root_state["id"]
+    assert [item["name"] for item in data["elements"]] == ["创建智能体", "创建"]
+    assert data["elements"][0]["key"] == root_element_key
+    assert data["elements"][1]["locator"] == {
+        "strategy": "role",
+        "role": "button",
+        "name": "创建",
+        "exact": True,
+    }
+    assert data["transitions"][0]["target"] == root_element_key
     assert "data-ai-testing-action-ref" not in page_path.read_text(encoding="utf-8")
 
 

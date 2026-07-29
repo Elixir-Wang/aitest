@@ -173,6 +173,15 @@ def update_exploration_run(actor, run_id: str, update_data: dict) -> dict:
 
 def start_exploration_async(actor, run_id: str) -> dict:
     """启动/重新启动探索任务（异步执行）"""
+    return _schedule_exploration_async(actor, run_id, resume=False)
+
+
+def resume_exploration_async(actor, run_id: str) -> dict:
+    """从已有 Loop 检查点继续探索，不清理本轮产物。"""
+    return _schedule_exploration_async(actor, run_id, resume=True)
+
+
+def _schedule_exploration_async(actor, run_id: str, *, resume: bool) -> dict:
     with connect() as db:
         run = exploration_run_repo.find_by_id(db, run_id)
         if not run:
@@ -190,7 +199,8 @@ def start_exploration_async(actor, run_id: str) -> dict:
             return run_dict
 
         event_bus.clear(run_id)
-        _clear_previous_exploration_outputs(run_dict)
+        if not resume:
+            _clear_previous_exploration_outputs(run_dict)
 
         exploration_run_repo.reset_completion_state(db, run_id)
         exploration_run_repo.update_status(db, run_id, "queued")
@@ -207,7 +217,7 @@ def start_exploration_async(actor, run_id: str) -> dict:
     # 在后台线程启动探索
     thread = threading.Thread(
         target=_run_exploration_background,
-        args=(run_id,),
+        args=(run_id, resume),
         daemon=True
     )
     thread.start()

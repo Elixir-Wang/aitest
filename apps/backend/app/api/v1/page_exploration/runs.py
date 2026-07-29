@@ -130,3 +130,14 @@ def list_all_runs(
         return page_exploration_service.list_all_runs(actor, project_id, limit)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/runs/{run_id}/resume", response_model=dict)
+def resume_exploration_run(run_id: str, actor=Depends(current_user)) -> dict:
+    """从已有 Loop 检查点继续探索。"""
+    try:
+        return page_exploration_service.resume_exploration_async(actor, run_id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

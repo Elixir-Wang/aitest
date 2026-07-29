@@ -1,3 +1,4 @@
+import re
 import sqlite3
 
 from app.core.security import hash_secret
@@ -5,6 +6,7 @@ from app.core.security import hash_secret
 
 def seed_system_defaults(db: sqlite3.Connection) -> None:
     _ensure_exploration_loop_mode(db)
+    _repair_exploration_run_foreign_keys(db)
     _migrate_ui_automation_case_sources(db)
     _ensure_ui_automation_video_column(db)
     _drop_legacy_performance_run_tables(db)
@@ -28,6 +30,7 @@ def seed_system_defaults(db: sqlite3.Connection) -> None:
     _migrate_legacy_site_exploration_assignment(db)
     _seed_operation_log_retention_policy(db)
     _ensure_all_projects_conversation_scope(db)
+    _assert_foreign_key_integrity(db)
 
 
 def _ensure_exploration_loop_mode(db: sqlite3.Connection) -> None:
@@ -44,51 +47,181 @@ def _ensure_exploration_loop_mode(db: sqlite3.Connection) -> None:
     if "'loop'" in str(table_sql or ""):
         return
 
+    foreign_keys = int(db.execute("PRAGMA foreign_keys").fetchone()[0])
+    legacy_alter_table = int(db.execute("PRAGMA legacy_alter_table").fetchone()[0])
+    db.commit()
     db.execute("PRAGMA foreign_keys = OFF")
-    db.execute("ALTER TABLE exploration_runs RENAME TO exploration_runs_legacy_loop_mode")
-    db.executescript(
-        """
-        CREATE TABLE exploration_runs (
-          id TEXT PRIMARY KEY,
-          project_id TEXT NOT NULL,
-          environment_id TEXT NOT NULL,
-          requirement_doc_id TEXT NOT NULL DEFAULT '',
-          title TEXT NOT NULL,
-          status TEXT NOT NULL CHECK(status IN ('pending', 'queued', 'running', 'stopping', 'cancelled', 'interrupted', 'completed', 'blocked', 'failed')) DEFAULT 'pending',
-          exploration_mode TEXT NOT NULL DEFAULT 'goal' CHECK(exploration_mode IN ('goal', 'autonomous', 'loop')),
-          scope TEXT NOT NULL DEFAULT '',
-          forbidden_paths TEXT NOT NULL DEFAULT '',
-          login_strategy TEXT NOT NULL DEFAULT 'skip_login',
-          goal TEXT NOT NULL DEFAULT '',
-          notes TEXT NOT NULL DEFAULT '',
-          max_pages INTEGER NOT NULL DEFAULT 50,
-          max_actions INTEGER NOT NULL DEFAULT 1000,
-          timeout_minutes INTEGER NOT NULL DEFAULT 120,
-          artifact_root TEXT NOT NULL DEFAULT '',
-          result_summary TEXT NOT NULL DEFAULT '',
-          created_by TEXT NOT NULL,
-          created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-          updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-          started_at TEXT,
-          finished_at TEXT,
-          FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE,
-          FOREIGN KEY(environment_id) REFERENCES project_environments(id) ON DELETE RESTRICT
-        );
-        INSERT INTO exploration_runs (
-          id, project_id, environment_id, requirement_doc_id, title, status,
-          exploration_mode, scope, forbidden_paths, login_strategy, goal, notes,
-          max_pages, max_actions, timeout_minutes, artifact_root, result_summary,
-          created_by, created_at, updated_at, started_at, finished_at
+    db.execute("PRAGMA legacy_alter_table = ON")
+    try:
+        db.execute("BEGIN IMMEDIATE")
+        db.execute("ALTER TABLE exploration_runs RENAME TO exploration_runs_legacy_loop_mode")
+        db.execute(
+            """
+            CREATE TABLE exploration_runs (
+              id TEXT PRIMARY KEY,
+              project_id TEXT NOT NULL,
+              environment_id TEXT NOT NULL,
+              requirement_doc_id TEXT NOT NULL DEFAULT '',
+              title TEXT NOT NULL,
+              status TEXT NOT NULL CHECK(status IN ('pending', 'queued', 'running', 'stopping', 'cancelled', 'interrupted', 'completed', 'blocked', 'failed')) DEFAULT 'pending',
+              exploration_mode TEXT NOT NULL DEFAULT 'goal' CHECK(exploration_mode IN ('goal', 'autonomous', 'loop')),
+              scope TEXT NOT NULL DEFAULT '',
+              forbidden_paths TEXT NOT NULL DEFAULT '',
+              login_strategy TEXT NOT NULL DEFAULT 'skip_login',
+              goal TEXT NOT NULL DEFAULT '',
+              notes TEXT NOT NULL DEFAULT '',
+              max_pages INTEGER NOT NULL DEFAULT 50,
+              max_actions INTEGER NOT NULL DEFAULT 1000,
+              timeout_minutes INTEGER NOT NULL DEFAULT 120,
+              artifact_root TEXT NOT NULL DEFAULT '',
+              result_summary TEXT NOT NULL DEFAULT '',
+              created_by TEXT NOT NULL,
+              created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              started_at TEXT,
+              finished_at TEXT,
+              FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE,
+              FOREIGN KEY(environment_id) REFERENCES project_environments(id) ON DELETE RESTRICT
+            )
+            """
         )
-        SELECT id, project_id, environment_id, requirement_doc_id, title, status,
-          exploration_mode, scope, forbidden_paths, login_strategy, goal, notes,
-          max_pages, max_actions, timeout_minutes, artifact_root, result_summary,
-          created_by, created_at, updated_at, started_at, finished_at
-        FROM exploration_runs_legacy_loop_mode;
-        DROP TABLE exploration_runs_legacy_loop_mode;
-        """
+        db.execute(
+            """
+            INSERT INTO exploration_runs (
+              id, project_id, environment_id, requirement_doc_id, title, status,
+              exploration_mode, scope, forbidden_paths, login_strategy, goal, notes,
+              max_pages, max_actions, timeout_minutes, artifact_root, result_summary,
+              created_by, created_at, updated_at, started_at, finished_at
+            )
+            SELECT id, project_id, environment_id, requirement_doc_id, title, status,
+              exploration_mode, scope, forbidden_paths, login_strategy, goal, notes,
+              max_pages, max_actions, timeout_minutes, artifact_root, result_summary,
+              created_by, created_at, updated_at, started_at, finished_at
+            FROM exploration_runs_legacy_loop_mode
+            """
+        )
+        db.execute("DROP TABLE exploration_runs_legacy_loop_mode")
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.execute(f"PRAGMA legacy_alter_table = {legacy_alter_table}")
+        db.execute(f"PRAGMA foreign_keys = {foreign_keys}")
+
+
+def _repair_exploration_run_foreign_keys(db: sqlite3.Connection) -> None:
+    legacy_table = "exploration_runs_legacy_loop_mode"
+    affected_tables = []
+    table_rows = db.execute(
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name"
+    ).fetchall()
+    for row in table_rows:
+        table_name = str(row["name"] if isinstance(row, sqlite3.Row) else row[0])
+        targets = {
+            str(foreign_key["table"] if isinstance(foreign_key, sqlite3.Row) else foreign_key[2])
+            for foreign_key in db.execute(f"PRAGMA foreign_key_list({_quote_identifier(table_name)})")
+        }
+        if legacy_table in targets:
+            affected_tables.append(table_name)
+    if not affected_tables:
+        return
+
+    foreign_keys = int(db.execute("PRAGMA foreign_keys").fetchone()[0])
+    legacy_alter_table = int(db.execute("PRAGMA legacy_alter_table").fetchone()[0])
+    db.commit()
+    db.execute("PRAGMA foreign_keys = OFF")
+    db.execute("PRAGMA legacy_alter_table = ON")
+    try:
+        db.execute("BEGIN IMMEDIATE")
+        for table_name in affected_tables:
+            _rebuild_table_with_repaired_parent(db, table_name, legacy_table, "exploration_runs")
+        violations = _foreign_key_violations(db, affected_tables)
+        if violations:
+            raise RuntimeError(f"Exploration foreign key repair failed: {violations}")
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.execute(f"PRAGMA legacy_alter_table = {legacy_alter_table}")
+        db.execute(f"PRAGMA foreign_keys = {foreign_keys}")
+
+
+def _rebuild_table_with_repaired_parent(
+    db: sqlite3.Connection,
+    table_name: str,
+    legacy_parent: str,
+    current_parent: str,
+) -> None:
+    table_row = db.execute(
+        "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?", (table_name,)
+    ).fetchone()
+    create_sql = str(table_row["sql"] if isinstance(table_row, sqlite3.Row) else table_row[0])
+    schema_objects = db.execute(
+        "SELECT sql FROM sqlite_master "
+        "WHERE tbl_name = ? AND type IN ('index', 'trigger') AND sql IS NOT NULL ORDER BY type, name",
+        (table_name,),
+    ).fetchall()
+    object_sql = [str(row["sql"] if isinstance(row, sqlite3.Row) else row[0]) for row in schema_objects]
+    columns = []
+    for row in db.execute(f"PRAGMA table_xinfo({_quote_identifier(table_name)})"):
+        hidden = int(row["hidden"] if isinstance(row, sqlite3.Row) else row[6])
+        if hidden == 0:
+            columns.append(str(row["name"] if isinstance(row, sqlite3.Row) else row[1]))
+    temporary_name = f"__repair_{table_name}"
+    repaired_sql = re.sub(
+        r"^CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:\"[^\"]+\"|`[^`]+`|\[[^\]]+\]|[^\s(]+)",
+        f"CREATE TABLE {_quote_identifier(temporary_name)}",
+        create_sql,
+        count=1,
+        flags=re.IGNORECASE,
+    ).replace(legacy_parent, current_parent)
+    quoted_columns = ", ".join(_quote_identifier(column) for column in columns)
+
+    db.execute(f"DROP TABLE IF EXISTS {_quote_identifier(temporary_name)}")
+    db.execute(repaired_sql)
+    db.execute(
+        f"INSERT INTO {_quote_identifier(temporary_name)} ({quoted_columns}) "
+        f"SELECT {quoted_columns} FROM {_quote_identifier(table_name)}"
     )
-    db.execute("PRAGMA foreign_keys = ON")
+    db.execute(f"DROP TABLE {_quote_identifier(table_name)}")
+    db.execute(
+        f"ALTER TABLE {_quote_identifier(temporary_name)} RENAME TO {_quote_identifier(table_name)}"
+    )
+    for statement in object_sql:
+        db.execute(statement.replace(legacy_parent, current_parent))
+
+
+def _quote_identifier(value: str) -> str:
+    return '"' + value.replace('"', '""') + '"'
+
+
+def _foreign_key_violations(
+    db: sqlite3.Connection,
+    tables: list[str] | None = None,
+) -> list[dict[str, object]]:
+    rows = []
+    if tables is None:
+        rows.extend(db.execute("PRAGMA foreign_key_check"))
+    else:
+        for table_name in tables:
+            rows.extend(db.execute(f"PRAGMA foreign_key_check({_quote_identifier(table_name)})"))
+    return [
+        {
+            "table": row["table"] if isinstance(row, sqlite3.Row) else row[0],
+            "rowid": row["rowid"] if isinstance(row, sqlite3.Row) else row[1],
+            "parent": row["parent"] if isinstance(row, sqlite3.Row) else row[2],
+            "fkid": row["fkid"] if isinstance(row, sqlite3.Row) else row[3],
+        }
+        for row in rows
+    ]
+
+
+def _assert_foreign_key_integrity(db: sqlite3.Connection) -> None:
+    violations = _foreign_key_violations(db)
+    if violations:
+        raise RuntimeError(f"Foreign key violations remain after system migrations: {violations}")
 
 
 def _migrate_ui_automation_case_sources(db: sqlite3.Connection) -> None:
@@ -917,11 +1050,6 @@ def _ensure_api_generation_batch_structure(db: sqlite3.Connection) -> None:
             db.execute("ALTER TABLE api_test_cases ADD COLUMN generation_item_id TEXT REFERENCES api_generation_items(id) ON DELETE SET NULL")
         if "generation_attempt_id" not in columns:
             db.execute("ALTER TABLE api_test_cases ADD COLUMN generation_attempt_id TEXT REFERENCES api_generation_item_attempts(id) ON DELETE SET NULL")
-    foreign_key_violations = db.execute("PRAGMA foreign_key_check").fetchall()
-    if foreign_key_violations:
-        raise RuntimeError(f"Foreign key violations remain after API generation batch migration: {foreign_key_violations}")
-
-
 def _drop_deprecated_api_test_case_columns(db: sqlite3.Connection) -> None:
     columns = {str(column["name"]) for column in db.execute("PRAGMA table_info(api_test_cases)")}
     generation_item_id = "generation_item_id" if "generation_item_id" in columns else "NULL"

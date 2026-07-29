@@ -29,6 +29,7 @@ import type {
   ExplorationMonitorPlanStep,
   ExplorationMonitorState,
   ExplorationMonitorStep,
+  ExplorationCoverageView,
   ExplorationReport,
   ExplorationRun,
   ExplorationRunDetail,
@@ -1016,6 +1017,9 @@ export default function Page() {
   const [monitor, setMonitor] = useState<ExplorationMonitorState>(emptyMonitorState);
   const [stopDialogOpen, setStopDialogOpen] = useState(false);
   const [reportPrefetchedForRunId, setReportPrefetchedForRunId] = useState("");
+  const [coverage, setCoverage] = useState<ExplorationCoverageView | null>(null);
+  const [coverageLoading, setCoverageLoading] = useState(false);
+  const [coverageError, setCoverageError] = useState("");
 
   const loadRun = useCallback(
     async (options?: { silent?: boolean }) => {
@@ -1045,6 +1049,25 @@ export default function Page() {
   useEffect(() => {
     void loadRun();
   }, [loadRun]);
+
+  const loadCoverage = useCallback(async () => {
+    setCoverageLoading(true);
+    setCoverageError("");
+    try {
+      const data = await apiRequest<ExplorationCoverageView>(
+        `/page-exploration/projects/${params.projectId}/coverage?run_id=${params.runId}`,
+      );
+      setCoverage(data);
+    } catch (requestError) {
+      setCoverageError(requestError instanceof Error ? requestError.message : "探索覆盖加载失败");
+    } finally {
+      setCoverageLoading(false);
+    }
+  }, [params.projectId, params.runId]);
+
+  useEffect(() => {
+    void loadCoverage();
+  }, [loadCoverage]);
 
   const runStatus = run?.status;
 
@@ -1141,6 +1164,7 @@ export default function Page() {
 
   async function refreshCurrentTab() {
     await loadRun();
+    await loadCoverage();
     if (activeTab === "探索报告") {
       await loadReport();
     }
@@ -1181,6 +1205,36 @@ export default function Page() {
     }
   }
 
+  async function resumeExploration() {
+    if (!run) {
+      return;
+    }
+    setStarting(true);
+    try {
+      const updated = await apiRequest<ExplorationRun>(`/page-exploration/runs/${run.id}/resume`, {
+        method: "POST",
+      });
+      setRun(updated);
+      setError("");
+      setFailureVisible(true);
+      notifyAiTaskStarted();
+      toast.success("已从检查点继续探索");
+      window.setTimeout(() => {
+        void loadRun({ silent: true });
+        void loadCoverage();
+      }, 800);
+    } catch (requestError) {
+      reportApiError(requestError, {
+        fallbackMessage: "继续探索失败",
+        actionLabel: "从检查点继续",
+        method: "POST",
+        path: `/page-exploration/runs/${run.id}/resume`,
+      });
+    } finally {
+      setStarting(false);
+    }
+  }
+
   async function stopExploration() {
     if (!run) {
       return;
@@ -1211,6 +1265,7 @@ export default function Page() {
     ? ["pending", "completed", "blocked", "cancelled", "interrupted", "failed"].includes(run.status)
     : false;
   const canStop = run ? stoppableStatuses.has(run.status) : false;
+  const canResume = Boolean(run?.exploration_mode === "loop" && canStart && coverage?.resume.available);
   const activeDetail = streamDetail ?? detail;
   const isUnsupportedArtifact = Boolean(activeDetail?.unsupported_artifact);
   const unsupportedArtifactReason = activeDetail?.unsupported_reason || "历史产物格式不支持新版详情，请重新探索。";
@@ -1233,9 +1288,15 @@ export default function Page() {
           {activeTab === "探索概览" ? (
             <>
               {canStart ? (
-                <Button disabled={starting} onClick={() => void startExploration()} size="sm">
+                <Button disabled={starting} onClick={() => void startExploration()} size="sm" variant={canResume ? "outline" : "default"}>
                   <Play className="size-4" />
                   {run && hasExplorationStarted(run) ? "重新探索" : "开始探索"}
+                </Button>
+              ) : null}
+              {canResume ? (
+                <Button disabled={starting} onClick={() => void resumeExploration()} size="sm">
+                  <Play className="size-4" />
+                  从检查点继续
                 </Button>
               ) : null}
               {canStop ? (
@@ -1252,7 +1313,7 @@ export default function Page() {
       activeTab={activeTab}
       fillViewport
       onTabChange={setActiveTab}
-      tabs={["探索概览", "探索报告"]}
+      tabs={["探索概览", "探索覆盖", "探索报告"]}
       title={run?.title ?? "探索任务"}
       description={`查看${templateLabel}、执行结果和探索报告。`}
     >
@@ -1281,6 +1342,10 @@ export default function Page() {
         />
       ) : null}
 
+      {activeTab === "探索覆盖" ? (
+        <ExplorationCoveragePanel coverage={coverage} error={coverageError} loading={coverageLoading} />
+      ) : null}
+
       <Dialog onOpenChange={setStopDialogOpen} open={stopDialogOpen}>
         <DialogContent className="gap-5 p-6 sm:max-w-md">
           <DialogHeader className="gap-3">
@@ -1300,6 +1365,92 @@ export default function Page() {
       </Dialog>
     </PageShell>
   );
+}
+
+function ExplorationCoveragePanel({
+  coverage,
+  error,
+  loading,
+}: {
+  coverage: ExplorationCoverageView | null;
+  error: string;
+  loading: boolean;
+}) {
+  if (loading) {
+    return <ShellSection className="py-10 text-center text-muted-foreground text-sm">探索覆盖加载中</ShellSection>;
+  }
+  if (error) {
+    return <ShellSection className="text-destructive text-sm">探索覆盖加载失败：{error}</ShellSection>;
+  }
+  if (!coverage) {
+    return <ShellSection className="text-muted-foreground text-sm">尚未生成探索覆盖数据。</ShellSection>;
+  }
+
+  const metrics = [
+    ["页面", coverage.summary.pages_completed, coverage.summary.pages_discovered],
+    ["状态", coverage.summary.states_completed, coverage.summary.states_discovered],
+    ["已探索动作", coverage.summary.actions_completed, coverage.summary.actions_discovered],
+    ["待探索动作", coverage.summary.actions_pending, coverage.summary.actions_discovered],
+  ] as const;
+
+  return (
+    <ShellSection className="min-h-0 flex-1 overflow-y-auto">
+      <div className="space-y-4">
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          {metrics.map(([label, value, total]) => (
+            <div className="rounded-lg border bg-background p-4" key={label}>
+              <div className="text-muted-foreground text-xs">{label}</div>
+              <div className="mt-2 font-semibold text-2xl tabular-nums">{value}</div>
+              <div className="text-muted-foreground text-xs">共 {total}</div>
+            </div>
+          ))}
+        </div>
+
+        <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm dark:border-blue-500/30 dark:bg-blue-500/10">
+          <div className="font-medium">下次从哪里继续</div>
+          {coverage.resume.available && coverage.resume.next_action ? (
+            <div className="mt-1 text-muted-foreground">
+              页面 {coverage.resume.next_action.page_id} · 状态 {coverage.resume.next_action.state_key} · 动作{" "}
+              {coverage.resume.next_action.action_type}：{coverage.resume.next_action.element_key}
+            </div>
+          ) : (
+            <div className="mt-1 text-muted-foreground">当前没有待执行检查点。</div>
+          )}
+        </div>
+
+        <div className="space-y-2">
+          {coverage.pages.map((page) => (
+            <details className="rounded-lg border bg-background" key={page.page_id} open={page.actions.some((action) => action.status === "pending")}>
+              <summary className="cursor-pointer px-4 py-3 font-medium text-sm">
+                {page.page_id} · {page.path} · {page.actions.filter((action) => action.status === "completed").length}/
+                {page.actions.length} 动作
+              </summary>
+              <div className="border-t px-4 py-3">
+                <div className="grid gap-2">
+                  {page.actions.map((action) => (
+                    <div className="flex items-center justify-between gap-3 text-sm" key={`${action.state_key}:${action.element_key}:${action.action_type}`}>
+                      <span className="min-w-0 truncate">{action.action_type}：{action.element_key}</span>
+                      <span className="shrink-0 text-muted-foreground">{coverageActionLabel(action.status)}</span>
+                    </div>
+                  ))}
+                  {page.actions.length === 0 ? <div className="text-muted-foreground text-sm">暂无动作记录</div> : null}
+                </div>
+              </div>
+            </details>
+          ))}
+        </div>
+      </div>
+    </ShellSection>
+  );
+}
+
+function coverageActionLabel(status: "completed" | "pending" | "blocked" | "failed") {
+  return {
+    completed: "已探索",
+    pending: "待探索",
+    blocked: "已阻塞",
+    failed: "失败",
+  }[status];
 }
 
 function ExplorationFailureNotice({ error, onClose }: { error: string; onClose: () => void }) {
