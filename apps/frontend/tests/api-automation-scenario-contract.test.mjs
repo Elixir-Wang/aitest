@@ -69,7 +69,7 @@ test("scenario editor supports ordered steps, saving, validation, publishing, an
   assert.doesNotMatch(scenarioEditorHookSource, /listApiAutomationTestCases/);
   assert.match(scenarioAssetPickerSource, /搜索接口名称或路径/);
   assert.match(scenarioAssetPickerSource, /添加到链路/);
-  assert.match(scenarioStepConfigSource, /请求配置/);
+  assert.match(scenarioStepConfigSource, /value="request"[\s\S]*请求/);
   assert.match(scenarioStepConfigSource, /响应提取/);
   assert.match(scenarioStepConfigSource, /字段类型/);
   assert.match(scenarioStepConfigSource, /基础结构/);

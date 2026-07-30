@@ -23,6 +23,11 @@ test("request editor exposes the compact Postman-like sections", () => {
   assert.match(source, /Cookies/);
 });
 
+test("switching a dynamic source back to literal persists the asset default", () => {
+  assert.match(source, /fallbackValue !== undefined/);
+  assert.match(source, /onBindingChange\(field\.target, value, field\.defaultValue\)/);
+});
+
 test("lifecycle editor preserves structured response extraction and scripts", () => {
   assert.match(source, /响应提取/);
   assert.match(source, /前置脚本/);
