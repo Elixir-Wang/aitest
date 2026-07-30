@@ -549,6 +549,8 @@ def _ensure_performance_analysis_columns(db: sqlite3.Connection) -> None:
         "calculator_version": "ALTER TABLE performance_analysis_sessions ADD COLUMN calculator_version TEXT NOT NULL DEFAULT ''",
         "prompt_version": "ALTER TABLE performance_analysis_sessions ADD COLUMN prompt_version TEXT NOT NULL DEFAULT ''",
         "source_fingerprint": "ALTER TABLE performance_analysis_sessions ADD COLUMN source_fingerprint TEXT NOT NULL DEFAULT ''",
+        "generation_mode": "ALTER TABLE performance_analysis_sessions ADD COLUMN generation_mode TEXT NOT NULL DEFAULT ''",
+        "analysis_attempts_json": "ALTER TABLE performance_analysis_sessions ADD COLUMN analysis_attempts_json TEXT NOT NULL DEFAULT '[]'",
         "audience": "ALTER TABLE performance_analysis_sessions ADD COLUMN audience TEXT NOT NULL DEFAULT 'engineer'",
     }
     added = set()

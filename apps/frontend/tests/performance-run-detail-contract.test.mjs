@@ -176,7 +176,9 @@ test("completed AI analysis opens a deterministic full report", () => {
   assert.match(reportSource, /诊断发现/);
   assert.match(reportSource, /优化与复测建议/);
   assert.match(reportSource, /LineChart/);
-  assert.doesNotMatch(reportSource, /createPerformanceAnalysis/);
+  assert.match(reportSource, /createPerformanceAnalysis/);
+  assert.match(reportSource, /analysis\.generation_mode === "deterministic_fallback"/);
+  assert.match(reportSource, /当前为基础性能报告/);
 });
 
 test("Locust console exposes the latest ten run history records", () => {

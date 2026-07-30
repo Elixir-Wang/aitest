@@ -30,7 +30,7 @@ import {
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Drawer, DrawerContent, DrawerFooter, DrawerHeader, DrawerTitle } from "@/components/ui/drawer";
+import { Drawer, DrawerContent, DrawerFooter, DrawerHandle, DrawerHeader, DrawerTitle } from "@/components/ui/drawer";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -40,6 +40,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
+import { OneClipboard } from "@/components/ui/one-clipboard";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
@@ -519,17 +520,17 @@ function AiOrchestrationDrawer({
     .filter((endpoint): endpoint is ApiAutomationEndpoint => Boolean(endpoint));
 
   return (
-    <Drawer direction="right" open={open} onOpenChange={onOpenChange}>
-      <DrawerContent className="grid h-full w-full grid-rows-[auto_minmax(0,1fr)_auto] gap-0 overflow-hidden bg-background p-0 data-[vaul-drawer-direction=right]:sm:max-w-[480px]">
-        <DrawerHeader className="relative overflow-hidden border-b bg-muted/20 px-5 py-5 pr-14 sm:px-6">
-          <div className="flex items-start gap-3.5">
-            <div className="relative grid size-10 shrink-0 place-items-center rounded-lg border border-primary/20 bg-primary/10 text-primary shadow-sm">
-              <GitBranch className="size-5" />
-              <Sparkles className="absolute -top-1 -right-1 size-3.5 rounded-full bg-background p-0.5" />
+    <Drawer direction="right" handleOnly open={open} onOpenChange={onOpenChange}>
+      <DrawerContent className="grid h-full w-full grid-rows-[auto_minmax(0,1fr)_auto] gap-0 overflow-hidden bg-background p-0 data-[vaul-drawer-direction=right]:sm:max-w-[680px]">
+        <DrawerHeader className="relative border-b bg-muted/20 px-5 py-4 sm:px-6">
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="relative grid size-8 shrink-0 place-items-center rounded-md border border-primary/20 bg-primary/8 text-primary shadow-xs">
+              <GitBranch className="size-4" />
+              <Sparkles className="absolute -top-1 -right-1 size-3 rounded-full bg-background p-0.5" />
             </div>
-            <div className="min-w-0 space-y-1.5">
+            <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-2">
-                <DrawerTitle className="font-semibold text-lg leading-6">AI 编排接口场景</DrawerTitle>
+                <DrawerTitle className="font-semibold text-base leading-6 sm:text-lg">AI 编排接口场景</DrawerTitle>
                 <Badge
                   className="h-5 border-primary/20 bg-primary/8 px-2 font-medium text-[10px] text-primary"
                   variant="outline"
@@ -538,10 +539,28 @@ function AiOrchestrationDrawer({
                 </Badge>
               </div>
             </div>
+            {plan ? (
+              <div className="ml-auto flex w-full items-center justify-end gap-2 sm:w-auto sm:pl-2">
+                <OneClipboard copiedLabel="计划已复制" label="复制计划" text={formatAiPlanForClipboard(plan)} />
+                <Button className="h-7 px-2 text-xs" disabled={busy} onClick={onDiscard} variant="outline">
+                  放弃计划
+                </Button>
+                <Button className="h-7 px-2.5 text-xs" disabled={busy || !plan.validation.valid} onClick={onApply}>
+                  {busy ? <Loader2 className="animate-spin" /> : <CheckCircle2 />}
+                  覆盖当前草稿
+                </Button>
+              </div>
+            ) : null}
+          </div>
+          <div className="absolute inset-y-0 left-0 z-10 flex w-3 items-center justify-center">
+            <DrawerHandle
+              aria-label="拖动关闭抽屉"
+              className="h-12! w-1.5! cursor-ew-resize touch-none rounded-full bg-border!"
+            />
           </div>
         </DrawerHeader>
         {!plan ? (
-          <div className="min-h-0 space-y-5 overflow-y-auto px-5 py-5 sm:px-6 sm:py-6">
+          <div className="select-text! min-h-0 space-y-5 overflow-y-auto px-5 py-5 sm:px-6 sm:py-6">
             <div className="rounded-lg border border-primary/15 bg-primary/5 px-3.5 py-3 text-muted-foreground text-xs">
               AI 只会在已选接口范围内推测执行路径，并为前后步骤补充参数依赖；应用前不会修改当前场景。
             </div>
@@ -606,7 +625,11 @@ function AiOrchestrationDrawer({
             ) : null}
           </div>
         ) : (
-          <div className="min-h-0 space-y-4 overflow-y-auto bg-muted/10 px-5 py-5 sm:px-6">
+          <div className="select-text! min-h-0 space-y-4 overflow-y-auto bg-muted/10 px-5 py-5 sm:px-6">
+            <div className="flex gap-2 rounded-lg border border-amber-300/60 bg-amber-50/60 p-3.5 text-amber-900 text-xs dark:bg-amber-500/10 dark:text-amber-200">
+              <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
+              <span>应用后将使用 AI 编排结果完整替换当前草稿步骤，当前草稿中的步骤修改不会保留。</span>
+            </div>
             <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-card p-4 shadow-xs">
               <div className="flex min-w-0 items-center gap-3">
                 <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary">
@@ -690,12 +713,12 @@ function AiOrchestrationDrawer({
             ) : null}
           </div>
         )}
-        <DrawerFooter className="mx-0 mb-0 min-h-16 items-center rounded-none border-t bg-background px-5 py-3 sm:justify-between sm:px-6">
-          <div className="hidden items-center gap-2 text-[11px] text-muted-foreground sm:flex">
-            <ShieldCheck className="size-3.5 text-primary" />
-            应用前可预览并校验全部步骤
-          </div>
-          {!plan ? (
+        {!plan ? (
+          <DrawerFooter className="mx-0 mb-0 min-h-16 items-center rounded-none border-t bg-background px-5 py-3 sm:justify-between sm:px-6">
+            <div className="hidden items-center gap-2 text-[11px] text-muted-foreground sm:flex">
+              <ShieldCheck className="size-3.5 text-primary" />
+              应用前可预览并校验全部步骤
+            </div>
             <div className="flex w-full gap-2 sm:w-auto">
               <Button className="flex-1 sm:flex-none" onClick={() => onOpenChange(false)} variant="outline">
                 {busy ? "关闭" : "取消"}
@@ -711,21 +734,15 @@ function AiOrchestrationDrawer({
                 {busy ? "正在生成" : "生成编排草稿"}
               </Button>
             </div>
-          ) : (
-            <div className="flex w-full gap-2 sm:w-auto">
-              <Button disabled={busy} onClick={onDiscard} variant="outline">
-                放弃计划
-              </Button>
-              <Button className="flex-1 px-4 sm:flex-none" disabled={busy || !plan.validation.valid} onClick={onApply}>
-                {busy ? <Loader2 className="animate-spin" /> : <CheckCircle2 />}
-                应用到草稿
-              </Button>
-            </div>
-          )}
-        </DrawerFooter>
+          </DrawerFooter>
+        ) : null}
       </DrawerContent>
     </Drawer>
   );
+}
+
+function formatAiPlanForClipboard(plan: ApiScenarioAiPlan) {
+  return JSON.stringify(plan, null, 2);
 }
 
 function formatBindingSource(source: unknown) {

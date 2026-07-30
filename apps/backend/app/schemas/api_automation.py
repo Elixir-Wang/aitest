@@ -486,8 +486,7 @@ class ApiScenarioAiPlanOut(_StrippedModel):
 
 class ApiScenarioAiPlanApplyIn(_StrippedModel):
     scenario_id: str = Field(min_length=1)
-    expected_revision: int = Field(ge=0)
-    confirmation: str = Field(min_length=1, max_length=100)
+    confirmation: Literal["overwrite_draft"]
 
 
 class ApiScenarioPublishIn(_StrippedModel):

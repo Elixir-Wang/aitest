@@ -521,7 +521,7 @@ function buildCanvasGraph(
     id: `${source}->${chain[index + 1]}`,
     source,
     target: chain[index + 1],
-    type: "smoothstep",
+    type: "straight",
     animated: source !== "__start__" && source === activeStepId,
     markerEnd: { type: MarkerType.ArrowClosed, color: "var(--primary)" },
     style: { stroke: "color-mix(in srgb, var(--primary), transparent 25%)", strokeWidth: 1.5 },

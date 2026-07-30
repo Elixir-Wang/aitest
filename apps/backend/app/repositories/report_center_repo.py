@@ -17,6 +17,7 @@ def list_performance_reports(db: Connection, project_ids: list[str]) -> list[Row
           analysis.analysis_version,
           analysis.status AS legacy_status,
           analysis.analysis_status,
+          analysis.generation_mode,
           analysis.report_snapshot_json,
           analysis.metric_snapshot_json,
           analysis.error_message,

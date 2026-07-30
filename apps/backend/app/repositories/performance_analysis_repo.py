@@ -62,6 +62,7 @@ def update_analysis_session(db: Connection, analysis_id: str, **fields: Any) -> 
         "preflight",
         "metric_snapshot",
         "report_snapshot",
+        "analysis_attempts",
     }
     allowed = {
         "status",
@@ -81,6 +82,8 @@ def update_analysis_session(db: Connection, analysis_id: str, **fields: Any) -> 
         "calculator_version",
         "prompt_version",
         "source_fingerprint",
+        "generation_mode",
+        "analysis_attempts",
         "audience",
         "application_status",
         "selected_change_ids",
@@ -163,6 +166,7 @@ def serialize_analysis_session(row: Row) -> dict[str, Any]:
     result["proposal"] = _loads(result.pop("proposal_json", "{}"), {})
     result["metric_snapshot"] = _loads(result.pop("metric_snapshot_json", "{}"), {})
     result["report_snapshot"] = _loads(result.pop("report_snapshot_json", "{}"), {})
+    result["analysis_attempts"] = _loads(result.pop("analysis_attempts_json", "[]"), [])
     result["selected_change_ids"] = _loads(result.pop("selected_change_ids_json", "[]"), [])
     result["preflight"] = _loads(result.pop("preflight_json", "{}"), {})
     result["applicable_change_ids"] = _applicable_change_ids(result["proposal"])

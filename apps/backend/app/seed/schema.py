@@ -888,6 +888,8 @@ CREATE TABLE IF NOT EXISTS performance_analysis_sessions (
   calculator_version TEXT NOT NULL DEFAULT '',
   prompt_version TEXT NOT NULL DEFAULT '',
   source_fingerprint TEXT NOT NULL DEFAULT '',
+  generation_mode TEXT NOT NULL DEFAULT '',
+  analysis_attempts_json TEXT NOT NULL DEFAULT '[]',
   audience TEXT NOT NULL DEFAULT 'engineer',
   application_status TEXT NOT NULL DEFAULT 'not_requested',
   selected_change_ids_json TEXT NOT NULL DEFAULT '[]',

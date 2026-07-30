@@ -21,7 +21,7 @@ import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, X
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { getPerformanceAnalysis, type PerformanceAnalysis } from "@/lib/api-client";
+import { createPerformanceAnalysis, getPerformanceAnalysis, type PerformanceAnalysis } from "@/lib/api-client";
 
 const ACTIVE_ANALYSIS = new Set(["collecting", "analyzing"]);
 
@@ -39,6 +39,7 @@ export function PerformanceAnalysisReport({
   const router = useRouter();
   const [analysis, setAnalysis] = useState<PerformanceAnalysis | null>(null);
   const [error, setError] = useState("");
+  const [reanalyzing, setReanalyzing] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -86,16 +87,40 @@ export function PerformanceAnalysisReport({
   const report = analysis.report_snapshot ?? {};
   const aggregate = metric.aggregate ?? {};
   const quality = metric.quality ?? {};
-  const validity = metric.test_validity ?? {};
+  const objectives = metric.objectives ?? [];
   const stageAnalysis = metric.stage_analysis ?? [];
   const capacityAnalysis = metric.capacity_analysis ?? {};
   const failureAnalysis = metric.failure_analysis ?? [];
+  const findings = report.findings ?? [];
+  const recommendations = (report.recommendations ?? []).slice(0, 3);
   const verdict = report.verdict ?? metric.verdict ?? "indeterminate";
   const series = (metric.series ?? []).map((item, index) => ({ index: index + 1, ...item }));
+  const isFallback = analysis.generation_mode === "deterministic_fallback";
+  const showCapacityAnalysis =
+    stageAnalysis.length > 1 && Boolean(capacityAnalysis.observed_stable_capacity || capacityAnalysis.knee_point);
+  const evidenceGaps = Array.from(
+    new Set([
+      ...(quality.issues ?? []).map(validityIssueLabel),
+      ...(quality.diagnostic_missing_evidence ?? []),
+      ...findings.flatMap((finding) => finding.missing_evidence ?? []),
+    ]),
+  );
+
+  async function reanalyze() {
+    try {
+      setReanalyzing(true);
+      setError("");
+      const created = await createPerformanceAnalysis(projectId, runId);
+      router.push(`/projects/${projectId}/performance-tests/${testId}/runs/${runId}/analysis/${created.id}`);
+    } catch (reanalyzeError) {
+      setError(reanalyzeError instanceof Error ? reanalyzeError.message : "重新分析失败");
+      setReanalyzing(false);
+    }
+  }
 
   return (
     <div className="space-y-8">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b pb-4">
+      <div className="border-b pb-4">
         <Button
           onClick={() => router.push(`/projects/${projectId}/performance-tests/${testId}/runs/${runId}`)}
           variant="ghost"
@@ -103,12 +128,20 @@ export function PerformanceAnalysisReport({
           <ArrowLeft className="size-4" />
           返回 Locust 控制台
         </Button>
-        <div className="flex flex-wrap items-center gap-2 text-xs">
-          <Badge variant="outline">分析 v{analysis.analysis_version}</Badge>
-          <Badge variant="outline">指标 v{metric.schema_version ?? 1}</Badge>
-          {analysis.model_name ? <Badge variant="secondary">{analysis.model_name}</Badge> : null}
-        </div>
       </div>
+
+      {isFallback ? (
+        <section className="flex flex-col gap-4 rounded-lg border border-amber-300 bg-amber-50 p-4 text-amber-950 sm:flex-row sm:items-center sm:justify-between dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-100">
+          <div>
+            <p className="font-medium text-sm">当前为基础性能报告</p>
+            <p className="mt-1 text-sm opacity-80">压测指标和目标结论完整；AI 根因分析及修复建议未生成。</p>
+          </div>
+          <Button disabled={reanalyzing} onClick={() => void reanalyze()} variant="outline">
+            {reanalyzing ? <LoaderCircle className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}
+            重新分析
+          </Button>
+        </section>
+      ) : null}
 
       <section className="grid gap-5 lg:grid-cols-[minmax(0,1.35fr)_minmax(18rem,0.65fr)]">
         <div>
@@ -119,8 +152,10 @@ export function PerformanceAnalysisReport({
               <h2 className="mt-1 font-semibold text-2xl">{verdictLabel(verdict)}</h2>
             </div>
           </div>
-          <p className="mt-5 max-w-3xl text-muted-foreground text-sm leading-7">
-            {report.executive_summary || "当前报告没有可用的执行摘要。"}
+          <p className="mt-4 max-w-2xl text-muted-foreground text-sm leading-6">
+            {objectives.length
+              ? "结论依据已配置的性能目标和本次运行指标生成。"
+              : "未配置性能目标，当前结果仅用于观测，不作通过或失败判定。"}
           </p>
         </div>
         <div className="rounded-lg border bg-card p-4">
@@ -130,11 +165,10 @@ export function PerformanceAnalysisReport({
               {qualityLabel(quality.status)}
             </Badge>
           </div>
-          <div className="mt-4 h-2 overflow-hidden rounded-full bg-muted">
-            <div className="h-full bg-primary" style={{ width: `${Math.round((quality.coverage ?? 0) * 100)}%` }} />
-          </div>
-          <p className="mt-2 text-muted-foreground text-xs">
-            证据覆盖 {Math.round((quality.coverage ?? 0) * 100)}% · {quality.sample_count ?? 0} 个时序样本
+          <p className="mt-3 text-muted-foreground text-xs leading-5">
+            {(quality.issues ?? []).length
+              ? `${quality.issues?.length} 项数据限制，详见报告末尾。`
+              : "未发现影响基础指标计算的问题。"}
           </p>
         </div>
       </section>
@@ -151,7 +185,8 @@ export function PerformanceAnalysisReport({
         />
       </section>
 
-      <section className="space-y-4">
+      {objectives.length ? (
+        <section className="space-y-4">
         <SectionHeading icon={ShieldCheck} title="性能目标" />
         <div className="overflow-x-auto rounded-lg border">
           <table className="w-full min-w-[42rem] text-sm">
@@ -164,7 +199,7 @@ export function PerformanceAnalysisReport({
               </tr>
             </thead>
             <tbody className="divide-y">
-              {(metric.objectives ?? []).map((objective) => (
+              {objectives.map((objective) => (
                 <tr key={objective.evidence_id}>
                   <td className="px-4 py-3 font-medium">{metricLabel(objective.metric)}</td>
                   <td className="px-4 py-3 text-muted-foreground">
@@ -176,85 +211,76 @@ export function PerformanceAnalysisReport({
                   </td>
                 </tr>
               ))}
-              {(metric.objectives ?? []).length === 0 ? (
-                <tr>
-                  <td className="px-4 py-5 text-center text-muted-foreground" colSpan={4}>
-                    当前运行没有可评估的性能目标。
-                  </td>
-                </tr>
-              ) : null}
             </tbody>
           </table>
         </div>
-      </section>
+        </section>
+      ) : null}
 
-      <section className="grid gap-4 lg:grid-cols-[minmax(0,1.4fr)_minmax(18rem,0.6fr)]">
-        <div className="space-y-4">
-          <SectionHeading icon={TrendingUp} title="负载阶段" />
-          <div className="overflow-x-auto rounded-lg border">
-            <table className="w-full min-w-[42rem] text-sm">
-              <thead className="bg-muted/50 text-left text-muted-foreground text-xs">
-                <tr>
-                  <th className="px-4 py-3 font-medium">阶段</th>
-                  <th className="px-4 py-3 font-medium">并发</th>
-                  <th className="px-4 py-3 font-medium">RPS</th>
-                  <th className="px-4 py-3 font-medium">P95</th>
-                  <th className="px-4 py-3 font-medium">失败率</th>
-                  <th className="px-4 py-3 font-medium">判定</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y">
-                {stageAnalysis.map((stage) => (
-                  <tr key={stage.name}>
-                    <td className="px-4 py-3 font-medium">{stage.name}</td>
-                    <td className="px-4 py-3 tabular-nums">{stage.actual_users ?? stage.target_users}</td>
-                    <td className="px-4 py-3 tabular-nums">{decimalValue(stage.requests_per_second)}</td>
-                    <td className="px-4 py-3 tabular-nums">{nullableValue(stage.p95_response_time_ms)}</td>
-                    <td className="px-4 py-3 tabular-nums">{percentageValue(stage.failure_rate)}</td>
-                    <td className="px-4 py-3">
-                      <StageStatus status={stage.status} />
-                    </td>
-                  </tr>
-                ))}
-                {!stageAnalysis.length ? (
+      {stageAnalysis.length > 1 ? (
+        <section
+          className={showCapacityAnalysis ? "grid gap-4 lg:grid-cols-[minmax(0,1.4fr)_minmax(18rem,0.6fr)]" : "space-y-4"}
+        >
+          <div className="space-y-4">
+            <SectionHeading icon={TrendingUp} title="负载阶段" />
+            <div className="overflow-x-auto rounded-lg border">
+              <table className="w-full min-w-[42rem] text-sm">
+                <thead className="bg-muted/50 text-left text-muted-foreground text-xs">
                   <tr>
-                    <td className="px-4 py-5 text-center text-muted-foreground" colSpan={6}>
-                      没有可用的阶段采样。
-                    </td>
+                    <th className="px-4 py-3 font-medium">阶段</th>
+                    <th className="px-4 py-3 font-medium">并发</th>
+                    <th className="px-4 py-3 font-medium">RPS</th>
+                    <th className="px-4 py-3 font-medium">P95</th>
+                    <th className="px-4 py-3 font-medium">失败率</th>
+                    <th className="px-4 py-3 font-medium">判定</th>
                   </tr>
-                ) : null}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y">
+                  {stageAnalysis.map((stage) => (
+                    <tr key={stage.name}>
+                      <td className="px-4 py-3 font-medium">{stage.name}</td>
+                      <td className="px-4 py-3 tabular-nums">{stage.actual_users ?? stage.target_users}</td>
+                      <td className="px-4 py-3 tabular-nums">{decimalValue(stage.requests_per_second)}</td>
+                      <td className="px-4 py-3 tabular-nums">{nullableValue(stage.p95_response_time_ms)}</td>
+                      <td className="px-4 py-3 tabular-nums">{percentageValue(stage.failure_rate)}</td>
+                      <td className="px-4 py-3">
+                        <StageStatus status={stage.status} />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
-        </div>
-        <div className="space-y-4">
-          <SectionHeading icon={Gauge} title="容量判断" />
-          <div className="rounded-lg border bg-card p-4 text-sm">
-            {capacityAnalysis.observed_stable_capacity ? (
-              <>
-                <p className="text-muted-foreground">观测稳定容量</p>
-                <p className="mt-2 font-semibold text-xl tabular-nums">
-                  {capacityAnalysis.observed_stable_capacity.users ?? "-"} 并发
-                </p>
-                <p className="mt-1 text-muted-foreground">
-                  {decimalValue(capacityAnalysis.observed_stable_capacity.requests_per_second)} RPS · P95{" "}
-                  {nullableValue(capacityAnalysis.observed_stable_capacity.p95_response_time_ms)}
-                </p>
+          {showCapacityAnalysis ? (
+            <div className="space-y-4">
+              <SectionHeading icon={Gauge} title="容量判断" />
+              <div className="rounded-lg border bg-card p-4 text-sm">
+                {capacityAnalysis.observed_stable_capacity ? (
+                  <>
+                    <p className="text-muted-foreground">观测稳定容量</p>
+                    <p className="mt-2 font-semibold text-xl tabular-nums">
+                      {capacityAnalysis.observed_stable_capacity.users ?? "-"} 并发
+                    </p>
+                    <p className="mt-1 text-muted-foreground">
+                      {decimalValue(capacityAnalysis.observed_stable_capacity.requests_per_second)} RPS · P95{" "}
+                      {nullableValue(capacityAnalysis.observed_stable_capacity.p95_response_time_ms)}
+                    </p>
+                  </>
+                ) : null}
                 {capacityAnalysis.knee_point ? (
                   <p className="mt-4 border-t pt-3 text-muted-foreground text-xs">
                     拐点区间：{capacityAnalysis.knee_point.between_users?.join(" ~ ")} 并发
                   </p>
                 ) : null}
-              </>
-            ) : (
-              <p className="text-muted-foreground">{capacityAnalysis.reason || "当前证据不足以判断稳定容量。"}</p>
-            )}
-          </div>
-        </div>
-      </section>
+              </div>
+            </div>
+          ) : null}
+        </section>
+      ) : null}
 
-      <section className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(18rem,0.7fr)]">
-        <div className="space-y-4">
+      {failureAnalysis.length ? (
+        <section className="space-y-4">
           <SectionHeading icon={AlertTriangle} title="失败分类" />
           <div className="divide-y rounded-lg border">
             {failureAnalysis.map((failure) => (
@@ -268,30 +294,9 @@ export function PerformanceAnalysisReport({
                 <p className="text-muted-foreground text-sm">{failure.example || "未记录示例原因"}</p>
               </div>
             ))}
-            {!failureAnalysis.length ? (
-              <p className="p-4 text-muted-foreground text-sm">没有记录到失败或异常分类。</p>
-            ) : null}
           </div>
-        </div>
-        <div className="space-y-4">
-          <SectionHeading icon={ShieldCheck} title="测试有效性" />
-          <div className="rounded-lg border bg-card p-4">
-            <div className="flex items-center justify-between gap-3">
-              <span className="font-medium text-sm">{qualityLabel(validity.status)}</span>
-              <Badge variant={validity.status === "complete" ? "secondary" : "outline"}>
-                {validity.sample_count ?? 0} 个样本
-              </Badge>
-            </div>
-            {(validity.issues ?? []).length ? (
-              <p className="mt-3 text-muted-foreground text-xs leading-5">
-                {validity.issues?.map(validityIssueLabel).join("；")}
-              </p>
-            ) : (
-              <p className="mt-3 text-muted-foreground text-xs">当前没有发现明显的数据完整性问题。</p>
-            )}
-          </div>
-        </div>
-      </section>
+        </section>
+      ) : null}
 
       {series.length ? (
         <section className="space-y-4">
@@ -332,79 +337,87 @@ export function PerformanceAnalysisReport({
               </LineChart>
             </ResponsiveContainer>
           </div>
-          <p className="text-muted-foreground text-sm">{report.capacity_summary}</p>
         </section>
       ) : null}
 
-      <section className="space-y-4">
-        <SectionHeading icon={CircleHelp} title="诊断发现" />
-        {(report.findings ?? []).length ? (
-          <div className="divide-y rounded-lg border">
-            {(report.findings ?? []).map((finding) => (
-              <article className="p-4 sm:p-5" key={finding.id}>
-                <div className="flex flex-wrap items-center gap-2">
-                  <Badge
-                    variant={finding.severity === "high" || finding.severity === "critical" ? "destructive" : "outline"}
-                  >
-                    {finding.severity.toUpperCase()}
-                  </Badge>
-                  <Badge variant="secondary">置信度 {Math.round(finding.confidence * 100)}%</Badge>
-                  {finding.level ? <Badge variant="outline">{finding.level}</Badge> : null}
-                </div>
-                <h3 className="mt-3 font-semibold">{finding.title}</h3>
-                <p className="mt-2 whitespace-pre-wrap text-muted-foreground text-sm leading-6">{finding.statement}</p>
-                {finding.missing_evidence?.length ? (
-                  <p className="mt-3 text-muted-foreground text-xs">缺失证据：{finding.missing_evidence.join("、")}</p>
-                ) : null}
-              </article>
-            ))}
-          </div>
-        ) : (
-          <p className="text-muted-foreground text-sm">没有生成可验证的诊断 finding。</p>
-        )}
-      </section>
-
-      <section className="space-y-4">
-        <SectionHeading icon={CheckCircle2} title="优化与复测建议" />
-        <div className="divide-y rounded-lg border">
-          {(report.recommendations ?? []).map((recommendation) => (
-            <div className="grid gap-3 p-4 sm:grid-cols-[4rem_minmax(0,1fr)] sm:p-5" key={recommendation.id}>
-              <Badge className="h-fit w-fit" variant="outline">
-                {recommendation.priority}
-              </Badge>
-              <div>
-                <p className="font-medium text-sm">{recommendation.action}</p>
-                {recommendation.expected_effect ? (
-                  <p className="mt-2 text-muted-foreground text-sm">{recommendation.expected_effect}</p>
-                ) : null}
-                {recommendation.verification ? (
-                  <p className="mt-2 text-muted-foreground text-xs">验证：{recommendation.verification}</p>
-                ) : null}
-                {recommendation.acceptance_criteria?.length ? (
-                  <p className="mt-2 text-muted-foreground text-xs">
-                    验收：{recommendation.acceptance_criteria.join("；")}
-                  </p>
-                ) : null}
+      {!isFallback ? (
+        <>
+          {findings.length ? (
+            <section className="space-y-4">
+              <SectionHeading icon={CircleHelp} title="诊断发现" />
+              <div className="divide-y rounded-lg border">
+                {findings.map((finding) => (
+                  <article className="p-4 sm:p-5" key={finding.id}>
+                    <Badge
+                      variant={
+                        finding.severity === "high" || finding.severity === "critical" ? "destructive" : "outline"
+                      }
+                    >
+                      {finding.severity.toUpperCase()}
+                    </Badge>
+                    <h3 className="mt-3 font-semibold">{finding.title}</h3>
+                    <p className="mt-2 whitespace-pre-wrap text-muted-foreground text-sm leading-6">{finding.statement}</p>
+                  </article>
+                ))}
               </div>
-            </div>
-          ))}
-          {(report.recommendations ?? []).length === 0 ? (
-            <p className="p-4 text-muted-foreground text-sm">当前没有可执行或需要跟踪的优化建议。</p>
+            </section>
           ) : null}
-        </div>
-      </section>
 
-      <section className="border-t pt-5 text-muted-foreground text-xs leading-6">
-        <p>
-          来源指纹：
-          <span className="break-all font-mono">{analysis.source_fingerprint || metric.source_fingerprint || "-"}</span>
-        </p>
-        <p>
-          指标版本：{analysis.calculator_version || metric.calculator_version || "-"} · 提示版本：
-          {analysis.prompt_version || "-"} · 生成模型：{analysis.model_name || "-"}
-        </p>
-        {(quality.issues ?? []).length ? <p>数据限制：{quality.issues?.join("；")}</p> : null}
-      </section>
+          {recommendations.length ? (
+            <section className="space-y-4">
+              <SectionHeading icon={CheckCircle2} title="优化与复测建议" />
+              <div className="divide-y rounded-lg border">
+                {recommendations.map((recommendation) => (
+                  <div
+                    className="grid gap-3 p-4 sm:grid-cols-[4rem_minmax(0,1fr)] sm:p-5"
+                    key={recommendation.id}
+                  >
+                    <Badge className="h-fit w-fit" variant="outline">
+                      {recommendation.priority}
+                    </Badge>
+                    <div>
+                      <p className="font-medium text-sm">{recommendation.action}</p>
+                      {recommendation.verification ? (
+                        <p className="mt-2 text-muted-foreground text-xs">验证：{recommendation.verification}</p>
+                      ) : null}
+                      {recommendation.acceptance_criteria?.length ? (
+                        <p className="mt-2 text-muted-foreground text-xs">
+                          验收：{recommendation.acceptance_criteria.join("；")}
+                        </p>
+                      ) : null}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+          ) : null}
+        </>
+      ) : null}
+
+      {evidenceGaps.length ? (
+        <section className="space-y-4">
+          <SectionHeading icon={ShieldCheck} title="数据限制" />
+          <ul className="space-y-2 rounded-lg border bg-card p-4 text-muted-foreground text-sm">
+            {evidenceGaps.map((gap) => (
+              <li key={gap}>• {gap}</li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+
+      <details className="border-t pt-5 text-muted-foreground text-xs leading-6">
+        <summary className="cursor-pointer select-none font-medium">生成信息</summary>
+        <div className="mt-3 space-y-1">
+          <p>
+            来源指纹：
+            <span className="break-all font-mono">{analysis.source_fingerprint || metric.source_fingerprint || "-"}</span>
+          </p>
+          <p>
+            指标版本：{analysis.calculator_version || metric.calculator_version || "-"} · 提示版本：
+            {analysis.prompt_version || "-"} · 生成模型：{analysis.model_name || "-"}
+          </p>
+        </div>
+      </details>
     </div>
   );
 }

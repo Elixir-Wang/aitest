@@ -74,7 +74,7 @@ export default function Page() {
         report.test_name,
         report.name,
         verdictLabel(report.verdict),
-        statusLabel(report.status),
+        generationStatusLabel(report.generation_status),
       ].some((value) => value.toLowerCase().includes(keyword)),
     );
   }, [activeTab, reports, searchText]);
@@ -205,11 +205,11 @@ export default function Page() {
                     </StatusBadge>
                   </TableCell>
                   <TableCell>
-                    <StatusBadge tone={statusTone(report.status)}>
-                      {isProcessing(report.status) ? (
-                        <ProcessingState label={statusLabel(report.status)} />
+                    <StatusBadge tone={generationStatusTone(report.generation_status)}>
+                      {isGenerationProcessing(report.generation_status) ? (
+                        <ProcessingState label={generationStatusLabel(report.generation_status)} />
                       ) : (
-                        statusLabel(report.status)
+                        generationStatusLabel(report.generation_status)
                       )}
                     </StatusBadge>
                   </TableCell>
@@ -306,16 +306,17 @@ function qualityTone(status: ReportCenterItem["quality_status"]): StatusBadgeTon
   return "destructive";
 }
 
-function statusLabel(status: ReportCenterItem["status"]) {
-  return { collecting: "采集证据", analyzing: "智能分析中", completed: "已生成", failed: "生成失败" }[status];
+function generationStatusLabel(status: ReportCenterItem["generation_status"]) {
+  return { generating: "生成中", generated: "生成成功", degraded: "基础报告", failed: "生成失败" }[status];
 }
 
-function statusTone(status: ReportCenterItem["status"]): StatusBadgeTone {
-  if (status === "completed") return "success";
+function generationStatusTone(status: ReportCenterItem["generation_status"]): StatusBadgeTone {
+  if (status === "generated") return "success";
+  if (status === "degraded") return "warning";
   if (status === "failed") return "destructive";
   return "processing";
 }
 
-function isProcessing(status: ReportCenterItem["status"]) {
-  return status === "collecting" || status === "analyzing";
+function isGenerationProcessing(status: ReportCenterItem["generation_status"]) {
+  return status === "generating";
 }

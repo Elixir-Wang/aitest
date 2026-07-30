@@ -2452,11 +2452,12 @@ def create_api_scenario_ai_plan(
         db.execute(
             """
             UPDATE api_scenario_ai_plans
-            SET plan_json = ?, validation_json = ?, model_provider = ?, model_name = ?,
+            SET request_json = ?, plan_json = ?, validation_json = ?, model_provider = ?, model_name = ?,
                 lifecycle_status = 'completed', updated_at = CURRENT_TIMESTAMP
             WHERE id = ?
             """,
             (
+                api_automation_repo.dumps_json(request_data),
                 api_automation_repo.dumps_json(response),
                 api_automation_repo.dumps_json(validation),
                 selection.provider,
@@ -2515,17 +2516,18 @@ def apply_api_scenario_ai_plan(project_id: str, plan_id: str, payload: ApiScenar
             db.execute("UPDATE api_scenario_ai_plans SET status = 'expired' WHERE id = ?", (plan_id,))
             raise api_error(409, "API_SCENARIO_AI_PLAN_EXPIRED", "AI 编排计划已过期，请重新生成。")
         scenario = _require_scenario(db, project_id, payload.scenario_id)
-        if int(scenario["revision"]) != payload.expected_revision:
-            raise api_error(409, "API_SCENARIO_REVISION_CONFLICT", "场景已被其他人修改，请刷新后重新应用计划。")
         plan = api_automation_repo.loads_json(row["plan_json"], {})
-        request_data = api_automation_repo.loads_json(row["request_json"], {})
-        if (
-            request_data.get("scenario_updated_at") != scenario["updated_at"]
-            or request_data.get("scenario_draft_hash") != _scenario_draft_hash(db, scenario)
-        ):
-            raise api_error(409, "API_SCENARIO_DRAFT_CONFLICT", "场景草稿已发生变化，请重新生成 AI 编排计划。")
-        if plan.get("expected_revision") != payload.expected_revision or not plan.get("validation", {}).get("valid"):
+        if not plan.get("validation", {}).get("valid"):
             raise api_error(409, "API_SCENARIO_AI_PLAN_INVALID", "AI 编排计划未通过服务端校验。")
+        variables = api_automation_repo.loads_json(scenario["variables_json"], {})
+        for plan_input in plan.get("inputs", []):
+            name = str(plan_input.get("name") or "").strip()
+            if name and not plan_input.get("sensitive") and name not in variables:
+                variables[name] = plan_input.get("default_value")
+        db.execute(
+            "UPDATE api_scenarios SET variables_json = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (api_automation_repo.dumps_json(variables), payload.scenario_id),
+        )
         steps = [_ai_plan_node_to_step(node, index) for index, node in enumerate(plan.get("nodes", []))]
     result = replace_api_scenario_steps(project_id, payload.scenario_id, ApiScenarioStepsReplaceIn(steps=steps), actor)
     with connect() as db:
@@ -2592,6 +2594,8 @@ def _validate_ai_plan(project_id: str, plan: ScenarioPlanResult, endpoints: list
         if node.type in {"api_request", "poll"}:
             if not node.endpoint_id or node.endpoint_id not in endpoint_by_id:
                 errors.append(f"节点 {node.name or node.id} 引用了无效接口资产。")
+            else:
+                _validate_ai_node_bindings(node, endpoint_by_id[node.endpoint_id], errors)
         elif node.endpoint_id:
             errors.append(f"工具节点 {node.name or node.id} 不允许绑定接口资产。")
         if _contains_executable_url(node.request_overrides):
@@ -2607,7 +2611,7 @@ def _validate_ai_plan(project_id: str, plan: ScenarioPlanResult, endpoints: list
         sources = [binding.source for binding in node.bindings]
         if node.type in {"condition", "assign"} and isinstance(node.control_config.get("source"), dict):
             sources.append(node.control_config["source"])
-        for source in sources:
+        for source in (nested for root in sources for nested in _iter_scenario_sources(root)):
             source_type = source.type if hasattr(source, "type") else source.get("type") if isinstance(source, dict) else None
             if source_type != "step_output":
                 continue
@@ -2656,6 +2660,67 @@ def _contains_executable_url(value: Any) -> bool:
     elif isinstance(value, str):
         return value.strip().lower().startswith(("http://", "https://"))
     return False
+
+
+def _validate_ai_node_bindings(node, endpoint: dict, errors: list[str]) -> None:
+    seen_targets: list[tuple[str, str]] = []
+    for binding in node.bindings:
+        location = binding.target.location
+        path = binding.target.path
+        for seen_location, seen_path in seen_targets:
+            if seen_location == location and _json_pointer_overlaps(seen_path, path):
+                errors.append(f"节点 {node.name or node.id} 的绑定目标重复或重叠：{location}{path}。")
+                break
+        seen_targets.append((location, path))
+        schema = _endpoint_target_schema(endpoint, location, path)
+        if schema is None:
+            if endpoint.get("parameters") or endpoint.get("request_body"):
+                errors.append(f"节点 {node.name or node.id} 的绑定目标不在接口资产中：{location}{path}。")
+            continue
+        enum_values = schema.get("enum")
+        if not isinstance(enum_values, list) or len(enum_values) != 1:
+            continue
+        expected = enum_values[0]
+        source = binding.source
+        if source.type != "literal" or source.value != expected:
+            field_name = path.rsplit("/", 1)[-1].replace("~1", "/").replace("~0", "~")
+            errors.append(f"节点 {node.name or node.id} 的字段 {field_name} 必须使用固定值 {expected}。")
+
+
+def _endpoint_target_schema(endpoint: dict, location: str, path: str) -> dict | None:
+    if location in {"path", "query", "header", "cookie"}:
+        name = path.removeprefix("/").replace("~1", "/").replace("~0", "~")
+        for parameter in endpoint.get("parameters") or []:
+            if parameter.get("in") == location and str(parameter.get("name") or "") == name:
+                schema = parameter.get("schema")
+                return schema if isinstance(schema, dict) else parameter
+        return None
+    request_body = endpoint.get("request_body") or {}
+    content = request_body.get("content") if isinstance(request_body, dict) else {}
+    media_type = {
+        "json_body": "application/json",
+        "form": "application/x-www-form-urlencoded",
+        "multipart": "multipart/form-data",
+    }.get(location)
+    schema = (content or {}).get(media_type, {}).get("schema") if media_type else request_body.get("schema")
+    if not isinstance(schema, dict):
+        return None
+    current = schema
+    for part in [item.replace("~1", "/").replace("~0", "~") for item in path.split("/") if item]:
+        properties = current.get("properties") if isinstance(current, dict) else None
+        if not isinstance(properties, dict) or part not in properties:
+            return None
+        current = properties[part]
+        if isinstance(current, dict) and isinstance(current.get("x-json-schema"), dict):
+            current = current["x-json-schema"]
+    return current if isinstance(current, dict) else None
+
+
+def _json_pointer_overlaps(first: str, second: str) -> bool:
+    first_parts = [part for part in first.split("/") if part]
+    second_parts = [part for part in second.split("/") if part]
+    shorter = min(len(first_parts), len(second_parts))
+    return first_parts[:shorter] == second_parts[:shorter]
 
 
 def _ai_plan_node_to_step(node: dict, step_order: int) -> ApiScenarioStepIn:
@@ -3339,6 +3404,7 @@ def _prepare_scenario_step(db, project_id: str, payload: ApiScenarioStepIn, step
             raise api_error(400, "API_ENDPOINT_INVALID", "接口不存在或不属于当前项目。")
     elif endpoint_id:
         raise api_error(400, "API_SCENARIO_STEP_ENDPOINT_FORBIDDEN", "当前步骤类型不能绑定接口资产。")
+    request_overrides, bindings = _canonicalize_step_bindings(payload.request_overrides, payload.bindings)
     return {
         "id": step_id or payload.id or f"apistep-{secrets.token_hex(8)}",
         "step_type": payload.step_type,
@@ -3346,14 +3412,39 @@ def _prepare_scenario_step(db, project_id: str, payload: ApiScenarioStepIn, step
         "endpoint_id": endpoint_id,
         "step_order": step_order,
         "name": payload.name or (str(endpoint["summary"]) if endpoint else str(case["title"]) if case else payload.step_type),
-        "request_overrides": payload.request_overrides,
-        "bindings": [binding_to_runtime(binding) for binding in payload.bindings],
+        "request_overrides": request_overrides,
+        "bindings": bindings,
         "extractors": [extractor_to_runtime(extractor) for extractor in payload.extractors],
         "assertions": [assertion.model_dump(exclude_none=True) for assertion in payload.assertions],
         "control_config": control_config_to_runtime(payload.step_type, payload.control_config),
         "on_failure": payload.on_failure,
         "enabled": payload.enabled,
     }
+
+
+def _canonicalize_step_bindings(request_overrides: dict, bindings) -> tuple[dict, list[dict]]:
+    normalized_overrides = api_automation_repo.loads_json(api_automation_repo.dumps_json(request_overrides), {})
+    normalized_bindings: list[dict] = []
+    for binding in bindings:
+        runtime_binding = binding_to_runtime(binding)
+        if binding.source.type == "literal":
+            _set_document_pointer(normalized_overrides, runtime_binding["target"], binding.source.value)
+        else:
+            normalized_bindings.append(runtime_binding)
+    return normalized_overrides, normalized_bindings
+
+
+def _set_document_pointer(document: dict, pointer: str, value: Any) -> None:
+    parts = [part.replace("~1", "/").replace("~0", "~") for part in pointer.split("/") if part]
+    current = document
+    for part in parts[:-1]:
+        child = current.get(part)
+        if not isinstance(child, dict):
+            child = {}
+            current[part] = child
+        current = child
+    if parts:
+        current[parts[-1]] = value
 
 
 def _insert_scenario_step(db, scenario_id: str, project_id: str, step: dict) -> None:
@@ -3380,7 +3471,7 @@ def _dedupe_validation_messages(messages: list[str]) -> list[str]:
     return list(dict.fromkeys(messages))
 
 
-SUPPORTED_SCENARIO_SOURCE_TYPES = {"environment", "scenario", "literal", "user_input", "secret", "generated"}
+SUPPORTED_SCENARIO_SOURCE_TYPES = {"environment", "scenario", "literal", "user_input", "secret", "generated", "object"}
 
 
 def _validate_scenario_definition(db, scenario: Row, steps: list[dict]) -> dict:
@@ -3464,7 +3555,11 @@ def _validate_scenario_source(
     errors: list[str],
 ) -> None:
     source_type = source.get("type")
-    if source_type == "step_output":
+    if source_type == "object":
+        for child in (source.get("properties") or {}).values():
+            if isinstance(child, dict):
+                _validate_scenario_source(child, prior_outputs, known_ids, prefix, errors)
+    elif source_type == "step_output":
         source_step_id = str(source.get("step_id") or "")
         variable = str(source.get("variable") or "")
         if source_step_id not in prior_outputs:
@@ -3474,6 +3569,16 @@ def _validate_scenario_source(
             errors.append(f"{prefix}引用了前序步骤未输出的变量 {variable}。")
     elif source_type not in SUPPORTED_SCENARIO_SOURCE_TYPES:
         errors.append(f"{prefix}存在不支持的变量来源 {source_type or '空'}。")
+
+
+def _iter_scenario_sources(source):
+    yield source
+    source_type = source.type if hasattr(source, "type") else source.get("type") if isinstance(source, dict) else None
+    if source_type != "object":
+        return
+    properties = source.properties if hasattr(source, "properties") else source.get("properties", {})
+    for child in properties.values():
+        yield from _iter_scenario_sources(child)
 
 
 def _build_scenario_snapshot(db, scenario: Row, steps: list[dict]) -> dict:

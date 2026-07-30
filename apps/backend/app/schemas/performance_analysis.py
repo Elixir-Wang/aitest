@@ -96,6 +96,38 @@ class PerformanceDiagnosis(BaseModel):
         return self
 
 
+class GenerationWarning(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    code: str = Field(min_length=1, max_length=120)
+    message: str = Field(min_length=1, max_length=2000)
+
+
+class DiagnosisAttempt(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    attempt: int = Field(ge=1, le=2)
+    attempt_type: Literal["primary", "semantic_repair"]
+    status: Literal["completed", "invalid_schema", "invalid_references", "provider_error"]
+    model_name: str = ""
+    prompt_version: str = ""
+    error_code: str = ""
+    invalid_evidence_refs: list[str] = Field(default_factory=list)
+    invalid_finding_refs: list[str] = Field(default_factory=list)
+    started_at: str
+    finished_at: str
+
+
+class DiagnosisGenerationResult(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    diagnosis: PerformanceDiagnosis | None = None
+    model_name: str = ""
+    generation_mode: Literal["ai_primary", "ai_repaired", "deterministic_fallback"]
+    attempts: list[DiagnosisAttempt] = Field(default_factory=list)
+    warnings: list[GenerationWarning] = Field(default_factory=list)
+
+
 class PerformanceAnalysisOut(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -121,6 +153,8 @@ class PerformanceAnalysisOut(BaseModel):
     calculator_version: str = ""
     prompt_version: str = ""
     source_fingerprint: str = ""
+    generation_mode: str = ""
+    analysis_attempts: list[dict[str, Any]] = Field(default_factory=list)
     audience: str = "engineer"
     model_name: str = ""
     error_message: str = ""

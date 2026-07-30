@@ -117,6 +117,9 @@ test("scenario editor provides a constrained canvas backed by the existing step 
   assert.match(scenarioCanvasSource, /inputPosition/);
   assert.match(scenarioCanvasSource, /outputPosition/);
   assert.match(scenarioCanvasSource, /MIN_READABLE_ZOOM = 0\.7/);
+  assert.match(scenarioCanvasSource, /type: "straight"/);
+  assert.match(scenarioCanvasSource, /animated: source !== "__start__" && source === activeStepId/);
+  assert.doesNotMatch(scenarioCanvasSource, /type: "smoothstep"/);
   assert.doesNotMatch(scenarioCanvasSource, /rankdir: "LR"/);
   assert.match(scenarioCanvasSource, /h-full min-h-0 min-w-0/);
   assert.match(scenarioCanvasSource, /steps\.length/);

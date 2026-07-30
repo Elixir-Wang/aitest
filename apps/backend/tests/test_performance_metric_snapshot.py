@@ -1,6 +1,10 @@
 import pytest
 
 from app.schemas.performance_analysis import PerformanceDiagnosis
+from app.services.performance_testing.diagnosis_validation import (
+    DiagnosisReferenceError,
+    validate_diagnosis_references,
+)
 from app.services.performance_testing.metric_snapshot_service import build_metric_snapshot, build_report_snapshot
 
 
@@ -179,5 +183,59 @@ def test_report_snapshot_rejects_unknown_metric_evidence_reference() -> None:
         }
     )
 
-    with pytest.raises(ValueError, match="未知证据"):
+    with pytest.raises(DiagnosisReferenceError, match="未知证据"):
         build_report_snapshot({"verdict": "indeterminate", "evidence_index": []}, diagnosis)
+
+
+def test_diagnosis_reference_validation_collects_all_unknown_refs_without_mutation() -> None:
+    diagnosis = PerformanceDiagnosis.model_validate(
+        {
+            "category": "external_service",
+            "confidence": 0.6,
+            "direct_cause": "尾延迟升高",
+            "root_cause": "需要更多服务端证据",
+            "evidence": [],
+            "proposed_changes": [],
+            "missing_evidence": ["service_metrics"],
+            "findings": [
+                {
+                    "id": "finding-1",
+                    "severity": "medium",
+                    "level": "inferred",
+                    "title": "尾延迟升高",
+                    "statement": "可能存在外部服务瓶颈",
+                    "confidence": 0.6,
+                    "evidence_refs": ["metric:unknown", "evidence_index:failure_analysis"],
+                    "alternative_hypotheses": [],
+                    "missing_evidence": ["service_metrics"],
+                }
+            ],
+            "recommendations": [
+                {
+                    "id": "recommendation-1",
+                    "priority": "P2",
+                    "action": "补充服务端指标",
+                    "expected_effect": "确认尾延迟来源",
+                    "cost": "medium",
+                    "verification": "对齐同一时间窗口指标",
+                    "finding_refs": ["finding-missing"],
+                }
+            ],
+        }
+    )
+    before = diagnosis.model_dump(mode="json")
+
+    result = validate_diagnosis_references(
+        {
+            "evidence_index": [
+                {"evidence_id": "metric:p95_response_time_ms"},
+                {"evidence_id": "latency:summary"},
+            ]
+        },
+        diagnosis,
+    )
+
+    assert result.valid is False
+    assert result.unknown_evidence_refs == ["evidence_index:failure_analysis", "metric:unknown"]
+    assert result.unknown_finding_refs == ["finding-missing"]
+    assert diagnosis.model_dump(mode="json") == before

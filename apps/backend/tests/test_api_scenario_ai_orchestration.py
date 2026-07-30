@@ -4,6 +4,7 @@ from types import SimpleNamespace
 import pytest
 
 from app.agents.api_automation.orchestration.schemas import (
+    ScenarioBinding,
     ScenarioPlanEdge,
     ScenarioPlanNode,
     ScenarioPlanResult,
@@ -85,6 +86,18 @@ def _valid_plan(**node_updates) -> ScenarioPlanResult:
     return ScenarioPlanResult(scenario_name="查询资料", nodes=[node], confidence=0.9)
 
 
+def test_ai_plan_apply_payload_uses_explicit_overwrite_confirmation() -> None:
+    payload = ApiScenarioAiPlanApplyIn(
+        scenario_id="apiscn-1",
+        confirmation="overwrite_draft",
+    )
+
+    assert payload.model_dump() == {
+        "scenario_id": "apiscn-1",
+        "confirmation": "overwrite_draft",
+    }
+
+
 def test_ai_plan_is_preview_until_explicitly_applied(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     scenario_id = _setup(monkeypatch, tmp_path)
     _mock_plan_agent(monkeypatch, _valid_plan())
@@ -105,8 +118,7 @@ def test_ai_plan_is_preview_until_explicitly_applied(monkeypatch: pytest.MonkeyP
         plan["plan_id"],
         ApiScenarioAiPlanApplyIn(
             scenario_id=scenario_id,
-            expected_revision=plan["expected_revision"],
-            confirmation="apply_preview",
+            confirmation="overwrite_draft",
         ),
         ACTOR,
     )
@@ -114,6 +126,110 @@ def test_ai_plan_is_preview_until_explicitly_applied(monkeypatch: pytest.MonkeyP
     with connect() as db:
         row = db.execute("SELECT status FROM api_scenario_ai_plans WHERE id = ?", (plan["plan_id"],)).fetchone()
         assert row["status"] == "applied"
+
+
+def test_ai_plan_apply_persists_non_sensitive_input_defaults(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    scenario_id = _setup(monkeypatch, tmp_path)
+    plan_result = ScenarioPlanResult(
+        scenario_name="查询资料",
+        inputs=[
+            {"name": "username", "default_value": "tester"},
+            {"name": "question", "default_value": "你好"},
+        ],
+        nodes=[
+            ScenarioPlanNode(
+                id="step-profile",
+                type="api_request",
+                endpoint_id="apiend-1",
+                name="查询资料",
+                assertions=[{"type": "status_code", "expected": 200}],
+            )
+        ],
+    )
+    _mock_plan_agent(monkeypatch, plan_result)
+    plan = service.create_api_scenario_ai_plan(
+        "project-1",
+        ApiScenarioAiPlanIn(goal="查询用户资料", scenario_id=scenario_id),
+        ACTOR,
+    )
+
+    applied = service.apply_api_scenario_ai_plan(
+        "project-1",
+        plan["plan_id"],
+        ApiScenarioAiPlanApplyIn(scenario_id=scenario_id, confirmation="overwrite_draft"),
+        ACTOR,
+    )
+
+    assert applied["variables"] == {"username": "tester", "question": "你好"}
+
+
+def test_scenario_step_moves_literal_bindings_to_request_overrides(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    scenario_id = _setup(monkeypatch, tmp_path)
+
+    created = service.create_api_scenario_step(
+        "project-1",
+        scenario_id,
+        ApiScenarioStepIn(
+            id="step-profile",
+            endpoint_id="apiend-1",
+            bindings=[
+                {
+                    "target": {"location": "header", "path": "/X-App"},
+                    "source": {"type": "literal", "value": "studio"},
+                },
+                {
+                    "target": {"location": "header", "path": "/X-Token"},
+                    "source": {"type": "secret", "key": "robot_token"},
+                },
+            ],
+        ),
+        ACTOR,
+    )
+
+    assert created["request_overrides"]["request"]["headers"]["X-App"] == "studio"
+    assert created["bindings"] == [
+        {
+            "target": "/request/headers/X-Token",
+            "source": {"type": "secret", "key": "robot_token"},
+            "required": True,
+        }
+    ]
+
+
+def test_ai_plan_overwrites_draft_changed_after_generation(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    scenario_id = _setup(monkeypatch, tmp_path)
+    _mock_plan_agent(monkeypatch, _valid_plan())
+    plan = service.create_api_scenario_ai_plan(
+        "project-1",
+        ApiScenarioAiPlanIn(goal="查询用户资料", scenario_id=scenario_id),
+        ACTOR,
+    )
+    service.create_api_scenario_step(
+        "project-1",
+        scenario_id,
+        ApiScenarioStepIn(
+            id="user-temporary-step",
+            step_type="api_request",
+            endpoint_id="apiend-1",
+            name="用户临时步骤",
+        ),
+        ACTOR,
+    )
+
+    applied = service.apply_api_scenario_ai_plan(
+        "project-1",
+        plan["plan_id"],
+        ApiScenarioAiPlanApplyIn(
+            scenario_id=scenario_id,
+            confirmation="overwrite_draft",
+        ),
+        ACTOR,
+    )
+
+    assert [step["id"] for step in applied["steps"]] == ["step-profile"]
 
 
 def test_ai_plan_failure_is_persisted_for_task_center(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -282,6 +398,166 @@ def test_compiler_binds_json_response_to_required_multipart_field() -> None:
     assert stream.bindings[0].source.step_id == "generate"
     assert binding_to_runtime(stream.bindings[0])["target"] == "/request/multipart_form/segment_code"
     assert [(edge.source, edge.target) for edge in compiled.edges] == [("generate", "stream")]
+
+
+def test_binding_to_runtime_preserves_execution_metadata() -> None:
+    binding = ScenarioBinding.model_validate(
+        {
+            "target": {"location": "multipart", "path": "/data"},
+            "source": {"type": "literal", "value": {"stream": True}},
+            "required": True,
+            "transform": "json_encode",
+        }
+    )
+
+    assert binding_to_runtime(binding) == {
+        "target": "/request/multipart_form/data",
+        "source": {"type": "literal", "value": {"stream": True}},
+        "required": True,
+        "transform": "json_encode",
+    }
+
+
+def test_compiler_replaces_dynamic_binding_for_single_value_enum() -> None:
+    endpoint = {
+        "id": "sse",
+        "method": "POST",
+        "path": "/sse",
+        "parameters": [
+            {
+                "name": "SSE-Backend-Type",
+                "in": "header",
+                "required": True,
+                "schema": {"type": "string", "enum": ["sse"]},
+            }
+        ],
+        "request_body": {},
+        "responses": {},
+    }
+    plan = ScenarioPlanResult(
+        nodes=[
+            ScenarioPlanNode(
+                id="chat",
+                type="api_request",
+                endpoint_id="sse",
+                bindings=[
+                    {
+                        "target": {"location": "header", "path": "/SSE-Backend-Type"},
+                        "source": {"type": "scenario", "name": "backend_type"},
+                    }
+                ],
+            )
+        ]
+    )
+
+    compiled = compile_plan(plan, [endpoint], {"configured": False, "variables": [], "secrets": [], "auth_type": "none"})
+
+    assert compiled.nodes[0].bindings[0].source.type == "literal"
+    assert compiled.nodes[0].bindings[0].source.value == "sse"
+
+
+def test_compiler_normalizes_json_string_before_json_encode() -> None:
+    endpoint = {
+        "id": "stream-segment",
+        "method": "POST",
+        "path": "/segment/stream",
+        "summary": "流式处理分段",
+        "parameters": [],
+        "request_body": {
+            "required": True,
+            "content": {
+                "multipart/form-data": {
+                    "schema": {
+                        "type": "object",
+                        "required": ["data"],
+                        "properties": {"data": {"type": "string", "x-json-schema": {"type": "object"}}},
+                    }
+                }
+            },
+        },
+        "responses": {"200": {"description": "ok"}},
+    }
+    compiled = compile_plan(
+        ScenarioPlanResult(
+            nodes=[
+                ScenarioPlanNode(
+                    id="stream",
+                    type="api_request",
+                    endpoint_id="stream-segment",
+                    bindings=[
+                        {
+                            "target": {"location": "multipart", "path": "/data"},
+                            "source": {"type": "literal", "value": "{\"question\":\"很有问题\",\"stream\":true}"},
+                            "transform": "json_encode",
+                        }
+                    ],
+                )
+            ]
+        ),
+        [endpoint],
+        {"configured": False, "variables": [], "secrets": [], "auth_type": "none"},
+    )
+
+    binding = compiled.nodes[0].bindings[0]
+    assert binding.source.value == {"question": "很有问题", "stream": True}
+    assert binding.transform == "json_encode"
+
+
+def test_endpoint_projection_reads_encoded_json_and_sse_event_schemas() -> None:
+    from app.services.api_automation.orchestration_asset_analysis import request_slots, response_slots
+
+    endpoint = {
+        "parameters": [],
+        "request_body": {
+            "required": True,
+            "content": {
+                "multipart/form-data": {
+                    "schema": {
+                        "type": "object",
+                        "properties": {
+                            "data": {
+                                "type": "string",
+                                "x-json-schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "question": {"type": "string"},
+                                        "stream": {"type": "boolean"},
+                                    },
+                                    "required": ["question"],
+                                },
+                            }
+                        },
+                    }
+                }
+            },
+        },
+        "responses": {
+            "200": {
+                "content": {
+                    "text/event-stream": {
+                        "schema": {"type": "string"},
+                        "x-event-data-schema": {
+                            "type": "object",
+                            "properties": {
+                                "data": {
+                                    "type": "object",
+                                    "properties": {"answer": {"type": "string"}},
+                                }
+                            },
+                        },
+                    }
+                }
+            }
+        },
+    }
+
+    request_projection = {(slot.location, slot.path, slot.value_type) for slot in request_slots(endpoint)}
+    response_projection = {(slot.location, slot.path, slot.value_type) for slot in response_slots(endpoint)}
+
+    assert ("multipart", "/data", "string") in request_projection
+    assert ("multipart", "/data/question", "string") in request_projection
+    assert ("multipart", "/data/stream", "boolean") in request_projection
+    assert ("sse_event_json", "/data/answer", "string") in response_projection
 
 
 def test_compiler_normalizes_form_binding_and_deduplicates_multipart_targets() -> None:
@@ -510,7 +786,7 @@ def test_multi_agent_segment_sse_plan_has_no_structural_errors(monkeypatch: pyte
         ACTOR,
     )
 
-    assert result["validation"]["valid"] is True
+    assert result["validation"]["valid"] is True, result["validation"]
     assert result["validation"]["errors"] == []
     assert result["nodes"][0]["extractors"][0]["path"] == "/data/segment_code"
     assert len(result["nodes"][1]["bindings"]) == 8
@@ -550,6 +826,90 @@ def test_ai_plan_rejects_forward_step_output_reference() -> None:
     assert "节点 consumer 的变量来源 引用了后续步骤输出：producer.segment_code。" in validation["errors"]
 
 
+def test_ai_plan_rejects_nested_forward_step_output_reference() -> None:
+    plan = ScenarioPlanResult(
+        nodes=[
+            ScenarioPlanNode(
+                id="consumer",
+                type="api_request",
+                endpoint_id="apiend-1",
+                bindings=[
+                    {
+                        "target": {"location": "json_body", "path": "/payload"},
+                        "source": {
+                            "type": "object",
+                            "properties": {
+                                "segment_code": {
+                                    "type": "step_output",
+                                    "step_id": "producer",
+                                    "variable": "segment_code",
+                                }
+                            },
+                        },
+                    }
+                ],
+            ),
+            ScenarioPlanNode(
+                id="producer",
+                type="api_request",
+                endpoint_id="apiend-1",
+                extractors=[{"name": "segment_code", "path": "/data/segment_code"}],
+            ),
+        ]
+    )
+
+    validation = service._validate_ai_plan(
+        "project-1",
+        plan,
+        [{"id": "apiend-1", "method": "GET", "project_id": "project-1"}],
+    )
+
+    assert validation["valid"] is False
+    assert "节点 consumer 的变量来源 引用了后续步骤输出：producer.segment_code。" in validation["errors"]
+
+
+def test_ai_plan_rejects_dynamic_binding_for_single_value_enum() -> None:
+    plan = ScenarioPlanResult(
+        nodes=[
+            ScenarioPlanNode(
+                id="sse",
+                type="api_request",
+                endpoint_id="apiend-sse",
+                bindings=[
+                    {
+                        "target": {"location": "header", "path": "/SSE-Backend-Type"},
+                        "source": {"type": "scenario", "name": "backend_type"},
+                    }
+                ],
+            )
+        ]
+    )
+
+    validation = service._validate_ai_plan(
+        "project-1",
+        plan,
+        [
+            {
+                "id": "apiend-sse",
+                "method": "POST",
+                "path": "/sse",
+                "parameters": [
+                    {
+                        "name": "SSE-Backend-Type",
+                        "in": "header",
+                        "required": True,
+                        "schema": {"type": "string", "enum": ["sse"]},
+                    }
+                ],
+                "request_body": {},
+            }
+        ],
+    )
+
+    assert validation["valid"] is False
+    assert any("SSE-Backend-Type" in error and "固定值 sse" in error for error in validation["errors"])
+
+
 def test_enqueue_ai_plan_returns_generating_handle_before_worker(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     scenario_id = _setup(monkeypatch, tmp_path)
 
@@ -568,6 +928,32 @@ def test_enqueue_ai_plan_returns_generating_handle_before_worker(monkeypatch: py
             (accepted["plan_id"],),
         ).fetchone()
     assert row["lifecycle_status"] == "generating"
+
+
+def test_enqueued_ai_plan_can_be_applied_when_draft_is_unchanged(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    scenario_id = _setup(monkeypatch, tmp_path)
+    payload = ApiScenarioAiPlanIn(goal="查询用户资料", scenario_id=scenario_id)
+    accepted = service.enqueue_api_scenario_ai_plan("project-1", payload, ACTOR)
+    _mock_plan_agent(monkeypatch, _valid_plan())
+
+    plan = service.create_api_scenario_ai_plan(
+        "project-1",
+        payload,
+        ACTOR,
+        existing_plan_id=accepted["plan_id"],
+    )
+    applied = service.apply_api_scenario_ai_plan(
+        "project-1",
+        accepted["plan_id"],
+        ApiScenarioAiPlanApplyIn(
+            scenario_id=scenario_id,
+            confirmation="overwrite_draft",
+        ),
+        ACTOR,
+    )
+
+    assert applied["id"] == scenario_id
+    assert applied["steps"]
 
 
 def test_get_ai_plan_returns_generating_handle_before_completion(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

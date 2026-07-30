@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from copy import deepcopy
 from typing import Any
 
@@ -117,12 +118,69 @@ def _normalize_and_dedupe_bindings(bindings: list[ScenarioBinding], endpoint: di
     normalized: dict[tuple[str, str], ScenarioBinding] = {}
     for binding in bindings:
         target = _normalize_target(binding.target, endpoint)
-        candidate = binding.model_copy(update={"target": target})
+        candidate = _normalize_binding_transform(binding.model_copy(update={"target": target}))
+        candidate = _normalize_fixed_enum_binding(candidate, endpoint)
         key = (target.location, target.path)
         previous = normalized.get(key)
         if previous is None or _binding_priority(candidate) > _binding_priority(previous):
             normalized[key] = candidate
     return list(normalized.values())
+
+
+def _normalize_binding_transform(binding: ScenarioBinding) -> ScenarioBinding:
+    if binding.transform != "json_encode" or binding.source.type != "literal":
+        return binding
+    value = binding.source.value
+    if not isinstance(value, str):
+        return binding
+    try:
+        decoded = json.loads(value)
+    except (TypeError, ValueError):
+        return binding
+    if not isinstance(decoded, (dict, list)):
+        return binding
+    payload = binding.model_dump(exclude_none=True)
+    payload["source"]["value"] = decoded
+    return ScenarioBinding.model_validate(payload)
+
+
+def _normalize_fixed_enum_binding(binding: ScenarioBinding, endpoint: dict[str, Any]) -> ScenarioBinding:
+    schema = _target_schema(endpoint, binding.target.location, binding.target.path)
+    enum_values = schema.get("enum") if isinstance(schema, dict) else None
+    if not isinstance(enum_values, list) or len(enum_values) != 1:
+        return binding
+    payload = binding.model_dump(exclude_none=True)
+    payload["source"] = {"type": "literal", "value": enum_values[0]}
+    return ScenarioBinding.model_validate(payload)
+
+
+def _target_schema(endpoint: dict[str, Any], location: str, path: str) -> dict[str, Any] | None:
+    if location in {"path", "query", "header", "cookie"}:
+        name = path.removeprefix("/").replace("~1", "/").replace("~0", "~")
+        for parameter in endpoint.get("parameters") or []:
+            if parameter.get("in") == location and str(parameter.get("name") or "") == name:
+                schema = parameter.get("schema")
+                return schema if isinstance(schema, dict) else parameter
+        return None
+    request_body = endpoint.get("request_body") or {}
+    content = request_body.get("content") if isinstance(request_body, dict) else {}
+    media_type = {
+        "json_body": "application/json",
+        "form": "application/x-www-form-urlencoded",
+        "multipart": "multipart/form-data",
+    }.get(location)
+    schema = (content or {}).get(media_type, {}).get("schema") if media_type else request_body.get("schema")
+    if not isinstance(schema, dict):
+        return None
+    current = schema
+    for part in [item.replace("~1", "/").replace("~0", "~") for item in path.split("/") if item]:
+        properties = current.get("properties") if isinstance(current, dict) else None
+        if not isinstance(properties, dict) or part not in properties:
+            return None
+        current = properties[part]
+        if isinstance(current, dict) and isinstance(current.get("x-json-schema"), dict):
+            current = current["x-json-schema"]
+    return current if isinstance(current, dict) else None
 
 
 def _normalize_target(target, endpoint: dict[str, Any]):
@@ -132,6 +190,10 @@ def _normalize_target(target, endpoint: dict[str, Any]):
         return target
     if any(slot.location == target.location for slot in matching):
         return target
+    body_locations = {"json_body", "form", "multipart"}
+    matching_body_locations = {slot.location for slot in matching if slot.location in body_locations}
+    if target.location in body_locations and len(matching_body_locations) == 1:
+        return target.model_copy(update={"location": matching_body_locations.pop()})
     aliases = {"form": "multipart", "multipart": "form"}
     alias = aliases.get(target.location)
     if alias and any(slot.location == alias for slot in matching):
@@ -147,6 +209,7 @@ def _binding_priority(binding: ScenarioBinding) -> int:
         "environment": 20,
         "scenario": 15,
         "generated": 12,
+        "object": 10,
         "user_input": 10,
         "literal": 5,
     }.get(source_type, 0)

@@ -8,6 +8,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Textarea } from "@/components/ui/textarea";
 import type {
   ApiAutomationEndpoint,
   ApiAutomationEnvironment,
@@ -18,7 +19,12 @@ import type {
 } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
 
-import { buildVariableOptions } from "./api-scenario-model.mjs";
+import {
+  buildEndpointRequestFields,
+  buildVariableOptions,
+  formatValueSource,
+  normalizeRequestLifecycleConfig,
+} from "./api-scenario-model.mjs";
 
 type ApiScenarioStepConfigProps = {
   activeStep: ApiAutomationScenarioStep | null;
@@ -109,10 +115,13 @@ export function ApiScenarioStepConfig({
             variant="line"
           >
             <TabsTrigger className="flex-none px-2" value="request">
-              请求配置
+              请求
             </TabsTrigger>
-            <TabsTrigger className="flex-none px-2" value="extractors">
-              响应提取 <Count value={activeStep.extractors.length} />
+            <TabsTrigger className="flex-none px-2" value="pre-request">
+              前置处理
+            </TabsTrigger>
+            <TabsTrigger className="flex-none px-2" value="response">
+              响应处理 <Count value={activeStep.extractors.length} />
             </TabsTrigger>
             <TabsTrigger className="flex-none px-2" value="assertions">
               断言 <Count value={activeStep.assertions.length} />
@@ -138,10 +147,26 @@ export function ApiScenarioStepConfig({
                 onChange={(updates) => onUpdateStep(activeStep.id, updates)}
               />
             </TabsContent>
-            <TabsContent className="m-0 p-5" value="extractors">
+            <TabsContent className="m-0 p-5" value="pre-request">
+              <LifecyclePhaseEditor
+                phase="pre_request"
+                step={activeStep}
+                title="前置处理"
+                variableOptions={variableOptions}
+                onChange={(controlConfig) => onUpdateStep(activeStep.id, { control_config: controlConfig })}
+              />
+            </TabsContent>
+            <TabsContent className="m-0 space-y-6 p-5" value="response">
               <ExtractorEditor
                 extractors={activeStep.extractors}
                 onChange={(extractors) => onUpdateStep(activeStep.id, { extractors })}
+              />
+              <LifecyclePhaseEditor
+                phase="post_response"
+                step={activeStep}
+                title="后置处理"
+                variableOptions={variableOptions}
+                onChange={(controlConfig) => onUpdateStep(activeStep.id, { control_config: controlConfig })}
               />
             </TabsContent>
             <TabsContent className="m-0 p-5" value="assertions">
@@ -299,10 +324,7 @@ function SourceEditor({
     <div className="grid grid-cols-[180px_1fr] gap-4">
       <div>
         <span className="mb-2 block font-medium text-sm">数据来源</span>
-        <Select
-          onValueChange={(type) => onChange(type === "literal" ? { type, value: "" } : { type, name: "" })}
-          value={sourceType}
-        >
+        <Select onValueChange={(type) => onChange(defaultValueSource(type))} value={sourceType}>
           <SelectTrigger>
             <SelectValue />
           </SelectTrigger>
@@ -311,6 +333,10 @@ function SourceEditor({
             <SelectItem value="step_output">前序步骤输出</SelectItem>
             <SelectItem value="scenario">场景变量</SelectItem>
             <SelectItem value="environment">环境变量</SelectItem>
+            <SelectItem value="user_input">运行时输入</SelectItem>
+            <SelectItem value="secret">密钥引用</SelectItem>
+            <SelectItem value="generated">动态生成</SelectItem>
+            <SelectItem value="object">对象</SelectItem>
           </SelectContent>
         </Select>
       </div>
@@ -324,24 +350,37 @@ function SourceEditor({
         ) : sourceType === "step_output" ? (
           <Select
             onValueChange={(value) => {
-              const [stepId, variable] = value.split(":");
-              onChange({ type: "step_output", step_id: stepId, variable });
+              onChange(JSON.parse(value));
             }}
-            value={source.step_id ? `${source.step_id}:${source.variable}` : ""}
+            value={
+              source.step_id
+                ? JSON.stringify({ type: "step_output", step_id: source.step_id, variable: source.variable })
+                : ""
+            }
           >
             <SelectTrigger>
               <SelectValue placeholder="选择前序步骤输出" />
             </SelectTrigger>
             <SelectContent>
               {variableOptions.stepOutputs.map((option) => (
-                <SelectItem key={`${option.stepId}:${option.name}`} value={`${option.stepId}:${option.name}`}>
+                <SelectItem
+                  key={`${option.stepId}:${option.name}`}
+                  value={JSON.stringify({ type: "step_output", step_id: option.stepId, variable: option.name })}
+                >
                   {option.stepName}.{option.name}
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
-        ) : (
-          <Select onValueChange={(name) => onChange({ type: sourceType, name })} value={String(source.name ?? "")}>
+        ) : sourceType === "scenario" || sourceType === "environment" ? (
+          <Select
+            onValueChange={(value) =>
+              onChange(
+                sourceType === "environment" ? { type: "environment", key: value } : { type: "scenario", name: value },
+              )
+            }
+            value={String(sourceType === "environment" ? (source.key ?? source.name ?? "") : (source.name ?? ""))}
+          >
             <SelectTrigger>
               <SelectValue placeholder="选择变量" />
             </SelectTrigger>
@@ -356,6 +395,47 @@ function SourceEditor({
               ))}
             </SelectContent>
           </Select>
+        ) : sourceType === "secret" || sourceType === "user_input" ? (
+          <Input
+            onChange={(event) =>
+              onChange(
+                sourceType === "secret"
+                  ? { type: "secret", key: event.target.value }
+                  : { type: "user_input", name: event.target.value },
+              )
+            }
+            placeholder={sourceType === "secret" ? "密钥标识" : "输入参数名"}
+            value={String(sourceType === "secret" ? (source.key ?? "") : (source.name ?? ""))}
+          />
+        ) : sourceType === "generated" ? (
+          <Select
+            onValueChange={(generator) => onChange({ type: "generated", generator })}
+            value={String(source.generator ?? "uuid4")}
+          >
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="uuid4">UUID</SelectItem>
+              <SelectItem value="timestamp_ms">毫秒时间戳</SelectItem>
+              <SelectItem value="timestamp_iso">ISO 时间</SelectItem>
+              <SelectItem value="random_string">随机字符串</SelectItem>
+            </SelectContent>
+          </Select>
+        ) : sourceType === "object" ? (
+          <Textarea
+            className="min-h-28 font-mono text-xs"
+            onChange={(event) => {
+              try {
+                onChange({ type: "object", properties: JSON.parse(event.target.value) });
+              } catch {
+                // Keep the last valid object source until the JSON becomes valid.
+              }
+            }}
+            value={JSON.stringify(source.properties ?? {}, null, 2)}
+          />
+        ) : (
+          <Input disabled value="不支持的来源" />
         )}
       </div>
     </div>
@@ -403,16 +483,20 @@ function RequestEditor({
         接口资产已不存在，请重新选择接口。
       </div>
     );
-  const bodyProperties = getBodyProperties(endpoint.request_body);
-  const fields = [
-    ...endpoint.parameters.map((parameter) => ({
-      key: String(parameter.name ?? ""),
-      location: String(parameter.in ?? "query"),
-      required: Boolean(parameter.required),
-      description: String(parameter.description ?? ""),
-    })),
-    ...bodyProperties.map((property) => ({ ...property, location: "body" })),
-  ].filter((field) => field.key);
+  const requestModel = buildEndpointRequestFields(endpoint);
+  const parameterFields = requestModel.fields.filter((field) => ["path", "query"].includes(field.location));
+  const headerFields = requestModel.fields.filter((field) => field.location === "header");
+  const cookieFields = requestModel.fields.filter((field) => field.location === "cookie");
+  const bodyFields = requestModel.fields.filter((field) => ["json_body", "form", "multipart"].includes(field.location));
+  const request = (requestOverrides.request ?? {}) as Record<string, unknown>;
+  const authorization = (request.authorization ?? { type: "inherit" }) as Record<string, unknown>;
+  const bodyMode = String(request.body_mode ?? requestModel.bodyMode);
+  const bodyRaw = String(
+    request.body_raw ??
+      (request.json && typeof request.json === "object"
+        ? JSON.stringify(request.json, null, 2)
+        : (request.raw_body ?? "")),
+  );
 
   function updateLiteral(target: string, value: string) {
     const nextBindings = bindings.filter((binding) => binding.target !== target);
@@ -420,13 +504,19 @@ function RequestEditor({
     onChange({ request_overrides: nextOverrides, bindings: nextBindings });
   }
 
-  function updateBinding(target: string, encoded: string) {
+  function updateBinding(target: string, encoded: string, fallbackValue?: unknown) {
     if (encoded === "literal") {
-      onChange({ bindings: bindings.filter((binding) => binding.target !== target) });
+      const current = bindings.find((binding) => binding.target === target);
+      const nextOverrides =
+        current?.source.type === "literal"
+          ? setPointer(requestOverrides, target, current.source.value)
+          : fallbackValue !== undefined
+            ? setPointer(requestOverrides, target, fallbackValue)
+            : requestOverrides;
+      onChange({ request_overrides: nextOverrides, bindings: bindings.filter((binding) => binding.target !== target) });
       return;
     }
-    const [type, first, second] = encoded.split(":");
-    const source = type === "step_output" ? { type, step_id: first, variable: second } : { type, name: first };
+    const source = JSON.parse(encoded) as ApiAutomationScenarioBinding["source"];
     onChange({
       bindings: [
         ...bindings.filter((binding) => binding.target !== target),
@@ -435,78 +525,358 @@ function RequestEditor({
     });
   }
 
+  function updateRequestField(key: string, value: unknown) {
+    onChange({ request_overrides: setPointer(requestOverrides, `/request/${escapePointer(key)}`, value) });
+  }
+
+  function updateBody(value: string) {
+    let nextOverrides = setPointer(requestOverrides, "/request/body_raw", value);
+    if (bodyMode === "json") {
+      try {
+        nextOverrides = setPointer(nextOverrides, "/request/json", value.trim() ? JSON.parse(value) : {});
+      } catch {
+        // Keep the invalid editor value so draft validation can point to this field.
+      }
+    } else {
+      nextOverrides = setPointer(nextOverrides, "/request/raw_body", value);
+    }
+    onChange({ request_overrides: nextOverrides });
+  }
+
   return (
-    <div>
+    <div className="space-y-6">
       <div className="rounded-lg border border-primary/20 bg-primary/5 p-3 text-primary text-sm">
-        参数结构来自接口资产；这里只配置当前场景的数据值与动态引用。
+        请求结构来自接口资产；当前节点只保存覆盖值和动态引用。
       </div>
-      <div className="mt-5 grid min-w-0 grid-cols-[minmax(140px,0.8fr)_minmax(160px,1fr)_minmax(125px,0.7fr)] gap-3 px-3 font-medium text-muted-foreground text-xs">
-        <span>参数</span>
-        <span>值</span>
-        <span>来源</span>
-      </div>
-      <div className="mt-2 overflow-hidden rounded-xl border">
-        {fields.length === 0 ? (
-          <div className="p-5 text-muted-foreground text-sm">该接口没有声明参数，可在高级模式中补充请求配置。</div>
-        ) : (
-          fields.map((field) => {
-            const target = targetForField(field.location, field.key);
-            const binding = bindings.find((item) => item.target === target);
-            const literal = readPointer(requestOverrides, target);
-            return (
-              <div
-                className="grid min-h-16 min-w-0 grid-cols-[minmax(140px,0.8fr)_minmax(160px,1fr)_minmax(125px,0.7fr)] items-center gap-3 border-b px-3 py-2 last:border-b-0"
-                key={`${field.location}:${field.key}`}
-              >
-                <div>
-                  <div className="font-medium text-sm">
-                    {field.key} {field.required ? <span className="text-destructive">*</span> : null}
-                  </div>
-                  <div className="mt-1 text-[10px] text-muted-foreground">
-                    {field.location.toUpperCase()} {field.description ? `· ${field.description}` : ""}
-                  </div>
-                </div>
-                {binding ? (
-                  <div className="rounded-lg border border-primary/35 bg-primary/5 px-3 py-2 font-mono text-primary text-xs">
-                    {bindingLabel(binding, precedingName(variableOptions, binding))}
-                  </div>
-                ) : (
-                  <Input
-                    onChange={(event) => updateLiteral(target, event.target.value)}
-                    placeholder="输入固定值"
-                    value={literal == null ? "" : String(literal)}
-                  />
-                )}
-                <Select onValueChange={(value) => updateBinding(target, value)} value={bindingValue(binding)}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="literal">固定值</SelectItem>
-                    {variableOptions.stepOutputs.map((option) => (
-                      <SelectItem
-                        key={`${option.stepId}:${option.name}`}
-                        value={`step_output:${option.stepId}:${option.name}`}
-                      >
-                        {option.stepName}.{option.name}
-                      </SelectItem>
-                    ))}
-                    {variableOptions.scenarioVariables.map((name: string) => (
-                      <SelectItem key={`scenario:${name}`} value={`scenario:${name}`}>
-                        场景变量 · {name}
-                      </SelectItem>
-                    ))}
-                    {variableOptions.environmentVariables.map((name: string) => (
-                      <SelectItem key={`environment:${name}`} value={`environment:${name}`}>
-                        环境变量 · {name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            );
-          })
+      <RequestBlock title="URL / Params">
+        <div className="grid grid-cols-[90px_1fr] gap-3">
+          <Input disabled value={endpoint.method} />
+          <Input
+            onChange={(event) => updateRequestField("path", event.target.value)}
+            value={String(request.path ?? endpoint.path)}
+          />
+        </div>
+        <RequestFieldsEditor
+          bindings={bindings}
+          emptyText="该接口没有声明 Path 或 Query 参数。"
+          fields={parameterFields}
+          requestOverrides={requestOverrides}
+          variableOptions={variableOptions}
+          onBindingChange={updateBinding}
+          onLiteralChange={updateLiteral}
+        />
+      </RequestBlock>
+
+      <RequestBlock title="Authorization">
+        <Select
+          onValueChange={(type) => updateRequestField("authorization", { type })}
+          value={String(authorization.type ?? "inherit")}
+        >
+          <SelectTrigger>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="inherit">继承环境鉴权</SelectItem>
+            <SelectItem value="none">无鉴权</SelectItem>
+            <SelectItem value="bearer">Bearer Token</SelectItem>
+            <SelectItem value="basic">Basic Auth</SelectItem>
+            <SelectItem value="api_key">API Key</SelectItem>
+          </SelectContent>
+        </Select>
+      </RequestBlock>
+
+      <RequestBlock title="Headers">
+        <RequestFieldsEditor
+          bindings={bindings}
+          emptyText="该接口没有声明 Header。"
+          fields={headerFields}
+          requestOverrides={requestOverrides}
+          variableOptions={variableOptions}
+          onBindingChange={updateBinding}
+          onLiteralChange={updateLiteral}
+        />
+      </RequestBlock>
+
+      <RequestBlock title="Body">
+        <div className="flex items-center gap-3">
+          <Select onValueChange={(mode) => updateRequestField("body_mode", mode)} value={bodyMode}>
+            <SelectTrigger className="w-52">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">None</SelectItem>
+              <SelectItem value="json">JSON</SelectItem>
+              <SelectItem value="form">Form URL Encoded</SelectItem>
+              <SelectItem value="multipart">Multipart Form</SelectItem>
+              <SelectItem value="raw">Raw Text</SelectItem>
+              <SelectItem value="binary">Binary</SelectItem>
+            </SelectContent>
+          </Select>
+          {bodyFields.length > 0 ? (
+            <span className="text-muted-foreground text-xs">
+              Schema：{bodyFields.map((item) => item.key).join("、")}
+            </span>
+          ) : null}
+        </div>
+        {bodyFields.length > 0 ? (
+          <RequestFieldsEditor
+            bindings={bindings}
+            className="mt-3"
+            emptyText="该请求体没有声明字段。"
+            fields={bodyFields}
+            requestOverrides={requestOverrides}
+            variableOptions={variableOptions}
+            onBindingChange={updateBinding}
+            onLiteralChange={updateLiteral}
+          />
+        ) : bodyMode === "none" ? null : (
+          <Textarea
+            className="mt-3 min-h-52 font-mono text-xs"
+            onChange={(event) => updateBody(event.target.value)}
+            placeholder={bodyMode === "json" ? '{\n  "name": "{{scenario.name}}"\n}' : "输入请求体"}
+            value={bodyRaw}
+          />
         )}
+      </RequestBlock>
+
+      <RequestBlock title="Cookies">
+        <RequestFieldsEditor
+          bindings={bindings}
+          emptyText="该接口没有声明 Cookie。"
+          fields={cookieFields}
+          requestOverrides={requestOverrides}
+          variableOptions={variableOptions}
+          onBindingChange={updateBinding}
+          onLiteralChange={updateLiteral}
+        />
+      </RequestBlock>
+    </div>
+  );
+}
+
+function defaultValueSource(type: string): Record<string, unknown> {
+  if (type === "literal") return { type, value: "" };
+  if (type === "environment" || type === "secret") return { type, key: "" };
+  if (type === "generated") return { type, generator: "uuid4" };
+  if (type === "object") return { type, properties: {} };
+  if (type === "step_output") return { type, step_id: "", variable: "" };
+  return { type, name: "" };
+}
+
+function RequestFieldsEditor({
+  fields,
+  bindings,
+  requestOverrides,
+  variableOptions,
+  emptyText,
+  className,
+  onLiteralChange,
+  onBindingChange,
+}: {
+  fields: ReturnType<typeof buildEndpointRequestFields>["fields"];
+  bindings: ApiAutomationScenarioBinding[];
+  requestOverrides: Record<string, unknown>;
+  variableOptions: ReturnType<typeof buildVariableOptions>;
+  emptyText: string;
+  className?: string;
+  onLiteralChange: (target: string, value: string) => void;
+  onBindingChange: (target: string, value: string, fallbackValue?: unknown) => void;
+}) {
+  return (
+    <div className={cn("mt-4 overflow-hidden rounded-xl border", className)}>
+      {fields.length === 0 ? (
+        <div className="p-5 text-muted-foreground text-sm">{emptyText}</div>
+      ) : (
+        fields.map((field) => {
+          const persistedBinding = bindings.find((item) => item.target === field.target);
+          const dynamicBinding = persistedBinding?.source.type === "literal" ? undefined : persistedBinding;
+          const override = readPointer(requestOverrides, field.target);
+          const literal =
+            persistedBinding?.source.type === "literal"
+              ? persistedBinding.source.value
+              : (override ?? field.defaultValue);
+          return (
+            <div
+              className="grid min-h-16 min-w-0 grid-cols-[minmax(140px,0.8fr)_minmax(160px,1fr)_minmax(125px,0.7fr)] items-center gap-3 border-b px-3 py-2 last:border-b-0"
+              key={`${field.location}:${field.key}`}
+            >
+              <div>
+                <div className="font-medium text-sm">
+                  {field.key} {field.required ? <span className="text-destructive">*</span> : null}
+                </div>
+                <div className="mt-1 text-[10px] text-muted-foreground">
+                  {field.location.toUpperCase()} {field.description ? `· ${field.description}` : ""}
+                </div>
+              </div>
+              {dynamicBinding ? (
+                <div className="rounded-lg border border-primary/35 bg-primary/5 px-3 py-2 font-mono text-primary text-xs">
+                  {bindingLabel(dynamicBinding, precedingName(variableOptions, dynamicBinding))}
+                </div>
+              ) : (
+                <Input
+                  onChange={(event) => onLiteralChange(field.target, event.target.value)}
+                  placeholder="输入固定值"
+                  value={literal == null ? "" : String(literal)}
+                />
+              )}
+              <BindingSourceSelect
+                binding={persistedBinding}
+                variableOptions={variableOptions}
+                onChange={(value) => onBindingChange(field.target, value, field.defaultValue)}
+              />
+            </div>
+          );
+        })
+      )}
+    </div>
+  );
+}
+
+function BindingSourceSelect({
+  binding,
+  variableOptions,
+  onChange,
+}: {
+  binding?: ApiAutomationScenarioBinding;
+  variableOptions: ReturnType<typeof buildVariableOptions>;
+  onChange: (value: string) => void;
+}) {
+  const currentValue = bindingValue(binding);
+  const standardValues = new Set([
+    "literal",
+    ...variableOptions.stepOutputs.map((option) =>
+      encodeBindingSource({
+        type: "step_output",
+        step_id: option.stepId,
+        variable: option.name,
+      }),
+    ),
+    ...variableOptions.scenarioVariables.map((name) => encodeBindingSource({ type: "scenario", name })),
+    ...variableOptions.environmentVariables.map((key) => encodeBindingSource({ type: "environment", key })),
+  ]);
+  return (
+    <Select onValueChange={onChange} value={currentValue}>
+      <SelectTrigger>
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value="literal">固定值</SelectItem>
+        {variableOptions.stepOutputs.map((option) => (
+          <SelectItem
+            key={`${option.stepId}:${option.name}`}
+            value={encodeBindingSource({ type: "step_output", step_id: option.stepId, variable: option.name })}
+          >
+            {option.stepName}.{option.name}
+          </SelectItem>
+        ))}
+        {variableOptions.scenarioVariables.map((name: string) => (
+          <SelectItem key={`scenario:${name}`} value={encodeBindingSource({ type: "scenario", name })}>
+            场景变量 · {name}
+          </SelectItem>
+        ))}
+        {variableOptions.environmentVariables.map((name: string) => (
+          <SelectItem key={`environment:${name}`} value={encodeBindingSource({ type: "environment", key: name })}>
+            环境变量 · {name}
+          </SelectItem>
+        ))}
+        {binding && !standardValues.has(currentValue) ? (
+          <SelectItem value={currentValue}>{sourceTypeLabel(binding.source.type)} · 当前引用</SelectItem>
+        ) : null}
+      </SelectContent>
+    </Select>
+  );
+}
+
+function RequestBlock({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <section>
+      <h3 className="mb-3 font-semibold text-sm">{title}</h3>
+      {children}
+    </section>
+  );
+}
+
+function LifecyclePhaseEditor({
+  phase,
+  step,
+  title,
+  variableOptions,
+  onChange,
+}: {
+  phase: "pre_request" | "post_response";
+  step: ApiAutomationScenarioStep;
+  title: string;
+  variableOptions: ReturnType<typeof buildVariableOptions>;
+  onChange: (controlConfig: Record<string, unknown>) => void;
+}) {
+  const lifecycle = normalizeRequestLifecycleConfig(step);
+  const phaseConfig = lifecycle[phase] as {
+    actions: Array<{ id?: string; type: string; name: string; source: Record<string, unknown> }>;
+    script: string;
+  };
+  const updatePhase = (updates: Partial<typeof phaseConfig>) =>
+    onChange({ ...step.control_config, [phase]: { ...phaseConfig, ...updates } });
+
+  return (
+    <div className="space-y-6">
+      <EditorSection
+        title="变量动作"
+        description={`${title}阶段设置当前节点可用的变量。`}
+        onAdd={() =>
+          updatePhase({
+            actions: [
+              ...phaseConfig.actions,
+              { id: crypto.randomUUID(), type: "set_variable", name: "", source: { type: "literal", value: "" } },
+            ],
+          })
+        }
+      >
+        {phaseConfig.actions.map((action, index) => (
+          <div className="space-y-3 border-b p-4 last:border-b-0" key={action.id ?? `${action.type}:${action.name}`}>
+            <div className="grid grid-cols-[1fr_36px] gap-2">
+              <Input
+                onChange={(event) =>
+                  updatePhase({
+                    actions: replaceAt(phaseConfig.actions, index, { ...action, name: event.target.value }),
+                  })
+                }
+                placeholder="变量名"
+                value={action.name}
+              />
+              <Button
+                onClick={() =>
+                  updatePhase({ actions: phaseConfig.actions.filter((_, itemIndex) => itemIndex !== index) })
+                }
+                size="icon-sm"
+                variant="ghost"
+              >
+                <Trash2 />
+              </Button>
+            </div>
+            <SourceEditor
+              source={action.source}
+              variableOptions={variableOptions}
+              onChange={(source) =>
+                updatePhase({ actions: replaceAt(phaseConfig.actions, index, { ...action, source }) })
+              }
+            />
+          </div>
+        ))}
+      </EditorSection>
+
+      <div>
+        <h3 className="font-semibold">{phase === "pre_request" ? "前置脚本" : "后置脚本"}</h3>
+        <p className="mt-1 text-muted-foreground text-sm">保存受控脚本元数据；运行时不执行任意系统代码。</p>
+        <Textarea
+          className="mt-3 min-h-48 font-mono text-xs"
+          onChange={(event) => updatePhase({ script: event.target.value })}
+          placeholder={
+            phase === "pre_request"
+              ? 'setVariable("timestamp", Date.now());'
+              : 'setVariable("result", response.json());'
+          }
+          value={phaseConfig.script}
+        />
       </div>
     </div>
   );
@@ -815,24 +1185,6 @@ function EditorSection({
   );
 }
 
-function getBodyProperties(requestBody: Record<string, unknown>) {
-  const content = requestBody.content as Record<string, { schema?: Record<string, unknown> }> | undefined;
-  const schema = content?.["application/json"]?.schema ?? (requestBody.schema as Record<string, unknown> | undefined);
-  const properties = schema?.properties as Record<string, { description?: string }> | undefined;
-  const required = new Set(Array.isArray(schema?.required) ? schema.required.map(String) : []);
-  return Object.entries(properties ?? {}).map(([key, value]) => ({
-    key,
-    required: required.has(key),
-    description: value.description ?? "",
-  }));
-}
-
-function targetForField(location: string, key: string) {
-  if (location === "path") return `/test_data/${escapePointer(key)}/value`;
-  const section = location === "header" ? "headers" : location === "body" ? "body" : "query";
-  return `/request/${section}/${escapePointer(key)}`;
-}
-
 function setPointer(document: Record<string, unknown>, pointer: string, value: unknown) {
   const next = structuredClone(document);
   const parts = pointer.split("/").filter(Boolean).map(unescapePointer);
@@ -859,13 +1211,30 @@ function readPointer(document: Record<string, unknown>, pointer: string) {
 
 function bindingValue(binding?: ApiAutomationScenarioBinding) {
   if (!binding) return "literal";
-  if (binding.source.type === "step_output") return `step_output:${binding.source.step_id}:${binding.source.variable}`;
-  return `${binding.source.type}:${binding.source.name ?? ""}`;
+  if (binding.source.type === "literal") return "literal";
+  return encodeBindingSource(binding.source);
 }
 
 function bindingLabel(binding: ApiAutomationScenarioBinding, stepName: string) {
-  if (binding.source.type === "step_output") return `{{ ${stepName}.${binding.source.variable} }}`;
-  return `{{ ${binding.source.type}.${binding.source.name} }}`;
+  return formatValueSource(binding.source, stepName);
+}
+
+function encodeBindingSource(source: ApiAutomationScenarioBinding["source"]) {
+  return JSON.stringify(source);
+}
+
+function sourceTypeLabel(sourceType: ApiAutomationScenarioBinding["source"]["type"]) {
+  const labels: Record<ApiAutomationScenarioBinding["source"]["type"], string> = {
+    literal: "固定值",
+    user_input: "运行时输入",
+    environment: "环境变量",
+    secret: "密钥",
+    scenario: "场景变量",
+    step_output: "前序步骤输出",
+    generated: "动态生成",
+    object: "对象",
+  };
+  return labels[sourceType];
 }
 
 function precedingName(options: ReturnType<typeof buildVariableOptions>, binding: ApiAutomationScenarioBinding) {

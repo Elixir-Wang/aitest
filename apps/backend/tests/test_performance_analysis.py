@@ -1,4 +1,5 @@
 import json
+import sqlite3
 from pathlib import Path
 
 import pytest
@@ -9,11 +10,14 @@ from app.core import db as db_core
 from app.core import settings
 from app.core.db import connect
 from app.seed.init_db import init_db
+from app.seed import seeds
 from app.schemas.performance_analysis import PerformanceDiagnosis
 from app.agents.performance_testing.diagnosis import service as diagnosis_service
 from app.services.performance_testing import analysis_service
 from app.services.performance_testing import repair_service
 from app.services.performance_testing.analysis_evidence import collect_performance_evidence, redact_sensitive
+from app.services.performance_testing.diagnosis_orchestrator import generate_validated_diagnosis
+from app.services.performance_testing.fallback_report_service import build_fallback_report_snapshot
 
 
 def _use_temp_db(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -23,6 +27,39 @@ def _use_temp_db(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setattr(db_core, "DATA_DIR", tmp_path)
     monkeypatch.setattr(db_core, "DB_PATH", tmp_path / "test.db")
     init_db()
+
+
+def test_performance_analysis_column_migration_adds_generation_metadata() -> None:
+    db = sqlite3.connect(":memory:")
+    db.row_factory = sqlite3.Row
+    db.execute(
+        """
+        CREATE TABLE performance_analysis_sessions (
+          id TEXT PRIMARY KEY,
+          status TEXT NOT NULL
+        )
+        """
+    )
+    db.execute("INSERT INTO performance_analysis_sessions (id, status) VALUES ('analysis-1', 'waiting_approval')")
+
+    seeds._ensure_performance_analysis_columns(db)
+
+    columns = {str(row["name"]) for row in db.execute("PRAGMA table_info(performance_analysis_sessions)")}
+    migrated = db.execute(
+        """
+        SELECT analysis_status, repair_status, generation_mode, analysis_attempts_json
+        FROM performance_analysis_sessions
+        WHERE id = 'analysis-1'
+        """
+    ).fetchone()
+
+    assert {"generation_mode", "analysis_attempts_json"}.issubset(columns)
+    assert dict(migrated) == {
+        "analysis_status": "completed",
+        "repair_status": "available",
+        "generation_mode": "",
+        "analysis_attempts_json": "[]",
+    }
 
 
 def _seed_evidence_run(report_directory: Path) -> None:
@@ -84,7 +121,7 @@ def _seed_evidence_run(report_directory: Path) -> None:
             """
             INSERT INTO performance_test_scripts (
               id, performance_test_id, project_id, generation_source, code, validation_status
-            ) VALUES (?, ?, ?, 'default_plan', ?, 'confirmed')
+            ) VALUES (?, ?, ?, 'default_plan', ?, 'valid')
             """,
             ("perfscript-1", "perftest-1", "project-1", "class PerformanceUser: pass"),
         )
@@ -376,10 +413,21 @@ def test_diagnosis_service_uses_structured_agent_output() -> None:
             content = payload["messages"][0]["content"]
             assert "<performance_analysis_input>" in content
             assert "</performance_analysis_input>" in content
+            assert '"allowed_evidence_ids": ["metric:failure_count", "metric:failure_rate"]' in content
+            assert '"empty_sections": ["failure_analysis"]' in content
             return {"structured_response": expected.model_dump(mode="json")}
 
     diagnosis, model_name = diagnosis_service.diagnose_performance(
-        {"run": {"id": "perfrun-1"}},
+        {
+            "run": {"id": "perfrun-1"},
+            "metric_snapshot": {
+                "failure_analysis": [],
+                "evidence_index": [
+                    {"evidence_id": "metric:failure_rate"},
+                    {"evidence_id": "metric:failure_count"},
+                ],
+            },
+        },
         selection_resolver=lambda capability_id: FakeSelection(),
         model_builder=lambda selection, **kwargs: object(),
         agent_factory=lambda model: FakeAgent(),
@@ -387,6 +435,209 @@ def test_diagnosis_service_uses_structured_agent_output() -> None:
 
     assert diagnosis == expected
     assert model_name == "test-model"
+    assert diagnosis_service.PROMPT_VERSION == "v3-evidence-contract"
+
+
+def test_diagnosis_service_builds_targeted_repair_prompt() -> None:
+    expected = PerformanceDiagnosis.model_validate(
+        {
+            "category": "external_service",
+            "confidence": 0.6,
+            "direct_cause": "需要补充服务端证据",
+            "root_cause": "当前证据不足",
+            "evidence": [],
+            "proposed_changes": [],
+            "missing_evidence": ["service_metrics"],
+            "requires_second_approval": False,
+            "can_auto_rerun": False,
+        }
+    )
+
+    class FakeSelection:
+        provider = "OpenAI"
+        model = "test-model"
+
+    class FakeAgent:
+        def invoke(self, payload):
+            content = payload["messages"][0]["content"]
+            assert "<performance_analysis_repair>" in content
+            assert "evidence_index:failure_analysis" in content
+            assert "metric:failure_count" in content
+            assert "finding-missing" in content
+            return {"structured_response": expected.model_dump(mode="json")}
+
+    diagnosis, model_name = diagnosis_service.diagnose_performance(
+        {
+            "metric_snapshot": {
+                "failure_analysis": [],
+                "evidence_index": [{"evidence_id": "metric:failure_count"}],
+            }
+        },
+        repair_context={
+            "previous_diagnosis": expected.model_dump(mode="json"),
+            "unknown_evidence_refs": ["evidence_index:failure_analysis"],
+            "unknown_finding_refs": ["finding-missing"],
+        },
+        selection_resolver=lambda capability_id: FakeSelection(),
+        model_builder=lambda selection, **kwargs: object(),
+        agent_factory=lambda model: FakeAgent(),
+    )
+
+    assert diagnosis == expected
+    assert model_name == "test-model"
+
+
+def _structured_diagnosis(*, evidence_refs: list[str]) -> PerformanceDiagnosis:
+    return PerformanceDiagnosis.model_validate(
+        {
+            "category": "external_service",
+            "confidence": 0.7,
+            "direct_cause": "当前负载下响应稳定",
+            "root_cause": "没有足够证据确认服务端瓶颈",
+            "evidence": [],
+            "proposed_changes": [],
+            "missing_evidence": ["service_metrics"],
+            "requires_second_approval": False,
+            "can_auto_rerun": False,
+            "findings": [
+                {
+                    "id": "finding-1",
+                    "severity": "low",
+                    "level": "derived",
+                    "title": "失败率为零",
+                    "statement": "当前运行未观察到失败请求",
+                    "confidence": 0.95,
+                    "evidence_refs": evidence_refs,
+                    "alternative_hypotheses": [],
+                    "missing_evidence": [],
+                }
+            ],
+        }
+    )
+
+
+def _metric_snapshot_for_orchestration() -> dict:
+    return {
+        "verdict": "pass",
+        "aggregate": {
+            "request_count": 248,
+            "failure_count": 0,
+            "failure_rate": 0.0,
+            "requests_per_second": 4.2,
+            "average_response_time_ms": 188.0,
+            "p50_response_time_ms": 150.0,
+            "p95_response_time_ms": 350.0,
+            "p99_response_time_ms": 920.0,
+        },
+        "quality": {"status": "complete", "diagnostic_missing_evidence": []},
+        "capacity": {"stable_throughput": None},
+        "objectives": [{"evidence_id": "objective:failure_rate", "status": "passed"}],
+        "evidence_index": [
+            {"evidence_id": "metric:failure_count"},
+            {"evidence_id": "metric:failure_rate"},
+        ],
+    }
+
+
+def test_diagnosis_orchestrator_returns_primary_success_without_retry() -> None:
+    calls: list[dict | None] = []
+
+    def fake_diagnose(evidence, *, repair_context=None):
+        calls.append(repair_context)
+        return _structured_diagnosis(evidence_refs=["metric:failure_count"]), "test-model"
+
+    result = generate_validated_diagnosis(
+        {"run": {"id": "perfrun-1"}},
+        _metric_snapshot_for_orchestration(),
+        diagnose=fake_diagnose,
+    )
+
+    assert result.generation_mode == "ai_primary"
+    assert result.diagnosis is not None
+    assert len(result.attempts) == 1
+    assert calls == [None]
+
+
+def test_diagnosis_orchestrator_repairs_invalid_references_once() -> None:
+    calls: list[dict | None] = []
+
+    def fake_diagnose(evidence, *, repair_context=None):
+        calls.append(repair_context)
+        if repair_context is None:
+            return _structured_diagnosis(evidence_refs=["evidence_index:failure_analysis"]), "test-model"
+        assert repair_context["unknown_evidence_refs"] == ["evidence_index:failure_analysis"]
+        return _structured_diagnosis(evidence_refs=["metric:failure_count"]), "test-model"
+
+    result = generate_validated_diagnosis(
+        {"run": {"id": "perfrun-1"}},
+        _metric_snapshot_for_orchestration(),
+        diagnose=fake_diagnose,
+    )
+
+    assert result.generation_mode == "ai_repaired"
+    assert result.diagnosis is not None
+    assert [attempt.status for attempt in result.attempts] == ["invalid_references", "completed"]
+    assert len(calls) == 2
+
+
+def test_diagnosis_orchestrator_falls_back_after_second_invalid_response() -> None:
+    calls = 0
+
+    def fake_diagnose(evidence, *, repair_context=None):
+        nonlocal calls
+        calls += 1
+        return _structured_diagnosis(evidence_refs=["evidence_index:failure_analysis"]), "test-model"
+
+    result = generate_validated_diagnosis(
+        {"run": {"id": "perfrun-1"}},
+        _metric_snapshot_for_orchestration(),
+        diagnose=fake_diagnose,
+    )
+
+    assert result.generation_mode == "deterministic_fallback"
+    assert result.diagnosis is None
+    assert calls == 2
+    assert result.warnings[0].code == "AI_DIAGNOSIS_INVALID_REFERENCES"
+
+
+def test_diagnosis_orchestrator_falls_back_without_retry_for_provider_error() -> None:
+    calls = 0
+
+    def fake_diagnose(evidence, *, repair_context=None):
+        nonlocal calls
+        calls += 1
+        raise RuntimeError("provider unavailable")
+
+    result = generate_validated_diagnosis(
+        {"run": {"id": "perfrun-1"}},
+        _metric_snapshot_for_orchestration(),
+        diagnose=fake_diagnose,
+    )
+
+    assert result.generation_mode == "deterministic_fallback"
+    assert result.diagnosis is None
+    assert calls == 1
+    assert result.warnings[0].code == "AI_PROVIDER_UNAVAILABLE"
+
+
+def test_fallback_report_preserves_metrics_without_ai_claims() -> None:
+    report = build_fallback_report_snapshot(
+        _metric_snapshot_for_orchestration(),
+        warnings=[
+            {
+                "code": "AI_DIAGNOSIS_INVALID_REFERENCES",
+                "message": "AI 深度诊断未通过证据引用校验，当前展示基础性能报告。",
+            }
+        ],
+    )
+
+    assert report["verdict"] == "pass"
+    assert "248" in report["executive_summary"]
+    assert report["generation_mode"] == "deterministic_fallback"
+    assert report["ai_analysis_available"] is False
+    assert report["findings"] == []
+    assert report["recommendations"] == []
+    assert "root_cause" not in report
 
 
 def test_diagnosis_service_disables_thinking_for_structured_output() -> None:
@@ -494,6 +745,10 @@ def test_analysis_service_creates_executes_and_lists_structured_analysis(
     assert completed["available_actions"] == ["reanalyze"]
     assert completed["metric_snapshot"]["verdict"] == "indeterminate"
     assert completed["report_snapshot"]["verdict"] == "indeterminate"
+    assert completed["generation_mode"] == "ai_primary"
+    assert completed["analysis_attempts"][0]["status"] == "completed"
+    assert completed["prompt_version"] == "v3-evidence-contract"
+    assert completed["model_name"] == "test-model"
     assert history[0]["id"] == created["id"]
 
 
@@ -537,7 +792,7 @@ def test_terminal_run_schedules_analysis_in_background(monkeypatch: pytest.Monke
     assert started["started"] is True
 
 
-def test_analysis_service_exposes_actionable_rate_limit_error(
+def test_analysis_service_generates_fallback_report_for_rate_limit(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -549,14 +804,6 @@ def test_analysis_service_exposes_actionable_rate_limit_error(
     class RateLimitError(Exception):
         status_code = 429
 
-    logged = {}
-
-    class FakeLogger:
-        def exception(self, message, *args):
-            logged["message"] = message
-            logged["args"] = args
-
-    monkeypatch.setattr(analysis_service, "logger", FakeLogger())
     monkeypatch.setattr(
         analysis_service,
         "diagnose_performance",
@@ -569,19 +816,22 @@ def test_analysis_service_exposes_actionable_rate_limit_error(
     )
 
     analysis_service.execute_analysis(created["id"])
-    failed = analysis_service.get_analysis(
+    completed = analysis_service.get_analysis(
         "project-1",
         created["id"],
         {"id": "u-admin", "role": "admin", "project_scope": "全部项目"},
     )
 
-    assert failed["status"] == "failed"
-    assert "429" in failed["error_message"]
-    assert "频率限制" in failed["error_message"]
-    assert logged["message"].startswith("performance_analysis_failed")
-    assert logged["args"][:3] == (created["id"], "project-1", "perfrun-1")
-    assert logged["args"][3:5] == ("RateLimitError", 429)
-    assert logged["args"][5] == "too many requests"
+    assert completed["status"] == "waiting_approval"
+    assert completed["analysis_status"] == "completed"
+    assert completed["repair_status"] == "not_applicable"
+    assert completed["generation_mode"] == "deterministic_fallback"
+    assert completed["analysis_attempts"][0]["status"] == "provider_error"
+    assert completed["analysis_attempts"][0]["error_code"] == "AI_PROVIDER_RATE_LIMITED"
+    assert completed["report_snapshot"]["generation_mode"] == "deterministic_fallback"
+    assert completed["report_snapshot"]["generation_warnings"][0]["code"] == "AI_PROVIDER_RATE_LIMITED"
+    assert completed["error_message"] == ""
+    assert completed["available_actions"] == ["reanalyze"]
 
 
 def test_ai_repair_applies_selected_config_generates_script_and_starts_rerun(
@@ -636,7 +886,7 @@ def test_ai_repair_applies_selected_config_generates_script_and_starts_rerun(
     assert json.loads(test_row["data_config_json"])["json_rows"] == [
         {"start_date": "2026-02-01", "end_date": "2026-02-05"}
     ]
-    assert dict(script_row) == {"generation_source": "ai_plan", "validation_status": "confirmed"}
+    assert dict(script_row) == {"generation_source": "ai_plan", "validation_status": "valid"}
 
 
 def test_ai_repair_preflight_failure_keeps_original_config(

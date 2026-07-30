@@ -104,7 +104,36 @@ def _scenario_py() -> str:
                 return {}
             if step_type == "poll":
                 return _poll(api_client, step, variables, outputs)
-            return _request(api_client, step, variables, outputs)
+            return _request_with_lifecycle(api_client, step, variables, outputs)
+
+
+        def _request_with_lifecycle(api_client, step, variables, outputs):
+            config = step.get("control_config") or {}
+            pre_request = config.get("pre_request") or {}
+            post_response = config.get("post_response") or {}
+            _apply_variable_actions(pre_request.get("actions") or [], variables, variables, outputs)
+            retries = max(0, int(config.get("retries", 0) or 0))
+            retry_interval = max(0, float(config.get("retry_interval_ms", 1000) or 0)) / 1000
+            for attempt in range(retries + 1):
+                try:
+                    result = _request(api_client, step, variables, outputs)
+                    _apply_variable_actions(post_response.get("actions") or [], result, variables, outputs)
+                    return result
+                except Exception:
+                    if attempt >= retries:
+                        raise
+                    if retry_interval:
+                        time.sleep(retry_interval)
+
+
+        def _apply_variable_actions(actions, target, variables, outputs):
+            for action in actions:
+                if action.get("type") != "set_variable":
+                    raise ValueError("不支持的生命周期变量动作: " + str(action.get("type")))
+                name = str(action.get("name") or "").strip()
+                if not name:
+                    raise ValueError("生命周期变量动作缺少变量名")
+                target[name] = _resolve_source(action.get("source") or {}, variables, outputs)
 
 
         def _poll(api_client, step, variables, outputs):
@@ -139,14 +168,115 @@ def _scenario_py() -> str:
                     _set_pointer(request, target.removeprefix("/request"), value)
                 elif target.startswith("/test_data/"):
                     _set_pointer(test_data, target.removeprefix("/test_data"), value)
-            response = api_client.request(request, test_data)
+            response = _dispatch_request(api_client, request, test_data, endpoint)
             assert_response_assertions(response, step.get("assertions") or case.get("assertions") or [])
             return _extract(response, step.get("extractors") or [])
+
+
+        def _dispatch_request(api_client, request, test_data, endpoint):
+            multipart = request.get("multipart_form")
+            form = request.get("form")
+            session = getattr(api_client, "session", None)
+            base_url = str(getattr(api_client, "base_url", "") or "").rstrip("/")
+            if session is None or not base_url or (multipart is None and form is None):
+                return api_client.request(request, test_data)
+            method = str(request.get("method") or endpoint.get("method") or "GET").upper()
+            path = _expand_request_path(str(request.get("path") or endpoint.get("path") or ""), request, test_data)
+            headers = dict(_expand_runtime_value(request.get("headers") or {}))
+            query = _expand_runtime_value(request.get("query") or {})
+            cookies = _expand_runtime_value(request.get("cookies") or {})
+            timeout = getattr(api_client, "timeout", 30)
+            if multipart is not None:
+                _pop_header(headers, "Content-Type")
+                parts, handles = _multipart_parts(multipart, request.get("files") or {})
+                try:
+                    return session.request(
+                        method,
+                        f"{base_url}{path}",
+                        params=query or None,
+                        headers=headers or None,
+                        cookies=cookies or None,
+                        files=parts or None,
+                        timeout=timeout,
+                        stream=_is_sse_endpoint(endpoint),
+                    )
+                finally:
+                    for handle in handles:
+                        handle.close()
+            return session.request(
+                method,
+                f"{base_url}{path}",
+                params=query or None,
+                headers=headers or None,
+                cookies=cookies or None,
+                data=_expand_runtime_value(form),
+                timeout=timeout,
+                stream=_is_sse_endpoint(endpoint),
+            )
+
+
+        def _expand_request_path(path, request, test_data):
+            values = {}
+            for source in (test_data or {}, request.get("path_params") or {}):
+                for key, value in source.items():
+                    values[key] = value.get("value") if isinstance(value, dict) and "value" in value else value
+            expanded = _expand_runtime_value(path)
+            for key, value in values.items():
+                expanded = expanded.replace("{" + str(key) + "}", quote(str(_expand_runtime_value(value)), safe=""))
+            return expanded
+
+
+        def _expand_runtime_value(value):
+            if isinstance(value, dict): return {key: _expand_runtime_value(item) for key, item in value.items()}
+            if isinstance(value, list): return [_expand_runtime_value(item) for item in value]
+            if not isinstance(value, str): return value
+            return re.sub(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}", lambda match: os.getenv(match.group(1), match.group(0)), value)
+
+
+        def _multipart_parts(form, file_specs):
+            parts = []
+            handles = []
+            for field, value in _expand_runtime_value(form).items():
+                serialized = json.dumps(value, ensure_ascii=False) if isinstance(value, (dict, list)) else str(value)
+                parts.append((field, (None, serialized)))
+            try:
+                for field, raw_specs in file_specs.items():
+                    specs = raw_specs if isinstance(raw_specs, list) else [raw_specs]
+                    for raw_spec in specs:
+                        spec = raw_spec if isinstance(raw_spec, dict) else {"path": raw_spec}
+                        file_path = Path(str(_expand_runtime_value(spec.get("path", "")))).expanduser()
+                        if not file_path.is_file():
+                            raise RuntimeError(f"Upload file does not exist for field {field}: {file_path}")
+                        handle = file_path.open("rb")
+                        handles.append(handle)
+                        filename = str(_expand_runtime_value(spec.get("filename") or file_path.name))
+                        content_type = str(_expand_runtime_value(spec.get("content_type") or "application/octet-stream"))
+                        parts.append((field, (filename, handle, content_type)))
+                return parts, handles
+            except Exception:
+                for handle in handles:
+                    handle.close()
+                raise
+
+
+        def _pop_header(headers, name):
+            for key in list(headers):
+                if str(key).lower() == name.lower():
+                    headers.pop(key, None)
+
+
+        def _is_sse_endpoint(endpoint):
+            for response in (endpoint.get("responses") or {}).values():
+                content = response.get("content") if isinstance(response, dict) else {}
+                if any("text/event-stream" in str(content_type).lower() for content_type in (content or {})):
+                    return True
+            return False
 
 
         def _resolve_source(source, variables, outputs):
             kind = source.get("type")
             if kind == "literal": return source.get("value")
+            if kind == "object": return {key: _resolve_source(item, variables, outputs) for key, item in (source.get("properties") or {}).items()}
             if kind == "environment": return os.getenv(str(source.get("key") or source.get("name") or ""), variables.get(source.get("key") or source.get("name")))
             if kind == "scenario": return variables.get(source.get("name"))
             if kind == "user_input": return os.getenv("API_SCENARIO_INPUT_" + str(source.get("name", "")).upper())
@@ -184,7 +314,10 @@ def _scenario_py() -> str:
 
         def _json_path(value, path):
             if not path or path == "$": return value
-            tokens = path.removeprefix("$").strip(".").replace("[", ".").replace("]", "").split(".")
+            if path.startswith("/"):
+                tokens = [part.replace("~1", "/").replace("~0", "~") for part in path.strip("/").split("/") if part]
+            else:
+                tokens = path.removeprefix("$").strip(".").replace("[", ".").replace("]", "").split(".")
             current = value
             for token in (token for token in tokens if token):
                 if isinstance(current, dict): current = current.get(token)

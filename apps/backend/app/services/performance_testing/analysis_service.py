@@ -9,6 +9,8 @@ from app.core.logging import logger
 from app.repositories import performance_analysis_repo, project_repo
 from app.services.performance_testing import run_repo
 from app.services.performance_testing.analysis_evidence import collect_performance_evidence, has_analyzable_evidence
+from app.services.performance_testing.diagnosis_orchestrator import generate_validated_diagnosis
+from app.services.performance_testing.fallback_report_service import build_fallback_report_snapshot
 from app.services.performance_testing.metric_snapshot_service import (
     CALCULATOR_VERSION,
     build_metric_snapshot,
@@ -99,14 +101,54 @@ def execute_analysis(analysis_id: str) -> None:
                 calculator_version=CALCULATOR_VERSION,
                 source_fingerprint=metric_snapshot["source_fingerprint"],
             )
-        diagnosis, model_name = diagnose_performance({**evidence, "metric_snapshot": metric_snapshot})
-        report_snapshot = build_report_snapshot(metric_snapshot, diagnosis)
-        proposal = {
-            "changes": [change.model_dump(mode="json") for change in diagnosis.proposed_changes],
-            "requires_second_approval": diagnosis.requires_second_approval,
-            "can_auto_rerun": diagnosis.can_auto_rerun,
-            "readonly": False,
-        }
+        generation = generate_validated_diagnosis(
+            evidence,
+            metric_snapshot,
+            diagnose=diagnose_performance,
+        )
+        diagnosis = generation.diagnosis
+        if diagnosis is None:
+            report_snapshot = build_fallback_report_snapshot(metric_snapshot, warnings=generation.warnings)
+            proposal = {
+                "changes": [],
+                "requires_second_approval": False,
+                "can_auto_rerun": False,
+                "readonly": True,
+            }
+            category = "insufficient_evidence"
+            summary = str(report_snapshot["executive_summary"])
+            direct_cause = ""
+            root_cause = ""
+            confidence = 0.0
+            diagnosis_evidence: list[dict] = []
+            missing_evidence = list((metric_snapshot.get("quality") or {}).get("diagnostic_missing_evidence") or [])
+            logger.warning(
+                "performance_analysis_fallback_generated | analysis_id={} project_id={} run_id={} error_code={}",
+                analysis_id,
+                project_id,
+                run_id,
+                generation.warnings[0].code if generation.warnings else "",
+            )
+        else:
+            report_snapshot = build_report_snapshot(metric_snapshot, diagnosis)
+            report_snapshot["generation_mode"] = generation.generation_mode
+            report_snapshot["ai_analysis_available"] = True
+            report_snapshot["generation_warnings"] = [
+                warning.model_dump(mode="json") for warning in generation.warnings
+            ]
+            proposal = {
+                "changes": [change.model_dump(mode="json") for change in diagnosis.proposed_changes],
+                "requires_second_approval": diagnosis.requires_second_approval,
+                "can_auto_rerun": diagnosis.can_auto_rerun,
+                "readonly": False,
+            }
+            category = diagnosis.category
+            summary = diagnosis.direct_cause
+            direct_cause = diagnosis.direct_cause
+            root_cause = diagnosis.root_cause
+            confidence = diagnosis.confidence
+            diagnosis_evidence = [item.model_dump(mode="json") for item in diagnosis.evidence]
+            missing_evidence = diagnosis.missing_evidence
         applicable_changes = [
             change
             for change in proposal["changes"]
@@ -120,17 +162,20 @@ def execute_analysis(analysis_id: str) -> None:
                 analysis_status="completed",
                 analysis_stage="report_ready",
                 repair_status="available" if applicable_changes else "not_applicable",
-                category=diagnosis.category,
-                summary=diagnosis.direct_cause,
-                direct_cause=diagnosis.direct_cause,
-                root_cause=diagnosis.root_cause,
-                confidence=diagnosis.confidence,
-                evidence=[item.model_dump(mode="json") for item in diagnosis.evidence],
-                missing_evidence=diagnosis.missing_evidence,
+                category=category,
+                summary=summary,
+                direct_cause=direct_cause,
+                root_cause=root_cause,
+                confidence=confidence,
+                evidence=diagnosis_evidence,
+                missing_evidence=missing_evidence,
                 proposal=proposal,
                 report_snapshot=report_snapshot,
                 prompt_version=PROMPT_VERSION,
-                model_name=model_name,
+                model_name=generation.model_name,
+                generation_mode=generation.generation_mode,
+                analysis_attempts=[attempt.model_dump(mode="json") for attempt in generation.attempts],
+                error_message="",
                 finished_at=_now(),
             )
     except Exception as exc:

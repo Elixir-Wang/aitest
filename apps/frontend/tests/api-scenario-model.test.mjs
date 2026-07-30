@@ -1,8 +1,11 @@
 import {
+  buildEndpointRequestFields,
   buildVariableOptions,
   createEndpointStep,
   createUtilityStep,
+  formatValueSource,
   moveScenarioStep,
+  normalizeRequestLifecycleConfig,
   toScenarioStepInput,
   validateScenarioDraft,
 } from "../src/components/ai-testing/api-automation/api-scenario-model.mjs";
@@ -47,6 +50,93 @@ test("creates scenario steps directly from endpoint assets", () => {
   assert.equal(step.api_test_case_id, null);
   assert.equal(step.step_type, "api_request");
   assert.equal(step.name, "创建订单");
+});
+
+test("formats every persisted value source with its canonical field", () => {
+  assert.equal(formatValueSource({ type: "literal", value: "multi-agent-server" }), "multi-agent-server");
+  assert.equal(formatValueSource({ type: "secret", key: "robot_key" }), "{{ secret.robot_key }}");
+  assert.equal(formatValueSource({ type: "environment", key: "region" }), "{{ environment.region }}");
+  assert.equal(formatValueSource({ type: "scenario", name: "username" }), "{{ scenario.username }}");
+  assert.equal(formatValueSource({ type: "user_input", name: "question" }), "{{ user_input.question }}");
+  assert.equal(formatValueSource({ type: "generated", generator: "uuid4" }), "{{ generated.uuid4 }}");
+  assert.equal(
+    formatValueSource({ type: "step_output", step_id: "step-1", variable: "token" }, "登录"),
+    "{{ 登录.token }}",
+  );
+  assert.equal(
+    formatValueSource({ type: "object", properties: { question: { type: "user_input", name: "question" } } }),
+    "对象（1 个字段）",
+  );
+});
+
+test("expands endpoint parameters and multipart body into canonical request fields", () => {
+  const fields = buildEndpointRequestFields({
+    parameters: [
+      { name: "tenant", in: "query", required: true },
+      { name: "X-Token", in: "header", required: true },
+    ],
+    request_body: {
+      content: {
+        "multipart/form-data": {
+          schema: {
+            type: "object",
+            required: ["data"],
+            properties: {
+              data: { type: "string", description: "JSON string" },
+              file: { type: "string", format: "binary" },
+            },
+          },
+        },
+      },
+    },
+  });
+
+  assert.equal(fields.bodyMode, "multipart");
+  assert.deepEqual(
+    fields.fields.map(({ key, location, target }) => ({ key, location, target })),
+    [
+      { key: "tenant", location: "query", target: "/request/query/tenant" },
+      { key: "X-Token", location: "header", target: "/request/headers/X-Token" },
+      { key: "data", location: "multipart", target: "/request/multipart_form/data" },
+      { key: "file", location: "multipart", target: "/request/multipart_form/file" },
+    ],
+  );
+});
+
+test("normalizes request lifecycle defaults without replacing existing step fields", () => {
+  const step = {
+    ...createEndpointStep(endpoint, "project-1", "scenario-1", "step-1"),
+    request_overrides: { request: { headers: { "X-Tenant": "demo" } }, test_data: {} },
+    control_config: { timeout_ms: 15000 },
+  };
+
+  const lifecycle = normalizeRequestLifecycleConfig(step);
+
+  assert.deepEqual(lifecycle.pre_request, { actions: [], script: "" });
+  assert.deepEqual(lifecycle.post_response, { actions: [], script: "" });
+  assert.equal(lifecycle.timeout_ms, 15000);
+  assert.equal(lifecycle.retries, 0);
+  assert.equal(lifecycle.retry_interval_ms, 1000);
+  assert.deepEqual(step.request_overrides.request.headers, { "X-Tenant": "demo" });
+});
+
+test("rejects malformed raw JSON and incomplete lifecycle actions", () => {
+  const step = {
+    ...createEndpointStep(endpoint, "project-1", "scenario-1", "step-1"),
+    request_overrides: {
+      request: { body_mode: "json", raw_body: "{invalid" },
+      test_data: {},
+    },
+    control_config: {
+      pre_request: { actions: [{ type: "set_variable", name: "", source: { type: "literal", value: 1 } }] },
+    },
+  };
+
+  const result = validateScenarioDraft({ name: "订单流程", steps: [step] });
+
+  assert.equal(result.valid, false);
+  assert.ok(result.errors.some((error) => error.includes("JSON Body")));
+  assert.ok(result.errors.some((error) => error.includes("前置变量动作")));
 });
 
 test("creates utility steps with executable default control config", () => {
@@ -167,6 +257,57 @@ test("rejects forward output references", () => {
         {
           target: "/request/body/orderId",
           source: { type: "step_output", step_id: "step-2", variable: "orderId" },
+        },
+      ],
+    },
+    { ...createEndpointStep(endpoint, "project-1", "scenario-1", "step-2"), extractors: [{ name: "orderId" }] },
+  ];
+
+  const issues = validateScenarioDraft({ name: "订单链路", steps });
+
+  assert.ok(issues.errors.some((issue) => issue.includes("只能引用前序步骤")));
+});
+
+test("serializes literal bindings as request overrides without losing their values", () => {
+  const step = {
+    ...createEndpointStep(endpoint, "project-1", "scenario-1", "step-1"),
+    request_overrides: {},
+    bindings: [
+      {
+        target: "/request/headers/cybertron-app-id",
+        source: { type: "literal", value: "multi-agent-server" },
+      },
+      {
+        target: "/request/headers/cybertron-robot-key",
+        source: { type: "secret", key: "robot_key" },
+      },
+    ],
+  };
+
+  const serialized = toScenarioStepInput(step, 0);
+
+  assert.equal(serialized.request_overrides.request.headers["cybertron-app-id"], "multi-agent-server");
+  assert.deepEqual(serialized.bindings, [
+    {
+      target: "/request/headers/cybertron-robot-key",
+      source: { type: "secret", key: "robot_key" },
+    },
+  ]);
+});
+
+test("rejects forward output references nested in object sources", () => {
+  const steps = [
+    {
+      ...createEndpointStep(endpoint, "project-1", "scenario-1", "step-1"),
+      bindings: [
+        {
+          target: "/request/body/payload",
+          source: {
+            type: "object",
+            properties: {
+              orderId: { type: "step_output", step_id: "step-2", variable: "orderId" },
+            },
+          },
         },
       ],
     },

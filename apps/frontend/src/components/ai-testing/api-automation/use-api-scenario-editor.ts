@@ -402,20 +402,19 @@ export function useApiScenarioEditor(projectId: string, scenarioId?: string) {
   }
 
   async function applyAiPlan() {
-    if (!aiPlan || !scenario || aiPlan.expected_revision === null) return;
+    if (!aiPlan || !scenario) return;
     setAiBusy(true);
     try {
       const applied = await applyApiScenarioAiPlan(projectId, aiPlan.plan_id, {
         scenario_id: scenario.id,
-        expected_revision: aiPlan.expected_revision,
-        confirmation: "apply_preview",
+        confirmation: "overwrite_draft",
       });
       applyScenario(applied);
       setAiPlan(null);
       setAiLifecycleStatus(null);
       window.sessionStorage.removeItem(aiPlanStorageKey(projectId, scenario.id));
       setValidation(null);
-      toast.success("AI 编排已应用到场景草稿");
+      toast.success("AI 编排已覆盖当前场景草稿");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "AI 编排应用失败");
     } finally {

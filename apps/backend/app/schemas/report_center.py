@@ -15,6 +15,8 @@ class ReportCenterItemOut(BaseModel):
     analysis_version: int
     name: str
     status: Literal["collecting", "analyzing", "completed", "failed"]
+    generation_mode: str = ""
+    generation_status: Literal["generating", "generated", "degraded", "failed"] = "generating"
     verdict: Literal["pass", "conditional_pass", "fail", "indeterminate"]
     quality_status: Literal["complete", "partial", "invalid"]
     error_message: str

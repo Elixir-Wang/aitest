@@ -7,6 +7,7 @@ from datetime import datetime
 from typing import Any
 
 from app.services.performance_testing.analysis_metrics import build_analysis_metrics
+from app.services.performance_testing.diagnosis_validation import require_valid_diagnosis_references
 
 
 CALCULATOR_VERSION = "performance-metrics-v2"
@@ -56,7 +57,7 @@ def build_metric_snapshot(evidence: dict[str, Any]) -> dict[str, Any]:
 
 
 def build_report_snapshot(metric_snapshot: dict[str, Any], diagnosis: Any) -> dict[str, Any]:
-    _validate_structured_diagnosis(metric_snapshot, diagnosis)
+    require_valid_diagnosis_references(metric_snapshot, diagnosis)
     evidence = [item.model_dump(mode="json") for item in diagnosis.evidence]
     evidence_ids = [f"diagnosis:{index + 1}" for index in range(len(evidence))]
     findings = [item.model_dump(mode="json") for item in diagnosis.findings]
@@ -343,23 +344,6 @@ def _severity(verdict: Any) -> str:
     if verdict in {"conditional_pass", "indeterminate"}:
         return "medium"
     return "low"
-
-
-def _validate_structured_diagnosis(metric_snapshot: dict[str, Any], diagnosis: Any) -> None:
-    evidence_ids = {
-        str(item.get("evidence_id"))
-        for item in metric_snapshot.get("evidence_index", [])
-        if isinstance(item, dict) and item.get("evidence_id")
-    }
-    finding_ids = {item.id for item in diagnosis.findings}
-    for finding in diagnosis.findings:
-        unknown = sorted(set(finding.evidence_refs) - evidence_ids)
-        if unknown:
-            raise ValueError(f"性能诊断引用了未知证据：{', '.join(unknown)}")
-    for recommendation in diagnosis.recommendations:
-        unknown = sorted(set(recommendation.finding_refs) - finding_ids)
-        if unknown:
-            raise ValueError(f"性能建议引用了未知 finding：{', '.join(unknown)}")
 
 
 __all__ = ["CALCULATOR_VERSION", "build_metric_snapshot", "build_report_snapshot"]

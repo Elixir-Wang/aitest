@@ -389,3 +389,102 @@ Run the configured directory-level `npm run check`, or invoke Biome through a sh
 - Related Files: `apps/frontend/src/app/(main)/test-cases/page.tsx`
 
 ---
+
+## [ERR-20260730-001] sqlite-debug-query-selected-secret-columns
+
+**Logged**: 2026-07-30T17:00:00+08:00
+**Priority**: high
+**Status**: resolved
+**Area**: security
+
+### Summary
+An ad hoc SQLite diagnostic query selected every column from model provider records, which included plaintext credential fields unrelated to the debugging task.
+
+### Error
+```text
+The query used SELECT * against a configuration table containing secret columns.
+```
+
+### Context
+- The goal was only to identify the model assigned to `performance_report_analysis`.
+- Selecting all columns exposed unrelated credential values in command output.
+
+### Suggested Fix
+For configuration diagnostics, explicitly select only required non-secret columns such as `id`, `provider`, `model`, `status`, and assignment identifiers. Never use `SELECT *` on tables that may contain credentials.
+
+### Metadata
+- Reproducible: yes
+- Related Files: `apps/backend/data/ai_testing.db`
+
+---
+## 2026-07-30 - Windows `start` title quoting failed
+
+**Status**: resolved
+**Area**: tooling
+
+### Summary
+Starting the frontend with `cmd.exe start` misparsed the quoted window title as a filesystem path.
+
+### Error
+```text
+The system cannot find the file \frontend-dev\.
+```
+
+### Context
+- The command nested quoted `cmd.exe /c` arguments inside the shell tool.
+- The task only needed a hidden background process for visual verification.
+
+### Suggested Fix
+Prefer a detached Node child process or PowerShell `Start-Process -WindowStyle Hidden` when available instead of nested `cmd.exe start` quoting.
+
+### Metadata
+- Reproducible: yes
+- Related Files: `apps/frontend/package.json`
+
+## [ERR-20260730-001] PowerShell symbol lookup returned multiple matches
+
+**Logged**: 2026-07-30T19:15:00+08:00
+**Priority**: low
+**Status**: resolved
+**Area**: tooling
+
+### Summary
+Subtracting a line offset from `Select-String.LineNumber` failed because multiple matches returned an array.
+
+### Error
+`Method invocation failed because [System.Object[]] does not contain a method named op_Subtraction.`
+
+### Resolution
+Use `rg -n` with an exact symbol and select a single match before calculating line offsets.
+
+---
+
+## [ERR-20260730-002] apply_patch context used an inaccurate test name
+
+**Logged**: 2026-07-30T19:15:00+08:00
+**Priority**: low
+**Status**: resolved
+**Area**: tooling
+
+### Summary
+A patch failed because the expected test function name did not match the repository.
+
+### Resolution
+Locate the exact insertion point with `rg -n '^def test_generated_scenario_runtime'` before applying the patch.
+
+---
+
+## [ERR-20260730-003] apply_patch context assumed stale scenario serializer
+
+**Logged**: 2026-07-30T20:00:00+08:00
+**Priority**: low
+**Status**: resolved
+**Area**: tooling
+
+### Summary
+A patch failed because the current uncommitted `toScenarioStepInput` implementation used fallback expressions that differed from the previously inspected context.
+
+### Resolution
+Read the exact narrow function range immediately before patching files with concurrent uncommitted changes, then apply smaller patches.
+
+---

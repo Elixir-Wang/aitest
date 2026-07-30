@@ -86,6 +86,19 @@ class GeneratedValueSource(StrictModel):
         return self
 
 
+class ObjectValueSource(StrictModel):
+    type: Literal["object"]
+    properties: dict[str, Any] = Field(default_factory=dict, max_length=100)
+
+    @field_validator("properties")
+    @classmethod
+    def validate_properties(cls, value: dict[str, Any]) -> dict[str, Any]:
+        return {
+            str(name): VALUE_SOURCE_ADAPTER.validate_python(source).model_dump(exclude_none=True)
+            for name, source in value.items()
+        }
+
+
 ValueSource: TypeAlias = Annotated[
     LiteralValueSource
     | UserInputValueSource
@@ -93,7 +106,8 @@ ValueSource: TypeAlias = Annotated[
     | SecretValueSource
     | ScenarioValueSource
     | StepOutputValueSource
-    | GeneratedValueSource,
+    | GeneratedValueSource
+    | ObjectValueSource,
     Field(discriminator="type"),
 ]
 VALUE_SOURCE_ADAPTER = TypeAdapter(ValueSource)
@@ -326,10 +340,14 @@ def parameter_target_from_legacy_pointer(pointer: str) -> ParameterTarget:
 
 def binding_to_runtime(binding: ScenarioBinding | dict[str, Any]) -> dict[str, Any]:
     parsed = binding if isinstance(binding, ScenarioBinding) else ScenarioBinding.model_validate(binding)
-    source = parsed.source.model_dump(exclude_none=True)
-    if source["type"] == "environment":
-        source["name"] = source.pop("key")
-    return {"target": parsed.target.legacy_pointer(), "source": source}
+    result: dict[str, Any] = {
+        "target": parsed.target.legacy_pointer(),
+        "source": source_to_runtime(parsed.source),
+        "required": parsed.required,
+    }
+    if parsed.transform:
+        result["transform"] = parsed.transform
+    return result
 
 
 def extractor_to_runtime(extractor: ScenarioExtractor | dict[str, Any]) -> dict[str, Any]:
@@ -370,6 +388,11 @@ def source_to_runtime(source: ValueSource | dict[str, Any]) -> dict[str, Any]:
     result = parsed.model_dump(exclude_none=True)
     if result["type"] == "environment":
         result["name"] = result.pop("key")
+    elif result["type"] == "object":
+        result["properties"] = {
+            name: source_to_runtime(child)
+            for name, child in result.get("properties", {}).items()
+        }
     return result
 
 

@@ -14,6 +14,19 @@ function Assert-Command($Name) {
 Assert-Command "uv"
 Assert-Command "npm"
 
+$NextCache = Join-Path $FrontendRoot ".next"
+if (Test-Path -LiteralPath $NextCache) {
+    $ResolvedFrontendRoot = (Resolve-Path -LiteralPath $FrontendRoot).Path.TrimEnd("\", "/")
+    $ResolvedNextCache = (Resolve-Path -LiteralPath $NextCache).Path
+    if ((Split-Path -Parent $ResolvedNextCache) -ne $ResolvedFrontendRoot -or
+        (Split-Path -Leaf $ResolvedNextCache) -ne ".next") {
+        throw "拒绝清理非预期目录: $ResolvedNextCache"
+    }
+
+    Write-Host "清理前端 Next.js 缓存: $ResolvedNextCache" -ForegroundColor Yellow
+    Remove-Item -LiteralPath $ResolvedNextCache -Recurse -Force
+}
+
 Write-Host "启动后端: http://127.0.0.1:18000" -ForegroundColor Cyan
 Start-Process powershell.exe -WorkingDirectory $BackendRoot -ArgumentList @(
     "-NoExit",

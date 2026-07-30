@@ -113,7 +113,8 @@ def response_slots(endpoint: dict[str, Any]) -> list[AssetSlot]:
         for content_type, media in content.items():
             schema = media.get("schema") if isinstance(media, dict) and isinstance(media.get("schema"), dict) else {}
             if "event-stream" in str(content_type).lower():
-                slots.extend(_schema_slots(schema, "sse_event_json", content_type=str(content_type), response_status=str(status)))
+                event_schema = media.get("x-event-data-schema") if isinstance(media.get("x-event-data-schema"), dict) else schema
+                slots.extend(_schema_slots(event_schema, "sse_event_json", content_type=str(content_type), response_status=str(status)))
             else:
                 slots.extend(_schema_slots(schema, "json_body", content_type=str(content_type), response_status=str(status)))
     return _dedupe_slots(slots)
@@ -151,6 +152,20 @@ def environment_schema_projection(row: Any | None) -> dict[str, Any]:
 
 
 def _schema_slots(schema: dict[str, Any], location: str, *, content_type: str = "", response_status: str = "", required: bool = False, prefix: str = "") -> list[AssetSlot]:
+    encoded_schema = schema.get("x-json-schema") if isinstance(schema.get("x-json-schema"), dict) else None
+    if prefix and encoded_schema:
+        name = prefix.rsplit("/", 1)[-1].replace("~1", "/").replace("~0", "~")
+        return [
+            AssetSlot(name, location, prefix, _schema_type(schema), required, _is_sensitive(name, schema), response_status, content_type),
+            *_schema_slots(
+                encoded_schema,
+                location,
+                content_type=content_type,
+                response_status=response_status,
+                required=required,
+                prefix=prefix,
+            ),
+        ]
     properties = schema.get("properties") if isinstance(schema.get("properties"), dict) else {}
     required_names = set(schema.get("required") if isinstance(schema.get("required"), list) else [])
     if properties:

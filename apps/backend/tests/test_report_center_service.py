@@ -19,7 +19,15 @@ def _use_temp_db(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     init_db()
 
 
-def _seed_report(db, *, project_id: str, project_name: str, suffix: str, verdict: str = "fail") -> None:
+def _seed_report(
+    db,
+    *,
+    project_id: str,
+    project_name: str,
+    suffix: str,
+    verdict: str = "fail",
+    generation_mode: str = "ai_primary",
+) -> None:
     db.execute(
         "INSERT INTO projects (id, name, status, description, created_by) VALUES (?, ?, 'active', '', 'u-admin')",
         (project_id, project_name),
@@ -51,15 +59,16 @@ def _seed_report(db, *, project_id: str, project_name: str, suffix: str, verdict
         """
         INSERT INTO performance_analysis_sessions (
           id, project_id, run_id, status, analysis_status, analysis_stage,
-          analysis_version, report_snapshot_json, metric_snapshot_json, created_by
-        ) VALUES (?, ?, ?, 'waiting_approval', 'completed', 'completed', 1, ?, ?, 'u-admin')
+          analysis_version, report_snapshot_json, metric_snapshot_json, generation_mode, created_by
+        ) VALUES (?, ?, ?, 'waiting_approval', 'completed', 'completed', 1, ?, ?, ?, 'u-admin')
         """,
         (
             f"analysis-{suffix}",
             project_id,
             f"run-{suffix}",
-            json.dumps({"verdict": verdict}),
+            json.dumps({"verdict": verdict, "generation_mode": generation_mode}),
             json.dumps({"quality": {"status": "complete"}}),
+            generation_mode,
         ),
     )
 
@@ -75,7 +84,28 @@ def test_report_center_lists_frozen_performance_reports(monkeypatch: pytest.Monk
     assert reports[0]["name"] == "压测-a - 性能智能分析报告"
     assert reports[0]["verdict"] == "fail"
     assert reports[0]["quality_status"] == "complete"
+    assert reports[0]["generation_mode"] == "ai_primary"
+    assert reports[0]["generation_status"] == "generated"
     assert reports[0]["href"] == "/projects/project-a/performance-tests/test-a/runs/run-a/analysis/analysis-a"
+
+
+def test_report_center_marks_deterministic_fallback_as_degraded(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    with core_db.connect() as db:
+        _seed_report(
+            db,
+            project_id="project-a",
+            project_name="项目A",
+            suffix="a",
+            verdict="pass",
+            generation_mode="deterministic_fallback",
+        )
+
+    reports = report_center_service.list_reports("performance", "all", ADMIN)
+
+    assert reports[0]["status"] == "completed"
+    assert reports[0]["generation_mode"] == "deterministic_fallback"
+    assert reports[0]["generation_status"] == "degraded"
 
 
 def test_report_center_limits_rows_to_visible_projects(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:

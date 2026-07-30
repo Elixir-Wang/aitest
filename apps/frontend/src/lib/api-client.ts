@@ -1004,12 +1004,36 @@ export type ApiAutomationScenarioStepType = "api_request" | "condition" | "wait"
 export type ApiAutomationScenarioBinding = {
   target: string;
   source: {
-    type: "literal" | "environment" | "scenario" | "step_output";
+    type:
+      | "literal"
+      | "user_input"
+      | "environment"
+      | "secret"
+      | "scenario"
+      | "step_output"
+      | "generated"
+      | "object";
     value?: unknown;
     name?: string;
+    key?: string;
+    generator?: string;
     step_id?: string;
     variable?: string;
+    properties?: Record<string, ApiAutomationScenarioBinding["source"]>;
   };
+  required?: boolean;
+  transform?: "string" | "integer" | "number" | "boolean" | "json_encode" | "url_encode" | null;
+};
+
+export type ApiScenarioAiPlanValueSource = {
+  type: "literal" | "user_input" | "environment" | "secret" | "scenario" | "step_output" | "generated" | "object";
+  value?: unknown;
+  name?: string;
+  key?: string;
+  generator?: string;
+  step_id?: string;
+  variable?: string;
+  properties?: Record<string, ApiScenarioAiPlanValueSource>;
 };
 
 export type ApiScenarioAiPlanBinding = {
@@ -1017,15 +1041,7 @@ export type ApiScenarioAiPlanBinding = {
     location: "path" | "query" | "header" | "cookie" | "json_body" | "form" | "multipart" | "raw_body";
     path: string;
   };
-  source: {
-    type: "literal" | "user_input" | "environment" | "secret" | "scenario" | "step_output" | "generated";
-    value?: unknown;
-    name?: string;
-    key?: string;
-    generator?: string;
-    step_id?: string;
-    variable?: string;
-  };
+  source: ApiScenarioAiPlanValueSource;
   required?: boolean;
   transform?: "string" | "integer" | "number" | "boolean" | "json_encode" | "url_encode" | null;
 };
@@ -1410,6 +1426,8 @@ export type ReportCenterItem = {
   analysis_version: number;
   name: string;
   status: "collecting" | "analyzing" | "completed" | "failed";
+  generation_mode: string;
+  generation_status: "generating" | "generated" | "degraded" | "failed";
   verdict: "pass" | "conditional_pass" | "fail" | "indeterminate";
   quality_status: "complete" | "partial" | "invalid";
   error_message: string;
@@ -1588,6 +1606,12 @@ export type PerformanceReportSnapshot = {
     proposed_change_id?: string;
   }>;
   diagnosis_evidence?: Array<PerformanceAnalysisEvidence & { evidence_id: string }>;
+  generation_mode?: "ai_primary" | "ai_repaired" | "deterministic_fallback";
+  ai_analysis_available?: boolean;
+  generation_warnings?: Array<{
+    code: string;
+    message: string;
+  }>;
 };
 
 export type PerformanceAnalysis = {
@@ -1618,6 +1642,8 @@ export type PerformanceAnalysis = {
   calculator_version: string;
   prompt_version: string;
   source_fingerprint: string;
+  generation_mode: "" | "ai_primary" | "ai_repaired" | "deterministic_fallback";
+  analysis_attempts: Array<Record<string, unknown>>;
   audience: "engineer" | "technical_manager" | "business_owner";
   model_name: string;
   error_message: string;
@@ -2233,7 +2259,7 @@ export function createApiScenarioAiPlan(
 export function applyApiScenarioAiPlan(
   projectId: string,
   planId: string,
-  payload: { scenario_id: string; expected_revision: number; confirmation: string },
+  payload: { scenario_id: string; confirmation: "overwrite_draft" },
 ) {
   return apiRequest<ApiAutomationScenario>(`/projects/${projectId}/api-scenarios/ai-plans/${planId}/apply`, {
     method: "POST",

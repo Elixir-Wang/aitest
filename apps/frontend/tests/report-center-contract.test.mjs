@@ -21,6 +21,14 @@ test("report center defaults to performance and opens the frozen report detail",
   assert.doesNotMatch(pageSource, /新建报告/);
 });
 
+test("report center distinguishes deterministic fallback reports", () => {
+  assert.match(apiClientSource, /generation_mode: string/);
+  assert.match(apiClientSource, /generation_status: "generating" \| "generated" \| "degraded" \| "failed"/);
+  assert.match(pageSource, /generationStatusLabel\(report\.generation_status\)/);
+  assert.match(pageSource, /degraded: "基础报告"/);
+  assert.match(pageSource, /status === "degraded"/);
+});
+
 test("report center hides project, analysis version, and archive description", () => {
   assert.doesNotMatch(pageSource, /<TableHead>项目<\/TableHead>/);
   assert.doesNotMatch(pageSource, /\{report\.project_name\}<\/TableCell>/);

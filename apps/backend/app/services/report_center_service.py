@@ -51,6 +51,18 @@ def _serialize_performance_report(row: Row) -> dict[str, Any]:
     test_id = str(row["test_id"])
     run_id = str(row["run_id"])
     status = _analysis_status(str(row["legacy_status"]), str(row["analysis_status"] or ""))
+    generation_mode = str(row["generation_mode"] or report_snapshot.get("generation_mode") or "")
+    if not generation_mode and status == "completed":
+        generation_mode = "ai_primary"
+    generation_status = (
+        "degraded"
+        if generation_mode == "deterministic_fallback"
+        else "failed"
+        if status == "failed"
+        else "generated"
+        if status == "completed"
+        else "generating"
+    )
     return {
         "id": analysis_id,
         "report_type": "performance",
@@ -63,6 +75,8 @@ def _serialize_performance_report(row: Row) -> dict[str, Any]:
         "analysis_version": int(row["analysis_version"]),
         "name": f"{row['test_name']} - 性能智能分析报告",
         "status": status,
+        "generation_mode": generation_mode,
+        "generation_status": generation_status,
         "verdict": verdict,
         "quality_status": str(quality.get("status") or "invalid"),
         "error_message": str(row["error_message"] or ""),
