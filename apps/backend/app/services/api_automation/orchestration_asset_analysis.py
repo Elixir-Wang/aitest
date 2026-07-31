@@ -11,6 +11,7 @@ from typing import Any, Iterable
 
 _SENSITIVE_KEY_RE = re.compile(r"(?:authorization|cookie|token|secret|password|api[_-]?key|key)$", re.IGNORECASE)
 _SUCCESS_STATUS_RE = re.compile(r"^2(?:\d\d|XX)$")
+MODEL_SUMMARY_SLOT_LIMIT = 24
 
 
 @dataclass(frozen=True)
@@ -23,6 +24,12 @@ class AssetSlot:
     sensitive: bool = False
     response_status: str = ""
     content_type: str = ""
+    default_value: Any = None
+    has_default: bool = False
+    enum: tuple[Any, ...] = ()
+    examples: tuple[Any, ...] = ()
+    nested_schema: dict[str, Any] | None = None
+    event_name: str = ""
 
     def public(self) -> dict[str, Any]:
         return {
@@ -34,6 +41,12 @@ class AssetSlot:
             "sensitive": self.sensitive,
             "response_status": self.response_status,
             "content_type": self.content_type,
+            "has_default": self.has_default and not self.sensitive,
+            "default_value": self.default_value if self.has_default and not self.sensitive else None,
+            "enum": list(self.enum) if not self.sensitive else [],
+            "examples": list(self.examples) if not self.sensitive else [],
+            "nested_schema": self.nested_schema if self.nested_schema and not self.sensitive else None,
+            "event_name": self.event_name,
         }
 
 
@@ -55,6 +68,8 @@ def endpoint_fingerprint(endpoints: Iterable[dict[str, Any]]) -> str:
 
 def endpoint_summary(endpoint: dict[str, Any]) -> dict[str, Any]:
     """Small model-safe summary. Detailed schemas stay in compiler-owned analysis."""
+    request = request_slots(endpoint)
+    response = response_slots(endpoint)
     return {
         "id": endpoint.get("id", ""),
         "method": endpoint.get("method", ""),
@@ -62,11 +77,38 @@ def endpoint_summary(endpoint: dict[str, Any]) -> dict[str, Any]:
         "summary": str(endpoint.get("summary", ""))[:300],
         "description": str(endpoint.get("description", ""))[:500],
         "tags": list(endpoint.get("tags", []))[:20],
-        "request_slot_count": len(request_slots(endpoint)),
-        "response_slot_count": len(response_slots(endpoint)),
-        "request_slots": [slot.public() for slot in request_slots(endpoint)],
-        "response_slots": [slot.public() for slot in response_slots(endpoint)],
+        "request_slot_count": len(request),
+        "response_slot_count": len(response),
+        "request_slots": [_model_slot_summary(slot) for slot in request[:MODEL_SUMMARY_SLOT_LIMIT]],
+        "response_slots": [_model_slot_summary(slot) for slot in response[:MODEL_SUMMARY_SLOT_LIMIT]],
     }
+
+
+def _model_slot_summary(slot: AssetSlot) -> dict[str, Any]:
+    """Bounded slot projection for the model; compiler still receives full schemas."""
+    return {
+        "name": slot.name,
+        "location": slot.location,
+        "path": slot.path,
+        "value_type": slot.value_type,
+        "required": slot.required,
+        "sensitive": slot.sensitive,
+        "response_status": slot.response_status,
+        "content_type": slot.content_type,
+        "has_default": slot.has_default and not slot.sensitive,
+        "default_value": _bounded_model_value(slot.default_value) if slot.has_default and not slot.sensitive else None,
+        "enum": [_bounded_model_value(value) for value in slot.enum[:10]] if not slot.sensitive else [],
+        "examples": [_bounded_model_value(value) for value in slot.examples[:2]] if not slot.sensitive else [],
+        "event_name": slot.event_name,
+    }
+
+
+def _bounded_model_value(value: Any) -> Any:
+    if isinstance(value, str):
+        return value[:200]
+    if isinstance(value, (int, float, bool)) or value is None:
+        return value
+    return None
 
 
 def request_slots(endpoint: dict[str, Any]) -> list[AssetSlot]:
@@ -86,7 +128,8 @@ def request_slots(endpoint: dict[str, Any]) -> list[AssetSlot]:
                 path=f"/{_escape_pointer(name)}",
                 value_type=_schema_type(schema),
                 required=bool(parameter.get("required")),
-                sensitive=_is_sensitive(name, parameter),
+                sensitive=_is_sensitive(name, schema),
+                **_slot_metadata(schema),
             )
         )
     request_body = endpoint.get("request_body") if isinstance(endpoint.get("request_body"), dict) else {}
@@ -96,7 +139,7 @@ def request_slots(endpoint: dict[str, Any]) -> list[AssetSlot]:
     for content_type, media in content.items():
         schema = media.get("schema") if isinstance(media, dict) and isinstance(media.get("schema"), dict) else {}
         location = _body_location(str(content_type))
-        slots.extend(_schema_slots(schema, location, content_type=str(content_type), required=bool(request_body.get("required"))))
+        slots.extend(_schema_slots(schema, location, content_type=str(content_type), required=False))
     return _dedupe_slots(slots)
 
 
@@ -113,6 +156,8 @@ def response_slots(endpoint: dict[str, Any]) -> list[AssetSlot]:
         for content_type, media in content.items():
             schema = media.get("schema") if isinstance(media, dict) and isinstance(media.get("schema"), dict) else {}
             if "event-stream" in str(content_type).lower():
+                event_schema = media.get("x-event-data-schema") if isinstance(media, dict) else None
+                schema = event_schema if isinstance(event_schema, dict) else schema
                 slots.extend(_schema_slots(schema, "sse_event_json", content_type=str(content_type), response_status=str(status)))
             else:
                 slots.extend(_schema_slots(schema, "json_body", content_type=str(content_type), response_status=str(status)))
@@ -163,11 +208,11 @@ def _schema_slots(schema: dict[str, Any], location: str, *, content_type: str = 
             if nested:
                 slots.extend(nested)
             else:
-                slots.append(AssetSlot(str(name), location, path, _schema_type(child_schema), child_required, _is_sensitive(str(name), child_schema), response_status, content_type))
+                slots.append(AssetSlot(str(name), location, path, _schema_type(child_schema), child_required, _is_sensitive(str(name), child_schema), response_status, content_type, **_slot_metadata(child_schema)))
         return slots
     if prefix:
         name = prefix.rsplit("/", 1)[-1].replace("~1", "/").replace("~0", "~")
-        return [AssetSlot(name, location, prefix, _schema_type(schema), required, _is_sensitive(name, schema), response_status, content_type)]
+        return [AssetSlot(name, location, prefix, _schema_type(schema), required, _is_sensitive(name, schema), response_status, content_type, **_slot_metadata(schema))]
     return []
 
 
@@ -204,6 +249,20 @@ def _body_location(content_type: str) -> str:
 def _schema_type(schema: dict[str, Any]) -> str:
     value = str(schema.get("type") or "").lower()
     return {"string": "string", "integer": "integer", "number": "number", "boolean": "boolean", "object": "object", "array": "array", "file": "file"}.get(value, "any")
+
+
+def _slot_metadata(schema: dict[str, Any]) -> dict[str, Any]:
+    examples = schema.get("examples") if isinstance(schema.get("examples"), list) else []
+    if "example" in schema:
+        examples = [schema["example"], *examples]
+    nested_schema = schema.get("x-json-schema")
+    return {
+        "default_value": schema.get("default"),
+        "has_default": "default" in schema,
+        "enum": tuple(schema.get("enum")) if isinstance(schema.get("enum"), list) else (),
+        "examples": tuple(examples[:5]),
+        "nested_schema": nested_schema if isinstance(nested_schema, dict) else None,
+    }
 
 
 def _python_value_type(value: Any) -> str:

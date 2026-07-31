@@ -278,7 +278,7 @@ export function ApiScenarioCanvas({
           <AlertDialogHeader>
             <AlertDialogTitle>删除节点“{pendingDeleteStep?.name}”？</AlertDialogTitle>
             <AlertDialogDescription>
-              节点会从当前草稿中移除并重新排列执行顺序。后续步骤如引用了该节点的输出，需要重新配置。
+              节点会从当前编排中移除并重新排列执行顺序。后续步骤如引用了该节点的输出，需要重新配置。
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

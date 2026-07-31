@@ -1,4 +1,5 @@
-﻿import assert from "node:assert/strict";
+﻿import { buildAiPlanPresentation } from "../src/components/ai-testing/api-automation/api-scenario-ai-plan-view.mjs";
+import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 
@@ -26,19 +27,23 @@ test("AI scenario generation uses an accepted background task contract", () => {
   assert.doesNotMatch(hookSource, /const plan = await createApiScenarioAiPlan/);
 });
 
-test("AI orchestration stays in the right drawer until the generated plan is ready", () => {
+test("AI orchestration submits without blocking the editor while the plan generates", () => {
   assert.match(editorSource, /AiOrchestrationDrawer/);
   assert.match(editorSource, /<Drawer direction="right"/);
   assert.doesNotMatch(editorSource, /<Drawer direction="right"[^>]*modal=\{false\}/);
   assert.match(editorSource, /onOpenChange=\{setAiDrawerOpen\}/);
   assert.doesNotMatch(editorSource, /if \(open \|\| !editor\.aiBusy\) setAiDrawerOpen\(open\)/);
   assert.match(editorSource, /\{busy \? "关闭" : "取消"\}/);
-  assert.match(editorSource, /data-\[vaul-drawer-direction=right\]:sm:max-w-\[480px\]/);
+  assert.match(editorSource, /data-\[vaul-drawer-direction=right\]:w-\[min\(92vw,760px\)\]/);
+  assert.match(editorSource, /data-\[vaul-drawer-direction=right\]:sm:max-w-\[760px\]/);
+  assert.match(editorSource, /<OneClipboard[^>]*label="复制方案"[^>]*text=\{JSON\.stringify\(plan, null, 2\)\}/);
+  assert.doesNotMatch(editorSource, /<DrawerFooter/);
   assert.doesNotMatch(editorSource, /function AiOrchestrationDialog/);
   assert.match(editorSource, /await onGenerate\(goal\.trim\(\), \{ requireCleanup \}\)/);
   assert.doesNotMatch(editorSource, /if \(accepted\) onOpenChange\(false\)/);
   assert.match(editorSource, /selectedEndpointIds/);
   assert.match(hookSource, /source_scope: \{ endpoint_ids: endpointIds \}/);
+  assert.doesNotMatch(hookSource, /for \(let attempt = 0; attempt < 90;/);
 });
 
 test("AI plan bindings use structured targets for stable rendering", () => {
@@ -46,6 +51,101 @@ test("AI plan bindings use structured targets for stable rendering", () => {
   assert.match(clientSource, /location: .*json_body.*multipart.*raw_body/);
   assert.match(editorSource, /key=\{`\$\{node\.id\}-\$\{binding\.target\.location\}-\$\{binding\.target\.path\}`\}/);
   assert.match(editorSource, /formatBindingTarget\(binding\.target\)/);
+  assert.match(editorSource, /AI 完整步骤配置/);
+  assert.match(editorSource, /JSON\.stringify\(step\.rawNode, null, 2\)/);
+  assert.match(editorSource, /<details className="group border-b last:border-b-0"/);
+});
+
+test("AI plan preview explains the execution chain and removes repeated configuration", () => {
+  const plan = {
+    scenario_name: "生成编码并发起对话",
+    description: "先生成编码，再发起 SSE 对话",
+    inputs: [{ name: "username", label: "用户名", required: true, description: "本次对话的用户" }],
+    nodes: [
+      {
+        id: "generate",
+        type: "api_request",
+        endpoint_id: "generate-endpoint",
+        name: "生成 segment code",
+        bindings: [
+          { target: { location: "header", path: "/app-id" }, source: { type: "literal", value: "agent-server" } },
+        ],
+      },
+      {
+        id: "dialog",
+        type: "api_request",
+        endpoint_id: "dialog-endpoint",
+        name: "发起 SSE 对话",
+        bindings: [
+          { target: { location: "header", path: "/app-id" }, source: { type: "literal", value: "agent-server" } },
+          {
+            target: { location: "multipart", path: "/segment_code" },
+            source: { type: "step_output", step_id: "generate", variable: "segment_code" },
+          },
+          { target: { location: "multipart", path: "/username" }, source: { type: "user_input", name: "username" } },
+        ],
+      },
+    ],
+    validation: { errors: [], warnings: ["步骤 dialog 的 multipart /username 需要运行时输入。"] },
+  };
+  const endpoints = [
+    { id: "generate-endpoint", method: "POST", path: "/segment-code/gen", summary: "生成对话编码" },
+    { id: "dialog-endpoint", method: "POST", path: "/multi-agent/sse", summary: "发起流式对话" },
+  ];
+
+  const view = buildAiPlanPresentation(plan, endpoints, "完成一次流式对话");
+
+  assert.equal(view.goal, "完成一次流式对话");
+  assert.equal(view.steps[1].path, "/multi-agent/sse");
+  assert.deepEqual(view.steps[1].dependencies[0], {
+    stepId: "generate",
+    stepName: "生成 segment code",
+    variable: "segment_code",
+    target: "segment_code",
+  });
+  assert.equal(view.commonParameters.length, 1);
+  assert.equal(view.commonParameters[0].value, "agent-server");
+  assert.equal(
+    view.steps[1].parameters.some((parameter) => parameter.name === "app-id"),
+    false,
+  );
+  assert.deepEqual(view.actionItems[0].targets, ["发起 SSE 对话 · username"]);
+});
+
+test("AI plan preview keeps complete literal and input default values", () => {
+  const view = buildAiPlanPresentation(
+    {
+      scenario_name: "值展示",
+      inputs: [
+        {
+          name: "data",
+          label: "请求数据",
+          required: true,
+          default_value: { question: "上海今天的天气怎么样", stream: true },
+        },
+      ],
+      nodes: [
+        {
+          id: "dialog",
+          type: "api_request",
+          endpoint_id: "dialog-endpoint",
+          bindings: [
+            {
+              target: { location: "header", path: "/app-id" },
+              source: { type: "literal", value: "multi-agent-server" },
+            },
+            { target: { location: "multipart", path: "/data" }, source: { type: "user_input", name: "data" } },
+          ],
+        },
+      ],
+      validation: { errors: [], warnings: [] },
+    },
+    [{ id: "dialog-endpoint", method: "POST", path: "/multi-agent/sse", summary: "发起流式对话" }],
+  );
+
+  assert.equal(view.steps[0].parameters[0].value, "multi-agent-server");
+  assert.equal(view.steps[0].parameters[1].value, '{"question":"上海今天的天气怎么样","stream":true}');
+  assert.equal(view.actionItems[0].value, '{"question":"上海今天的天气怎么样","stream":true}');
 });
 
 test("top running task cards link back to task details", () => {

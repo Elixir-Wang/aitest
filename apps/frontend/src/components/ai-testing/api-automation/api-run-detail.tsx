@@ -198,7 +198,7 @@ export function ApiRunDetail({ projectId, runId }: { projectId: string; runId: s
             {run.target_type === "scenario" ? (
               <div className="grid gap-3 rounded-md border p-4 sm:grid-cols-3">
                 <RunDetailValue label="场景" value={run.execution_snapshot.scenario?.name ?? "已删除场景"} />
-                <RunDetailValue label="发布版本" value={`v${run.execution_snapshot.scenario?.revision ?? "-"}`} />
+                <RunDetailValue label="执行版本" value={`v${run.execution_snapshot.scenario?.revision ?? "-"}`} />
                 <RunDetailValue label="步骤数" value={`${run.execution_snapshot.scenario?.step_count ?? 0} 个`} />
               </div>
             ) : (

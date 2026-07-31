@@ -12,7 +12,6 @@ import {
   type ApiAutomationScenarioRevision,
   type ApiAutomationScenarioRunResult,
   type ApiAutomationScenarioStep,
-  ApiRequestError,
   type ApiScenarioAiPlan,
   type ApiScenarioAiPlanAccepted,
   type ApiScenarioAiPlanResponse,
@@ -27,10 +26,8 @@ import {
   listApiAutomationEndpoints,
   listApiAutomationEnvironments,
   listApiAutomationScenarioRevisions,
-  publishApiAutomationScenario,
-  replaceApiAutomationScenarioSteps,
   restoreApiAutomationScenarioRevision,
-  updateApiAutomationScenario,
+  saveApiAutomationScenarioVersion,
   validateApiAutomationScenario,
 } from "@/lib/api-client";
 import { toast } from "@/lib/toast";
@@ -75,6 +72,7 @@ export function useApiScenarioEditor(projectId: string, scenarioId?: string) {
   const [scenarioRunResult, setScenarioRunResult] = useState<ApiAutomationScenarioRunResult | null>(null);
   const [runDrawerOpen, setRunDrawerOpen] = useState(false);
   const [aiPlan, setAiPlan] = useState<ApiScenarioAiPlan | null>(null);
+  const [activeAiPlanId, setActiveAiPlanId] = useState("");
   const [aiBusy, setAiBusy] = useState(false);
   const [aiLifecycleStatus, setAiLifecycleStatus] = useState<ApiScenarioAiPlanAccepted["lifecycle_status"] | null>(
     null,
@@ -131,8 +129,9 @@ export function useApiScenarioEditor(projectId: string, scenarioId?: string) {
 
   useEffect(() => {
     if (!scenario?.id || aiPlan) return;
-    const storageKey = aiPlanStorageKey(projectId, scenario.id);
-    const planId = window.sessionStorage.getItem(storageKey);
+    const currentScenarioId = scenario.id;
+    const storageKey = aiPlanStorageKey(projectId, currentScenarioId);
+    const planId = activeAiPlanId || window.sessionStorage.getItem(storageKey);
     if (!planId) return;
     const recoveredPlanId = planId;
     let cancelled = false;
@@ -143,17 +142,22 @@ export function useApiScenarioEditor(projectId: string, scenarioId?: string) {
         if (cancelled) return;
         if ("status" in response && response.status === "preview") {
           setAiPlan(response);
+          setActiveAiPlanId("");
           setAiLifecycleStatus("completed");
           return;
         }
         if ("lifecycle_status" in response && response.lifecycle_status === "generating") {
           setAiLifecycleStatus("generating");
-          timer = window.setTimeout(() => void recover(), 1000);
+          timer = window.setTimeout(() => void recover(), 3000);
           return;
         }
         window.sessionStorage.removeItem(storageKey);
+        setActiveAiPlanId("");
       } catch {
-        if (!cancelled) window.sessionStorage.removeItem(storageKey);
+        if (!cancelled) {
+          window.sessionStorage.removeItem(storageKey);
+          setActiveAiPlanId("");
+        }
       }
     }
     void recover();
@@ -161,7 +165,7 @@ export function useApiScenarioEditor(projectId: string, scenarioId?: string) {
       cancelled = true;
       if (timer) window.clearTimeout(timer);
     };
-  }, [aiPlan, projectId, scenario?.id]);
+  }, [activeAiPlanId, aiPlan, projectId, scenario]);
 
   const refreshRevisions = useCallback(
     async (targetScenarioId: string) => {
@@ -246,22 +250,23 @@ export function useApiScenarioEditor(projectId: string, scenarioId?: string) {
       const name = draft.name.trim();
       if (!name) throw new Error("请填写场景名称");
       const creating = !scenario;
-      const target = scenario
-        ? await updateApiAutomationScenario(projectId, scenario.id, {
-            name,
-            description: draft.description.trim(),
-            variables: draft.variables,
-          })
-        : await createApiAutomationScenario(projectId, {
-            name,
-            description: draft.description.trim(),
-            variables: draft.variables,
-          });
-      const saved = await replaceApiAutomationScenarioSteps(
-        projectId,
-        target.id,
-        draft.steps.map((step, stepOrder) => toScenarioStepInput(step, stepOrder)),
-      );
+      if (scenario && !dirty) {
+        if (showToast) toast.success(`当前已是 v${scenario.revision}`);
+        return scenario;
+      }
+      const target =
+        scenario ??
+        (await createApiAutomationScenario(projectId, {
+          name,
+          description: draft.description.trim(),
+          variables: draft.variables,
+        }));
+      const saved = await saveApiAutomationScenarioVersion(projectId, target.id, {
+        name,
+        description: draft.description.trim(),
+        variables: draft.variables,
+        steps: draft.steps.map((step, stepOrder) => toScenarioStepInput(step, stepOrder)),
+      });
       if (draftVersion === draftVersionRef.current) {
         applyScenario(saved);
       } else {
@@ -269,19 +274,12 @@ export function useApiScenarioEditor(projectId: string, scenarioId?: string) {
       }
       setValidation(null);
       if (creating) router.replace(`/projects/${projectId}/automation/api/scenarios/${saved.id}`);
-      if (showToast) toast.success(creating ? "场景已创建" : "场景已保存");
+      await refreshRevisions(saved.id);
+      if (showToast) toast.success(`版本 v${saved.revision} 已保存`);
       return saved;
     },
-    [applyScenario, draft, projectId, router, scenario],
+    [applyScenario, dirty, draft, projectId, refreshRevisions, router, scenario],
   );
-
-  useEffect(() => {
-    if (!scenario || !dirty || busy || !localValidation.valid) return;
-    const timer = window.setTimeout(() => {
-      void saveScenario(false).catch(() => undefined);
-    }, 1000);
-    return () => window.clearTimeout(timer);
-  }, [busy, dirty, localValidation.valid, saveScenario, scenario]);
 
   async function withBusy(action: () => Promise<void>) {
     setBusy(true);
@@ -309,52 +307,31 @@ export function useApiScenarioEditor(projectId: string, scenarioId?: string) {
     });
   }
 
-  async function handlePublish() {
-    if (!scenario) return;
-    await withBusy(async () => {
-      const saved = await saveScenario(false);
-      try {
-        applyScenario(await publishApiAutomationScenario(projectId, saved.id));
-      } catch (error) {
-        if (!(error instanceof ApiRequestError) || error.code !== "API_SCENARIO_ASSET_CHANGES_UNCONFIRMED") throw error;
-        const changes = saved.asset_changes
-          .map(
-            (change) =>
-              `${saved.steps.find((step) => step.id === change.step_id)?.name ?? change.endpoint_id}: ${change.fields.join("、")}`,
-          )
-          .join("\n");
-        if (!window.confirm(`接口资产已发生变化：\n${changes}\n\n确认使用最新资产发布？`)) return;
-        applyScenario(await publishApiAutomationScenario(projectId, saved.id, true));
-      }
-      await refreshRevisions(saved.id);
-      toast.success("场景已发布");
-    });
-  }
-
   async function handleRestoreRevision(revision: number) {
     if (!scenario) return;
-    if (!window.confirm(`确认将版本 v${revision} 恢复为当前草稿？当前未发布修改会被覆盖。`)) return;
+    if (!window.confirm(`确认以版本 v${revision} 的编排生成一个新版本？`)) return;
     await withBusy(async () => {
-      applyScenario(await restoreApiAutomationScenarioRevision(projectId, scenario.id, revision));
+      const restored = await restoreApiAutomationScenarioRevision(projectId, scenario.id, revision);
+      applyScenario(restored);
       await refreshRevisions(scenario.id);
       setValidation(null);
-      toast.success(`已将版本 v${revision} 恢复为草稿`);
+      toast.success(`已从 v${revision} 生成版本 v${restored.revision}`);
     });
   }
 
-  async function handleExecute(source: "published" | "draft" = "published") {
+  async function handleExecute() {
     if (!selectedEnvironmentId) {
       toast.error("请选择运行环境");
       return;
     }
     await withBusy(async () => {
       const saved = await saveScenario(false);
-      const run = await executeApiAutomationScenario(projectId, saved.id, selectedEnvironmentId, source);
+      const run = await executeApiAutomationScenario(projectId, saved.id, selectedEnvironmentId, "published");
       setLatestRunId(run.id);
       setLatestRunStatus(run.status);
       setScenarioRunResult(null);
       setRunDrawerOpen(true);
-      toast.success(source === "draft" ? "草稿运行已启动" : "场景运行已启动");
+      toast.success("场景运行已启动");
       await pollScenarioRun(run.id);
     });
   }
@@ -374,24 +351,10 @@ export function useApiScenarioEditor(projectId: string, scenarioId?: string) {
         },
       });
       window.sessionStorage.setItem(aiPlanStorageKey(projectId, saved.id), accepted.plan_id);
+      setActiveAiPlanId(accepted.plan_id);
       notifyAiTaskStarted();
       toast.info("AI 编排任务已提交，可从顶部查看状态");
-      for (let attempt = 0; attempt < 90; attempt += 1) {
-        const response: ApiScenarioAiPlanResponse = await getApiScenarioAiPlan(projectId, accepted.plan_id);
-        if ("status" in response && response.status === "preview") {
-          setAiPlan(response);
-          setAiLifecycleStatus("completed");
-          return accepted;
-        }
-        if ("lifecycle_status" in response && response.lifecycle_status === "failed") {
-          throw new Error("AI 编排计划生成失败，请稍后重试");
-        }
-        if ("lifecycle_status" in response && response.lifecycle_status === "expired") {
-          throw new Error("AI 编排计划已过期，请重新生成");
-        }
-        await new Promise((resolve) => window.setTimeout(resolve, 1000));
-      }
-      throw new Error("AI 编排仍在生成中，请稍后从任务中心查看");
+      return accepted;
     } catch (error) {
       setAiLifecycleStatus("failed");
       toast.error(error instanceof Error ? error.message : "AI 编排失败");
@@ -411,11 +374,12 @@ export function useApiScenarioEditor(projectId: string, scenarioId?: string) {
         confirmation: "apply_preview",
       });
       applyScenario(applied);
+      await refreshRevisions(scenario.id);
       setAiPlan(null);
       setAiLifecycleStatus(null);
       window.sessionStorage.removeItem(aiPlanStorageKey(projectId, scenario.id));
       setValidation(null);
-      toast.success("AI 编排已应用到场景草稿");
+      toast.success(`AI 编排已生成版本 v${applied.revision}`);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "AI 编排应用失败");
     } finally {
@@ -473,13 +437,13 @@ export function useApiScenarioEditor(projectId: string, scenarioId?: string) {
       reorderSteps,
       saveScenario: handleSave,
       validateScenario: handleValidate,
-      publishScenario: handlePublish,
       executeScenario: handleExecute,
       restoreRevision: handleRestoreRevision,
       generateAiPlan,
       applyAiPlan,
       discardAiPlan: () => {
         if (scenario?.id) window.sessionStorage.removeItem(aiPlanStorageKey(projectId, scenario.id));
+        setActiveAiPlanId("");
         setAiPlan(null);
         setAiLifecycleStatus(null);
       },

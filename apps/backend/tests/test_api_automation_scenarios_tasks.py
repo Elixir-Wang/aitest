@@ -8,7 +8,7 @@ from app.core.db import connect
 from app.repositories import api_automation_repo
 from app.seed.init_db import init_db
 from app.seed.seeds import seed_system_defaults
-from app.schemas.api_automation import ApiScenarioIn, ApiScenarioStepIn, ApiScenarioStepsReplaceIn
+from app.schemas.api_automation import ApiScenarioIn, ApiScenarioStepIn, ApiScenarioStepsReplaceIn, ApiScenarioVersionSaveIn
 from app.services import task_service
 from app.services.api_automation import service
 
@@ -201,7 +201,7 @@ def test_published_scenario_reports_and_confirms_endpoint_asset_changes(
     assert service.get_api_scenario("project-1", scenario["id"], ACTOR)["asset_changes"] == []
 
 
-def test_scenario_revisions_are_preserved_and_can_restore_as_draft(
+def test_scenario_revisions_include_orchestration_and_restore_as_new_version(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -238,9 +238,40 @@ def test_scenario_revisions_are_preserved_and_can_restore_as_draft(
     restored = service.restore_api_scenario_revision("project-1", scenario["id"], 1, ACTOR)
 
     assert [item["revision"] for item in revisions] == [2, 1]
-    assert restored["status"] == "draft"
+    assert revisions[0]["snapshot"]["steps"][0]["name"] == "查询资料并校验"
+    assert restored["status"] == "ready"
+    assert restored["revision"] == 3
     assert restored["steps"][0]["name"] == "查询资料"
-    assert [item["revision"] for item in service.list_api_scenario_revisions("project-1", scenario["id"], ACTOR)] == [2, 1]
+    assert [item["revision"] for item in service.list_api_scenario_revisions("project-1", scenario["id"], ACTOR)] == [3, 2, 1]
+
+
+def test_saving_versions_keeps_only_the_latest_five(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    _seed_project_endpoint_and_runs()
+    scenario = service.create_api_scenario("project-1", ApiScenarioIn(name="资料查询"), ACTOR)
+
+    for version in range(1, 7):
+        saved = service.save_api_scenario_version(
+            "project-1",
+            scenario["id"],
+            ApiScenarioVersionSaveIn(
+                name=f"资料查询 {version}",
+                steps=[
+                    ApiScenarioStepIn(
+                        endpoint_id="apiend-1",
+                        name=f"查询资料 {version}",
+                        assertions=[{"type": "status_code", "expected": 200}],
+                    )
+                ],
+            ),
+            ACTOR,
+        )
+        assert saved["revision"] == version
+
+    revisions = service.list_api_scenario_revisions("project-1", scenario["id"], ACTOR)
+
+    assert [item["revision"] for item in revisions] == [6, 5, 4, 3, 2]
+    assert revisions[0]["snapshot"]["steps"][0]["name"] == "查询资料 6"
 
 
 def test_scenario_utility_steps_validate_with_supported_control_config(

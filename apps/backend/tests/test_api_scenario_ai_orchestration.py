@@ -1,5 +1,6 @@
 ﻿from pathlib import Path
 from types import SimpleNamespace
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -17,6 +18,8 @@ from app.schemas.api_automation import ApiScenarioAiPlanApplyIn, ApiScenarioAiPl
 from app.seed.init_db import init_db
 from app.services.api_automation import service
 from app.services.api_automation.orchestration_compiler import compile_plan
+from app.services.api_automation.orchestration_asset_analysis import endpoint_summary, request_slots, response_slots
+from app.agents.api_automation.pytest_requests.renderer import render_scenario_files
 
 
 ACTOR = {"id": "u-admin", "role": "admin", "nickname": "管理员", "username": "admin", "project_scope": "全部项目"}
@@ -114,6 +117,37 @@ def test_ai_plan_is_preview_until_explicitly_applied(monkeypatch: pytest.MonkeyP
     with connect() as db:
         row = db.execute("SELECT status FROM api_scenario_ai_plans WHERE id = ?", (plan["plan_id"],)).fetchone()
         assert row["status"] == "applied"
+
+
+def test_ai_plan_can_apply_after_draft_changes(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    scenario_id = _setup(monkeypatch, tmp_path)
+    _mock_plan_agent(monkeypatch, _valid_plan())
+
+    plan = service.create_api_scenario_ai_plan(
+        "project-1",
+        ApiScenarioAiPlanIn(goal="查询用户资料", scenario_id=scenario_id),
+        ACTOR,
+    )
+    service.update_api_scenario(
+        "project-1",
+        scenario_id,
+        ApiScenarioIn(name="资料场景已修改", description="AI 计划生成后的草稿修改"),
+        ACTOR,
+    )
+
+    applied = service.apply_api_scenario_ai_plan(
+        "project-1",
+        plan["plan_id"],
+        ApiScenarioAiPlanApplyIn(
+            scenario_id=scenario_id,
+            expected_revision=plan["expected_revision"],
+            confirmation="apply_preview",
+        ),
+        ACTOR,
+    )
+
+    assert applied["name"] == "资料场景已修改"
+    assert [step["endpoint_id"] for step in applied["steps"]] == ["apiend-1"]
 
 
 def test_ai_plan_failure_is_persisted_for_task_center(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -284,6 +318,113 @@ def test_compiler_binds_json_response_to_required_multipart_field() -> None:
     assert [(edge.source, edge.target) for edge in compiled.edges] == [("generate", "stream")]
 
 
+def test_compiler_uses_environment_value_for_required_parameter() -> None:
+    endpoint = {
+        "id": "apiend-1",
+        "method": "GET",
+        "path": "/profile",
+        "parameters": [{"name": "tenant", "in": "query", "required": True, "schema": {"type": "string"}}],
+        "request_body": {},
+        "responses": {"200": {"description": "ok"}},
+    }
+
+    compiled = compile_plan(
+        ScenarioPlanResult(nodes=[ScenarioPlanNode(id="profile", type="api_request", endpoint_id="apiend-1")]),
+        [endpoint],
+        {"configured": True, "variables": [{"key": "tenant", "configured": True}], "secrets": [], "auth_type": "none"},
+    )
+
+    assert compiled.nodes[0].bindings[0].source.type == "environment"
+    assert compiled.nodes[0].bindings[0].source.key == "tenant"
+
+
+def test_compiler_binds_all_matching_non_sensitive_environment_fields() -> None:
+    endpoint = {
+        "id": "apiend-1",
+        "method": "GET",
+        "path": "/profile",
+        "parameters": [
+            {"name": "tenant", "in": "query", "required": False, "schema": {"type": "string"}},
+            {"name": "trace_id", "in": "header", "required": False, "schema": {"type": "string"}},
+            {"name": "authorization", "in": "header", "required": False, "schema": {"type": "string", "x-sensitive": True}},
+        ],
+        "request_body": {},
+        "responses": {"200": {"description": "ok"}},
+    }
+    plan = ScenarioPlanResult(
+        nodes=[
+            ScenarioPlanNode(
+                id="profile",
+                type="api_request",
+                endpoint_id="apiend-1",
+                bindings=[
+                    {"target": {"location": "query", "path": "/tenant"}, "source": {"type": "literal", "value": "fixed"}},
+                    {"target": {"location": "header", "path": "/trace_id"}, "source": {"type": "literal", "value": "fixed"}},
+                ],
+            )
+        ]
+    )
+
+    compiled = compile_plan(
+        plan,
+        [endpoint],
+        {
+            "configured": True,
+            "variables": [
+                {"key": "tenant", "configured": True},
+                {"key": "trace_id", "configured": True},
+                {"key": "authorization", "configured": True},
+            ],
+            "secrets": [],
+            "auth_type": "none",
+        },
+    )
+
+    sources = {(binding.target.location, binding.target.path): binding.source for binding in compiled.nodes[0].bindings}
+    assert sources[("query", "/tenant")].type == "environment"
+    assert sources[("header", "/trace_id")].type == "environment"
+    assert ("header", "/authorization") not in sources
+
+
+def test_compiler_generates_mock_values_for_required_non_sensitive_parameters() -> None:
+    endpoint = {
+        "id": "apiend-1",
+        "method": "POST",
+        "path": "/profiles",
+        "parameters": [],
+        "request_body": {
+            "content": {
+                "application/json": {
+                    "schema": {
+                        "type": "object",
+                        "required": ["email", "count"],
+                        "properties": {"email": {"type": "string"}, "count": {"type": "integer"}},
+                    }
+                }
+            }
+        },
+        "responses": {"200": {"description": "ok"}},
+    }
+
+    compiled = compile_plan(
+        ScenarioPlanResult(nodes=[ScenarioPlanNode(id="create", type="api_request", endpoint_id="apiend-1")]),
+        [endpoint],
+        {"configured": False, "variables": [], "secrets": [], "auth_type": "none"},
+    )
+
+    bindings = {binding.target.path: binding.source for binding in compiled.nodes[0].bindings}
+    assert bindings["/email"].model_dump() == {"type": "literal", "value": "mock@example.test"}
+    assert bindings["/count"].model_dump() == {"type": "literal", "value": 1}
+    assert compiled.unresolved_items == []
+
+
+def test_scenario_renderer_reads_environment_variables_from_runtime_namespace() -> None:
+    files = render_scenario_files("scenario-1", {"name": "环境变量", "steps": []})
+
+    assert 'os.getenv("API_VAR_" + key.upper()' in files["support/scenario.py"]
+    assert 'os.getenv("API_HEADER_" + normalized' in files["support/scenario.py"]
+
+
 def test_compiler_normalizes_form_binding_and_deduplicates_multipart_targets() -> None:
     endpoint = {
         "id": "stream-segment",
@@ -374,6 +515,79 @@ def test_compiler_calibrates_existing_extractor_to_asset_response_slot() -> None
     )
 
     assert compiled.nodes[0].extractors[0].path == "/data/segment_code"
+
+
+def test_asset_analysis_preserves_defaults_enum_nested_schema_and_optional_fields() -> None:
+    endpoint = {
+        "id": "sse",
+        "parameters": [
+            {"name": "SSE-Backend-Type", "in": "header", "required": True, "schema": {"type": "string", "enum": ["sse"]}},
+            {"name": "cybertron-app-id", "in": "header", "required": True, "schema": {"type": "string", "default": "multi-agent-server"}},
+        ],
+        "request_body": {
+            "required": True,
+            "content": {
+                "multipart/form-data": {
+                    "schema": {
+                        "type": "object",
+                        "required": ["data"],
+                        "properties": {
+                            "data": {
+                                "type": "string",
+                                "x-json-schema": {"type": "object", "required": ["question"]},
+                            },
+                            "optional_note": {"type": "string"},
+                        },
+                    }
+                }
+            },
+        },
+        "responses": {
+            "200": {
+                "content": {
+                    "text/event-stream": {
+                        "schema": {"type": "string"},
+                        "x-event-data-schema": {"type": "object", "properties": {"data": {"type": "object", "properties": {"answer": {"type": "string"}}}}},
+                    }
+                }
+            }
+        },
+    }
+
+    slots = request_slots(endpoint)
+    by_path = {(slot.location, slot.path): slot for slot in slots}
+    assert by_path[("header", "/SSE-Backend-Type")].enum == ("sse",)
+    assert by_path[("header", "/cybertron-app-id")].default_value == "multi-agent-server"
+    assert by_path[("multipart", "/data")].nested_schema == {"type": "object", "required": ["question"]}
+    assert by_path[("multipart", "/optional_note")].required is False
+    assert any(slot.path == "/data/answer" for slot in response_slots(endpoint))
+
+
+def test_unresolved_plan_is_not_valid() -> None:
+    plan = ScenarioPlanResult(
+        nodes=[ScenarioPlanNode(id="step", type="api_request", endpoint_id="apiend-1")],
+        unresolved_items=["缺少用户输入"],
+    )
+
+    validation = service._validate_ai_plan(
+        "project-1",
+        plan,
+        [{"id": "apiend-1", "method": "GET", "project_id": "project-1"}],
+    )
+
+    assert validation["valid"] is False
+
+
+def test_compiler_requires_cleanup_for_write_plan() -> None:
+    endpoint = {"id": "write", "method": "POST", "parameters": [], "request_body": {}, "responses": {"200": {}}}
+    compiled = compile_plan(
+        ScenarioPlanResult(nodes=[ScenarioPlanNode(id="write", type="api_request", endpoint_id="write")]),
+        [endpoint],
+        {"configured": False, "variables": [], "secrets": [], "auth_type": "none"},
+        require_cleanup=True,
+    )
+
+    assert compiled.unresolved_items == ["主流程包含写操作，但未提供 cleanup 步骤。"]
 
 
 def test_multi_agent_segment_sse_plan_has_no_structural_errors(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -599,3 +813,88 @@ def test_enqueue_ai_plan_marks_reused_generating_task_as_not_created(monkeypatch
     assert second["plan_id"] == first["plan_id"]
 
 
+def test_ai_plan_without_explicit_scope_uses_bounded_relevant_candidates(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    _setup(monkeypatch, tmp_path)
+    with connect() as db:
+        for index in range(20):
+            api_automation_repo.upsert_endpoint(
+                db,
+                endpoint_id=f"apiend-extra-{index}",
+                project_id="project-1",
+                document_id=None,
+                method="GET",
+                path=f"/misc/{index}",
+                normalized_path=f"/misc/{index}",
+                summary="用户资料详情" if index == 19 else f"其他接口 {index}",
+                description="",
+                tags=[],
+                parameters=[],
+                request_body={},
+                responses={"200": {"description": "ok"}},
+                auth={},
+                source={},
+                created_by=ACTOR["id"],
+            )
+        endpoints = api_automation_repo.list_endpoints(db, "project-1")
+
+    selected = service._select_orchestration_endpoints(endpoints, ApiScenarioAiPlanIn(goal="查询用户资料"))
+
+    assert len(selected) == service.MAX_AI_SCENARIO_CANDIDATE_ENDPOINTS
+    assert "apiend-extra-19" in {row["id"] for row in selected}
+
+
+def test_ai_plan_model_summary_bounds_slots_and_excludes_nested_schema() -> None:
+    properties = {
+        f"field_{index}": {"type": "string", "x-json-schema": {"large": "x" * 10_000}}
+        for index in range(30)
+    }
+    summary = endpoint_summary(
+        {
+            "id": "apiend-large",
+            "method": "POST",
+            "path": "/large",
+            "request_body": {"content": {"application/json": {"schema": {"type": "object", "properties": properties}}}},
+            "responses": {},
+        }
+    )
+
+    assert summary["request_slot_count"] == 30
+    assert len(summary["request_slots"]) == 24
+    assert "nested_schema" not in summary["request_slots"][0]
+
+
+def test_stale_ai_plan_is_failed_when_recovered(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    scenario_id = _setup(monkeypatch, tmp_path)
+    accepted = service.enqueue_api_scenario_ai_plan(
+        "project-1",
+        ApiScenarioAiPlanIn(goal="查询用户资料", scenario_id=scenario_id),
+        ACTOR,
+    )
+    stale_at = (datetime.now(UTC) - service.AI_SCENARIO_GENERATION_TIMEOUT - timedelta(seconds=1)).isoformat()
+    with connect() as db:
+        db.execute("UPDATE api_scenario_ai_plans SET created_at = ? WHERE id = ?", (stale_at, accepted["plan_id"]))
+
+    recovered = service.get_api_scenario_ai_plan("project-1", accepted["plan_id"], ACTOR)
+
+    assert recovered["lifecycle_status"] == "failed"
+    with connect() as db:
+        row = db.execute("SELECT error_message FROM api_scenario_ai_plans WHERE id = ?", (accepted["plan_id"],)).fetchone()
+    assert "超过 5 分钟" in row["error_message"]
+
+
+def test_startup_recovery_fails_interrupted_ai_plan(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    scenario_id = _setup(monkeypatch, tmp_path)
+    accepted = service.enqueue_api_scenario_ai_plan(
+        "project-1",
+        ApiScenarioAiPlanIn(goal="查询用户资料", scenario_id=scenario_id),
+        ACTOR,
+    )
+
+    service.recover_interrupted_api_automation_tasks()
+
+    with connect() as db:
+        row = db.execute(
+            "SELECT lifecycle_status, error_message FROM api_scenario_ai_plans WHERE id = ?", (accepted["plan_id"],)
+        ).fetchone()
+    assert row["lifecycle_status"] == "failed"
+    assert "服务已重启" in row["error_message"]

@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import Link from "next/link";
 
@@ -30,7 +30,7 @@ import {
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Drawer, DrawerContent, DrawerFooter, DrawerHeader, DrawerTitle } from "@/components/ui/drawer";
+import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from "@/components/ui/drawer";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -40,6 +40,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
+import { OneClipboard } from "@/components/ui/one-clipboard";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
@@ -51,6 +52,7 @@ import type {
 } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
 
+import { buildAiPlanPresentation } from "./api-scenario-ai-plan-view.mjs";
 import { ApiScenarioAssetPicker } from "./api-scenario-asset-picker";
 import { ApiScenarioCanvas } from "./api-scenario-canvas";
 import { ApiScenarioRunDrawer } from "./api-scenario-run-drawer";
@@ -79,6 +81,10 @@ export function ApiScenarioEditor({ projectId, scenarioId }: ApiScenarioEditorPr
   const [assetPickerOpen, setAssetPickerOpen] = useState(false);
   const [aiDrawerOpen, setAiDrawerOpen] = useState(false);
   const [aiSourceEndpointIds, setAiSourceEndpointIds] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (editor.aiPlan) setAiDrawerOpen(true);
+  }, [editor.aiPlan]);
   const activeIndex = editor.draft.steps.findIndex((step) => step.id === editor.activeStepId);
   const precedingSteps = activeIndex < 0 ? [] : editor.draft.steps.slice(0, activeIndex);
 
@@ -116,14 +122,10 @@ export function ApiScenarioEditor({ projectId, scenarioId }: ApiScenarioEditorPr
                 value={editor.draft.name}
               />
               <Badge
-                className={
-                  editor.scenario?.status === "ready"
-                    ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-200"
-                    : "bg-amber-50 text-amber-700 dark:bg-amber-500/15 dark:text-amber-200"
-                }
+                className="bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-200"
                 variant="secondary"
               >
-                {editor.scenario?.status === "ready" ? `已发布 v${editor.scenario.revision}` : "草稿"}
+                {editor.scenario?.revision ? `当前 v${editor.scenario.revision}` : "未保存版本"}
               </Badge>
               {editor.scenario?.asset_changes.length ? (
                 <span className="flex shrink-0 items-center gap-1 whitespace-nowrap text-[11px] text-amber-700 dark:text-amber-300">
@@ -180,28 +182,12 @@ export function ApiScenarioEditor({ projectId, scenarioId }: ApiScenarioEditorPr
           </Button>
           <Button
             disabled={!editor.scenario || editor.busy}
-            onClick={() => void editor.actions.publishScenario()}
+            onClick={() => void editor.actions.executeScenario()}
             size="sm"
-            variant="outline"
           >
-            <GitBranch />
-            发布
+            <Play />
+            运行场景
           </Button>
-          {editor.scenario?.status === "ready" ? (
-            <Button disabled={editor.busy} onClick={() => void editor.actions.executeScenario("published")} size="sm">
-              <Play />
-              运行场景
-            </Button>
-          ) : (
-            <Button
-              disabled={!editor.scenario || editor.busy}
-              onClick={() => void editor.actions.executeScenario("draft")}
-              size="sm"
-            >
-              <Play />
-              运行当前草稿
-            </Button>
-          )}
         </div>
       </header>
 
@@ -517,27 +503,68 @@ function AiOrchestrationDrawer({
   const selectedEndpoints = selectedEndpointIds
     .map((endpointId) => endpoints.find((endpoint) => endpoint.id === endpointId))
     .filter((endpoint): endpoint is ApiAutomationEndpoint => Boolean(endpoint));
+  const presentation = plan ? buildAiPlanPresentation(plan, endpoints, goal) : null;
 
   return (
     <Drawer direction="right" open={open} onOpenChange={onOpenChange}>
-      <DrawerContent className="grid h-full w-full grid-rows-[auto_minmax(0,1fr)_auto] gap-0 overflow-hidden bg-background p-0 data-[vaul-drawer-direction=right]:sm:max-w-[480px]">
-        <DrawerHeader className="relative overflow-hidden border-b bg-muted/20 px-5 py-5 pr-14 sm:px-6">
-          <div className="flex items-start gap-3.5">
-            <div className="relative grid size-10 shrink-0 place-items-center rounded-lg border border-primary/20 bg-primary/10 text-primary shadow-sm">
-              <GitBranch className="size-5" />
-              <Sparkles className="absolute -top-1 -right-1 size-3.5 rounded-full bg-background p-0.5" />
-            </div>
-            <div className="min-w-0 space-y-1.5">
-              <div className="flex flex-wrap items-center gap-2">
-                <DrawerTitle className="font-semibold text-lg leading-6">AI 编排接口场景</DrawerTitle>
-                <Badge
-                  className="h-5 border-primary/20 bg-primary/8 px-2 font-medium text-[10px] text-primary"
-                  variant="outline"
-                >
-                  生成草稿
-                </Badge>
+      <DrawerContent className="grid h-full grid-rows-[auto_minmax(0,1fr)] gap-0 overflow-hidden bg-background p-0 data-[vaul-drawer-direction=right]:w-[min(92vw,760px)] data-[vaul-drawer-direction=right]:sm:max-w-[760px]">
+        <DrawerHeader className="relative overflow-hidden border-b bg-background px-5 py-4 sm:px-6">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex min-w-0 items-center gap-3.5">
+              <div className="relative grid size-10 shrink-0 place-items-center rounded-lg border border-primary/20 bg-primary/10 text-primary shadow-sm">
+                <GitBranch className="size-5" />
+                <Sparkles className="absolute -top-1 -right-1 size-3.5 rounded-full bg-background p-0.5" />
+              </div>
+              <div className="min-w-0 space-y-1.5">
+                <div className="flex flex-wrap items-center gap-2">
+                  <DrawerTitle className="font-semibold text-lg leading-6">AI 编排接口场景</DrawerTitle>
+                  <Badge
+                    className="h-5 border-primary/20 bg-primary/8 px-2 font-medium text-[10px] text-primary"
+                    variant="outline"
+                  >
+                    直接生成版本
+                  </Badge>
+                </div>
+                <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+                  <ShieldCheck className="size-3.5 text-primary" />
+                  生成结果通过校验后会直接保存为新版本
+                </div>
               </div>
             </div>
+            {!plan ? (
+              <div className="flex w-full gap-2 sm:w-auto">
+                <Button className="flex-1 sm:flex-none" onClick={() => onOpenChange(false)} size="sm" variant="outline">
+                  {busy ? "关闭" : "取消"}
+                </Button>
+                <Button
+                  className="flex-1 px-4 shadow-sm sm:flex-none"
+                  disabled={busy || lifecycleStatus === "generating" || !goal.trim()}
+                  onClick={async () => {
+                    await onGenerate(goal.trim(), { requireCleanup });
+                  }}
+                  size="sm"
+                >
+                  {busy || lifecycleStatus === "generating" ? <Loader2 className="animate-spin" /> : <Sparkles />}
+                  {busy || lifecycleStatus === "generating" ? "正在生成" : "生成编排版本"}
+                </Button>
+              </div>
+            ) : (
+              <div className="flex w-full flex-wrap gap-2 sm:w-auto sm:flex-nowrap">
+                <OneClipboard copiedLabel="方案已复制" label="复制方案" text={JSON.stringify(plan, null, 2)} />
+                <Button disabled={busy} onClick={onDiscard} size="sm" variant="outline">
+                  放弃计划
+                </Button>
+                <Button
+                  className="flex-1 px-4 sm:flex-none"
+                  disabled={busy || !plan.validation.valid}
+                  onClick={onApply}
+                  size="sm"
+                >
+                  {busy ? <Loader2 className="animate-spin" /> : <CheckCircle2 />}
+                  保存为新版本
+                </Button>
+              </div>
+            )}
           </div>
         </DrawerHeader>
         {!plan ? (
@@ -572,7 +599,7 @@ function AiOrchestrationDrawer({
                     </div>
                   ))
                 ) : (
-                  <div className="px-2 py-3 text-muted-foreground text-xs">未选择接口，将使用当前项目接口资产。</div>
+                  <div className="px-2 py-3 text-muted-foreground text-xs">未选择接口时，将按业务目标选择最多 12 个候选接口。</div>
                 )}
               </div>
             </div>
@@ -606,123 +633,223 @@ function AiOrchestrationDrawer({
             ) : null}
           </div>
         ) : (
-          <div className="min-h-0 space-y-4 overflow-y-auto bg-muted/10 px-5 py-5 sm:px-6">
-            <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-card p-4 shadow-xs">
-              <div className="flex min-w-0 items-center gap-3">
-                <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary">
-                  <GitBranch className="size-4" />
-                </span>
-                <div className="min-w-0">
-                  <div className="truncate font-semibold text-sm">{plan.scenario_name}</div>
-                  <div className="mt-1 text-muted-foreground text-xs">
-                    {plan.nodes.length} 个步骤 · 置信度 {Math.round(plan.confidence * 100)}%
+          <div className="min-h-0 overflow-y-auto bg-muted/10" data-testid="ai-plan-readable-preview">
+            <section className="border-b bg-card px-5 py-5 sm:px-6">
+              <div className="flex flex-wrap items-start justify-between gap-4">
+                <div className="min-w-0 flex-1">
+                  <div className="mb-2 flex items-center gap-2 font-medium text-[11px] text-muted-foreground uppercase">
+                    <GitBranch className="size-3.5 text-primary" />
+                    调用目标
                   </div>
+                  <h3 className="font-semibold text-base leading-6">{presentation?.goal}</h3>
+                  <p className="mt-1.5 text-muted-foreground text-xs leading-5">
+                    将按下面的顺序执行 {plan.nodes.length} 个步骤。前一步的输出会在运行时自动传给依赖它的步骤。
+                  </p>
                 </div>
-              </div>
-              <Badge
-                className={cn(
-                  "h-6",
-                  plan.validation.valid &&
-                    "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/35 dark:bg-emerald-500/15 dark:text-emerald-200",
-                )}
-                variant={plan.validation.valid ? "outline" : "destructive"}
-              >
-                {plan.validation.valid ? <CheckCircle2 className="size-3.5" /> : <AlertTriangle className="size-3.5" />}
-                {plan.validation.valid ? "校验通过" : `${plan.validation.errors.length} 个错误`}
-              </Badge>
-            </div>
-            <div className="overflow-hidden rounded-lg border bg-card">
-              {plan.nodes.map((node, index) => (
-                <div
-                  className="relative flex min-h-16 items-center gap-3 border-b px-4 py-3 last:border-b-0"
-                  key={node.id}
+                <Badge
+                  className={cn(
+                    "h-6 shrink-0",
+                    plan.validation.valid &&
+                      "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/35 dark:bg-emerald-500/15 dark:text-emerald-200",
+                  )}
+                  variant={plan.validation.valid ? "outline" : "destructive"}
                 >
-                  {index < plan.nodes.length - 1 ? (
-                    <span className="absolute top-10 bottom-[-17px] left-[29px] w-px bg-border" />
-                  ) : null}
-                  <span className="z-10 grid size-7 shrink-0 place-items-center rounded-full border bg-background font-semibold text-[11px] text-primary shadow-xs">
-                    {index + 1}
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate font-medium text-sm">{node.name || node.id}</div>
-                    <div className="mt-1 flex min-w-0 items-center gap-2 text-muted-foreground text-xs">
-                      <span className="rounded bg-muted px-1.5 py-0.5 font-mono text-[10px] uppercase">
-                        {node.type}
-                      </span>
-                      <span className="truncate font-mono text-[11px]">{node.endpoint_id ?? "辅助节点"}</span>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-            <div className="space-y-2 rounded-lg border bg-card p-4">
-              <div className="flex items-center gap-2 font-semibold text-sm">
-                <Variable className="size-4 text-primary" />
-                数据依赖与参数来源
+                  {plan.validation.valid ? (
+                    <CheckCircle2 className="size-3.5" />
+                  ) : (
+                    <AlertTriangle className="size-3.5" />
+                  )}
+                  {plan.validation.valid ? "可以保存" : `${plan.validation.errors.length} 个问题待处理`}
+                </Badge>
               </div>
-              {plan.nodes.flatMap((node) =>
-                (node.bindings ?? []).map((binding) => (
-                  <div
-                    className="flex items-start gap-2 text-xs"
-                    key={`${node.id}-${binding.target.location}-${binding.target.path}`}
-                  >
-                    <span className="rounded bg-muted px-1.5 py-0.5 font-mono text-[10px]">
-                      {formatBindingTarget(binding.target)}
-                    </span>
-                    <span className="text-muted-foreground">←</span>
-                    <span className="min-w-0 flex-1 text-muted-foreground">{formatBindingSource(binding.source)}</span>
-                  </div>
-                )),
-              )}
-              {!plan.nodes.some((node) => (node.bindings ?? []).length) ? (
-                <div className="text-muted-foreground text-xs">暂无可展示的数据绑定。</div>
-              ) : null}
-            </div>
-            {[...plan.validation.errors, ...plan.validation.warnings].length ? (
-              <div className="space-y-1.5 rounded-lg border border-amber-300/60 bg-amber-50/60 p-3.5 text-amber-900 text-xs dark:bg-amber-500/10 dark:text-amber-200">
-                {[...new Set([...plan.validation.errors, ...plan.validation.warnings])].map((item) => (
-                  <div className="flex gap-2" key={item}>
-                    <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
-                    <span>{item}</span>
-                  </div>
+            </section>
+
+            <section className="border-b px-5 py-5 sm:px-6">
+              <div className="mb-3 flex items-end justify-between gap-3">
+                <div>
+                  <h3 className="font-semibold text-sm">执行步骤</h3>
+                  <p className="mt-1 text-muted-foreground text-xs">方法、路径和参数按实际请求归到对应步骤。</p>
+                </div>
+                <span className="shrink-0 text-[11px] text-muted-foreground">
+                  置信度 {Math.round(plan.confidence * 100)}%
+                </span>
+              </div>
+              <div className="overflow-hidden rounded-lg border bg-card">
+                {presentation?.steps.map((step) => (
+                  <details className="group border-b last:border-b-0" key={step.id}>
+                    <summary className="flex cursor-pointer list-none items-start gap-3 px-4 py-3.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring">
+                      <span className="grid size-7 shrink-0 place-items-center rounded-full border bg-background font-semibold text-[11px] text-primary">
+                        {step.index}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h4 className="font-semibold text-sm">{step.name}</h4>
+                          <Badge className={cn("h-5 font-mono text-[10px]", methodTone[step.method])} variant="outline">
+                            {step.method}
+                          </Badge>
+                        </div>
+                          <code className="mt-1.5 block break-all font-mono text-[11px] text-muted-foreground">
+                            {step.path}
+                          </code>
+                        {step.purpose !== step.name ? (
+                          <p className="mt-2 text-muted-foreground text-xs leading-5">作用：{step.purpose}</p>
+                        ) : null}
+                        {step.dependencies.map((dependency) => (
+                          <div
+                            className="mt-2 flex items-start gap-2 rounded-md border border-sky-200 bg-sky-50 px-2.5 py-2 text-sky-800 text-xs dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-200"
+                            key={`${dependency.stepId}-${dependency.target}`}
+                          >
+                            <ArrowDown className="mt-0.5 size-3.5 shrink-0" />
+                            <span>
+                              接收步骤「{dependency.stepName}」输出的 {dependency.variable}，填入 {dependency.target}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                      <span className="shrink-0 pt-1 text-[11px] text-muted-foreground group-open:hidden">配置</span>
+                      <span className="hidden shrink-0 pt-1 text-[11px] text-muted-foreground group-open:inline">收起</span>
+                    </summary>
+                    {step.parameters.length ? (
+                      <div className="border-t bg-muted/10 px-4 py-3">
+                        <div className="mb-2 font-medium text-[11px] text-muted-foreground">本步骤请求参数</div>
+                        <div className="divide-y">
+                          {step.parameters.map((parameter) => (
+                            <div
+                              className="grid gap-1.5 py-2 first:pt-0 last:pb-0 sm:grid-cols-[minmax(120px,0.7fr)_minmax(0,1.3fr)] sm:gap-4"
+                              key={parameter.key}
+                            >
+                              <div className="min-w-0">
+                                <code className="break-all font-mono text-xs">{parameter.name}</code>
+                                <div className="mt-0.5 text-[10px] text-muted-foreground">{parameter.location}</div>
+                              </div>
+                              <div className="min-w-0">
+                                <code className="block whitespace-pre-wrap break-all font-mono text-xs leading-5">
+                                  {parameter.value}
+                                </code>
+                                <div className="mt-0.5 text-[10px] text-muted-foreground">{parameter.source}</div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
+                    <div className="border-t bg-muted/20 px-4 py-3">
+                      <div className="mb-2 font-medium text-[11px] text-muted-foreground">AI 完整步骤配置</div>
+                      <pre className="max-h-72 overflow-auto rounded-md border bg-background p-3 font-mono text-[11px] leading-5">
+                        {JSON.stringify(step.rawNode, null, 2)}
+                      </pre>
+                    </div>
+                  </details>
                 ))}
               </div>
+            </section>
+
+            {presentation?.commonParameters.length ? (
+              <section className="border-b bg-card px-5 py-5 sm:px-6">
+                <div className="mb-3 flex items-center gap-2">
+                  <Braces className="size-4 text-primary" />
+                  <div>
+                    <h3 className="font-semibold text-sm">公共请求配置</h3>
+                    <p className="mt-1 text-muted-foreground text-xs">以下配置被多个步骤复用，只展示一次。</p>
+                  </div>
+                </div>
+                <div className="divide-y border-y">
+                  {presentation.commonParameters.map((parameter) => (
+                    <div
+                      className="grid gap-1.5 py-2.5 sm:grid-cols-[minmax(120px,0.7fr)_minmax(0,1.3fr)] sm:gap-4"
+                      key={parameter.key}
+                    >
+                      <div>
+                        <code className="break-all font-mono text-xs">{parameter.name}</code>
+                        <div className="mt-0.5 text-[10px] text-muted-foreground">{parameter.location}</div>
+                      </div>
+                      <div className="min-w-0">
+                        <code className="block whitespace-pre-wrap break-all font-mono text-xs leading-5">
+                          {parameter.value}
+                        </code>
+                        <div className="mt-0.5 text-[10px] text-muted-foreground">
+                          {parameter.source} · 用于 {parameter.usedBy.join("、")}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </section>
             ) : null}
+
+            {presentation?.actionItems.length ? (
+              <section className="border-b px-5 py-5 sm:px-6">
+                <div className="mb-3 flex items-center gap-2">
+                  <Variable className="size-4 text-amber-700 dark:text-amber-300" />
+                  <div>
+                    <h3 className="font-semibold text-sm">运行时输入</h3>
+                    <p className="mt-1 text-muted-foreground text-xs">这里直接说明要填什么，以及这个值会被用在哪里。</p>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  {presentation.actionItems.map((item) => (
+                    <div
+                      className="rounded-lg border border-amber-300/60 bg-amber-50/60 px-3.5 py-3 dark:bg-amber-500/10"
+                      key={item.name}
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="font-medium text-sm">{item.label}</div>
+                        <Badge variant={item.value === "尚未填写" ? "outline" : "secondary"}>
+                          {item.value === "尚未填写" ? "运行前填写" : "已有默认值"}
+                        </Badge>
+                      </div>
+                      <code className="mt-2 block whitespace-pre-wrap break-all font-mono text-xs leading-5">
+                        {item.value}
+                      </code>
+                      <p className="mt-1.5 text-muted-foreground text-xs leading-5">{item.description}</p>
+                      <p className="mt-1 text-[10px] text-muted-foreground">填写位置：{item.targets.join("；")}</p>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            ) : null}
+
+            <details className="group bg-card px-5 py-4 sm:px-6">
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-3 font-medium text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                <span>技术详情：参数来源与编译诊断</span>
+                <span className="text-[11px] text-muted-foreground group-open:hidden">展开</span>
+                <span className="hidden text-[11px] text-muted-foreground group-open:inline">收起</span>
+              </summary>
+              <div className="mt-4 space-y-4 border-t pt-4">
+                <div className="space-y-2">
+                  {plan.nodes.flatMap((node) =>
+                    (node.bindings ?? []).map((binding) => (
+                      <div
+                        className="flex items-start gap-2 text-xs"
+                        key={`${node.id}-${binding.target.location}-${binding.target.path}`}
+                      >
+                        <span className="rounded bg-muted px-1.5 py-0.5 font-mono text-[10px]">
+                          {node.name || node.id} · {formatBindingTarget(binding.target)}
+                        </span>
+                        <span className="text-muted-foreground">←</span>
+                        <span className="min-w-0 flex-1 text-muted-foreground">
+                          {formatBindingSource(binding.source)}
+                        </span>
+                      </div>
+                    )),
+                  )}
+                </div>
+                {presentation?.diagnostics.length ? (
+                  <div className="space-y-1.5 border-t pt-3 text-amber-800 text-xs dark:text-amber-200">
+                    {presentation.diagnostics.map((item) => (
+                      <div className="flex gap-2" key={item}>
+                        <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
+                        <span>{item}</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="border-t pt-3 text-muted-foreground text-xs">没有额外编译诊断。</div>
+                )}
+              </div>
+            </details>
           </div>
         )}
-        <DrawerFooter className="mx-0 mb-0 min-h-16 items-center rounded-none border-t bg-background px-5 py-3 sm:justify-between sm:px-6">
-          <div className="hidden items-center gap-2 text-[11px] text-muted-foreground sm:flex">
-            <ShieldCheck className="size-3.5 text-primary" />
-            应用前可预览并校验全部步骤
-          </div>
-          {!plan ? (
-            <div className="flex w-full gap-2 sm:w-auto">
-              <Button className="flex-1 sm:flex-none" onClick={() => onOpenChange(false)} variant="outline">
-                {busy ? "关闭" : "取消"}
-              </Button>
-              <Button
-                className="flex-1 px-4 shadow-sm sm:flex-none"
-                disabled={busy || !goal.trim()}
-                onClick={async () => {
-                  await onGenerate(goal.trim(), { requireCleanup });
-                }}
-              >
-                {busy ? <Loader2 className="animate-spin" /> : <Sparkles />}
-                {busy ? "正在生成" : "生成编排草稿"}
-              </Button>
-            </div>
-          ) : (
-            <div className="flex w-full gap-2 sm:w-auto">
-              <Button disabled={busy} onClick={onDiscard} variant="outline">
-                放弃计划
-              </Button>
-              <Button className="flex-1 px-4 sm:flex-none" disabled={busy || !plan.validation.valid} onClick={onApply}>
-                {busy ? <Loader2 className="animate-spin" /> : <CheckCircle2 />}
-                应用到草稿
-              </Button>
-            </div>
-          )}
-        </DrawerFooter>
       </DrawerContent>
     </Drawer>
   );

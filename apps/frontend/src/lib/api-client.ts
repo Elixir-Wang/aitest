@@ -1113,6 +1113,7 @@ export type ApiScenarioAiPlanNode = Omit<Partial<ApiAutomationScenarioStep>, "bi
   id: string;
   type: ApiAutomationScenarioStepType;
   endpoint_id: string | null;
+  phase?: "setup" | "main" | "verify" | "cleanup";
   bindings?: ApiScenarioAiPlanBinding[];
 };
 
@@ -1139,6 +1140,8 @@ export type ApiScenarioAiPlan = {
     required: boolean;
     sensitive: boolean;
     description: string;
+    default_value?: unknown;
+    enum?: unknown[];
   }>;
   nodes: ApiScenarioAiPlanNode[];
   edges: Array<{ source: string; target: string; condition: string }>;
@@ -1157,6 +1160,19 @@ export type ApiAutomationScenarioRevision = {
   created_by: string;
   created_at: string;
   step_count: number;
+  snapshot: {
+    id: string;
+    project_id: string;
+    name: string;
+    description: string;
+    variables: Record<string, unknown>;
+    revision: number;
+    steps: Array<
+      ApiAutomationScenarioStep & {
+        endpoint?: Pick<ApiAutomationEndpoint, "id" | "method" | "path" | "summary"> | null;
+      }
+    >;
+  };
 };
 
 export type ApiAutomationScenarioStepResult = {
@@ -2282,6 +2298,22 @@ export function replaceApiAutomationScenarioSteps(
   return apiRequest<ApiAutomationScenario>(`/projects/${projectId}/api-scenarios/${scenarioId}/steps`, {
     method: "PUT",
     body: JSON.stringify({ steps }),
+  });
+}
+
+export function saveApiAutomationScenarioVersion(
+  projectId: string,
+  scenarioId: string,
+  payload: {
+    name: string;
+    description?: string;
+    variables?: Record<string, unknown>;
+    steps: ApiAutomationScenarioStepInput[];
+  },
+) {
+  return apiRequest<ApiAutomationScenario>(`/projects/${projectId}/api-scenarios/${scenarioId}/version`, {
+    method: "PUT",
+    body: JSON.stringify(payload),
   });
 }
 

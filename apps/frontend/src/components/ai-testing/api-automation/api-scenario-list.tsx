@@ -6,7 +6,6 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 import { Pencil, Trash2 } from "lucide-react";
-import { toast } from "@/lib/toast";
 
 import { ListToolbar, RowActions, ShellSection } from "@/components/ai-testing/page-shell";
 import { TableLoadingRow } from "@/components/ai-testing/table-loading-row";
@@ -19,6 +18,7 @@ import {
   formatDateTime,
   listApiAutomationScenarios,
 } from "@/lib/api-client";
+import { toast } from "@/lib/toast";
 
 type ApiScenarioListProps = {
   projectId: string;
@@ -169,7 +169,7 @@ export function ApiScenarioList({ projectId }: ApiScenarioListProps) {
             {!loading && filteredRows.length === 0 ? (
               <TableRow>
                 <TableCell className="h-24 text-center text-muted-foreground" colSpan={7}>
-                  暂无场景。新建场景后，可组合接口用例并发布运行。
+                  暂无场景。新建场景后，可组合接口并保存版本运行。
                 </TableCell>
               </TableRow>
             ) : null}
@@ -181,7 +181,7 @@ export function ApiScenarioList({ projectId }: ApiScenarioListProps) {
 }
 
 function scenarioStatusLabel(scenario: ApiAutomationScenario) {
-  if (scenario.status === "ready") return `已发布 v${scenario.revision}`;
+  if (scenario.status === "ready") return `当前 v${scenario.revision}`;
   if (scenario.status === "archived") return "已归档";
-  return "未发布";
+  return "尚无版本";
 }

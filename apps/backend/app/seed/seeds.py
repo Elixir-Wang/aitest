@@ -1,9 +1,11 @@
+import re
 import sqlite3
 
 from app.core.security import hash_secret
 
 
 def seed_system_defaults(db: sqlite3.Connection) -> None:
+    _repair_legacy_exploration_run_foreign_keys(db)
     _ensure_exploration_loop_mode(db)
     _migrate_ui_automation_case_sources(db)
     _ensure_ui_automation_video_column(db)
@@ -30,6 +32,78 @@ def seed_system_defaults(db: sqlite3.Connection) -> None:
     _ensure_all_projects_conversation_scope(db)
 
 
+def _repair_legacy_exploration_run_foreign_keys(db: sqlite3.Connection) -> None:
+    """Repair child tables affected by the original exploration_runs migration."""
+    legacy_name = "exploration_runs_legacy_loop_mode"
+    affected = [
+        row["name"]
+        for row in db.execute(
+            "SELECT name FROM sqlite_master "
+            "WHERE type = 'table' AND sql LIKE ?",
+            (f"%{legacy_name}%",),
+        ).fetchall()
+    ]
+    if not affected:
+        return
+
+    db.commit()
+    db.execute("PRAGMA foreign_keys = OFF")
+    db.execute("PRAGMA legacy_alter_table = ON")
+    try:
+        for table_name in affected:
+            row = db.execute(
+                "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?",
+                (table_name,),
+            ).fetchone()
+            if not row or not row["sql"]:
+                continue
+
+            schema_objects = [
+                schema_row["sql"]
+                for schema_row in db.execute(
+                    "SELECT sql FROM sqlite_master "
+                    "WHERE tbl_name = ? AND type IN ('index', 'trigger') AND sql IS NOT NULL",
+                    (table_name,),
+                ).fetchall()
+            ]
+
+            temp_name = f"__repair_{table_name}"
+            create_sql = row["sql"]
+            create_sql = re.sub(
+                rf"(CREATE TABLE(?: IF NOT EXISTS)?\s+)([\"`]?){re.escape(table_name)}([\"`]?)",
+                lambda match: f"{match.group(1)}{temp_name}",
+                create_sql,
+                count=1,
+                flags=re.IGNORECASE,
+            )
+            create_sql = create_sql.replace(
+                f'"{legacy_name}"', "exploration_runs"
+            ).replace(legacy_name, "exploration_runs")
+            db.execute(f'DROP TABLE IF EXISTS "{temp_name}"')
+            db.execute(create_sql)
+
+            columns = [
+                row["name"]
+                for row in db.execute(f'PRAGMA table_info("{table_name}")').fetchall()
+            ]
+            quoted_columns = ", ".join(f'"{column}"' for column in columns)
+            db.execute(
+                f'INSERT INTO "{temp_name}" ({quoted_columns}) '
+                f'SELECT {quoted_columns} FROM "{table_name}"'
+            )
+            db.execute(f'DROP TABLE "{table_name}"')
+            db.execute(f'ALTER TABLE "{temp_name}" RENAME TO "{table_name}"')
+            for schema_sql in schema_objects:
+                db.execute(schema_sql)
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.execute("PRAGMA legacy_alter_table = OFF")
+        db.execute("PRAGMA foreign_keys = ON")
+
+
 def _ensure_exploration_loop_mode(db: sqlite3.Connection) -> None:
     """Migrate existing exploration_runs CHECK constraint to include loop mode."""
     table = db.execute(
@@ -45,6 +119,8 @@ def _ensure_exploration_loop_mode(db: sqlite3.Connection) -> None:
         return
 
     db.execute("PRAGMA foreign_keys = OFF")
+    # Keep child-table foreign keys pointing at the new table when renaming.
+    db.execute("PRAGMA legacy_alter_table = ON")
     db.execute("ALTER TABLE exploration_runs RENAME TO exploration_runs_legacy_loop_mode")
     db.executescript(
         """
@@ -88,6 +164,7 @@ def _ensure_exploration_loop_mode(db: sqlite3.Connection) -> None:
         DROP TABLE exploration_runs_legacy_loop_mode;
         """
     )
+    db.execute("PRAGMA legacy_alter_table = OFF")
     db.execute("PRAGMA foreign_keys = ON")
 
 

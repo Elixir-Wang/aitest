@@ -1,4 +1,6 @@
-import { Check, Clock3, GitCommitHorizontal, History, RotateCcw } from "lucide-react";
+import { useState } from "react";
+
+import { Check, ChevronDown, Clock3, GitCommitHorizontal, History, RotateCcw } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -13,6 +15,8 @@ type ApiScenarioVersionPanelProps = {
 };
 
 export function ApiScenarioVersionPanel({ busy, currentRevision, revisions, onRestore }: ApiScenarioVersionPanelProps) {
+  const [expandedRevision, setExpandedRevision] = useState<number | null>(currentRevision || null);
+
   return (
     <div className="min-h-0 flex-1 overflow-y-auto bg-[radial-gradient(circle_at_top_right,color-mix(in_srgb,var(--primary),transparent_92%),transparent_36%)] p-6">
       <div className="mx-auto max-w-4xl">
@@ -24,7 +28,7 @@ export function ApiScenarioVersionPanel({ busy, currentRevision, revisions, onRe
             </div>
             <h2 className="mt-2 font-semibold text-xl">版本记录</h2>
             <p className="mt-1 max-w-2xl text-muted-foreground text-sm">
-              每次发布都会冻结接口资产与步骤配置。恢复历史版本只生成草稿，不会覆盖当前已发布版本。
+              每次保存都会生成可运行版本，最多保留最近 5 个。可展开查看完整编排，恢复历史版本会生成新版本。
             </p>
           </div>
           <Badge className="border-primary/20 bg-primary/8 text-primary" variant="outline">
@@ -36,14 +40,15 @@ export function ApiScenarioVersionPanel({ busy, currentRevision, revisions, onRe
           <div className="mt-8 grid min-h-64 place-items-center rounded-2xl border border-dashed bg-card/70 text-center">
             <div>
               <Clock3 className="mx-auto size-9 text-muted-foreground/50" />
-              <div className="mt-3 font-medium">尚未发布版本</div>
-              <p className="mt-1 text-muted-foreground text-sm">完成场景配置并发布后，版本快照会显示在这里。</p>
+              <div className="mt-3 font-medium">尚无版本</div>
+              <p className="mt-1 text-muted-foreground text-sm">完成场景配置并保存后，版本会显示在这里。</p>
             </div>
           </div>
         ) : (
           <div className="relative mt-8 space-y-4 before:absolute before:top-8 before:bottom-8 before:left-[25px] before:w-px before:bg-border">
             {revisions.map((revision) => {
               const current = revision.revision === currentRevision;
+              const expanded = revision.revision === expandedRevision;
               return (
                 <article
                   className={cn(
@@ -69,20 +74,70 @@ export function ApiScenarioVersionPanel({ busy, currentRevision, revisions, onRe
                       </div>
                       <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-muted-foreground text-xs">
                         <span>{formatRevisionTime(revision.created_at)}</span>
-                        <span>发布人 {revision.created_by}</span>
+                        <span>保存人 {revision.created_by}</span>
                         <span>{revision.step_count} 个步骤</span>
                       </div>
                       <div className="mt-3 inline-flex rounded-md bg-muted px-2 py-1 font-mono text-[10px] text-muted-foreground">
                         {revision.published_hash.slice(0, 12)}
                       </div>
                     </div>
-                    {!current ? (
-                      <Button disabled={busy} onClick={() => onRestore(revision.revision)} size="sm" variant="outline">
-                        <RotateCcw />
-                        恢复为草稿
+                    <div className="flex items-center gap-2">
+                      <Button
+                        aria-expanded={expanded}
+                        onClick={() => setExpandedRevision(expanded ? null : revision.revision)}
+                        size="sm"
+                        variant="outline"
+                      >
+                        <ChevronDown className={cn("transition-transform", expanded && "rotate-180")} />
+                        查看编排
                       </Button>
-                    ) : null}
+                      {!current ? (
+                        <Button
+                          disabled={busy}
+                          onClick={() => onRestore(revision.revision)}
+                          size="sm"
+                          variant="outline"
+                        >
+                          <RotateCcw />
+                          恢复此版本
+                        </Button>
+                      ) : null}
+                    </div>
                   </div>
+                  {expanded ? (
+                    <div className="mt-5 border-t pt-4">
+                      <div className="mb-3 flex items-center justify-between gap-3">
+                        <span className="font-medium text-sm">{revision.snapshot.name}</span>
+                        <span className="text-muted-foreground text-xs">
+                          {revision.snapshot.steps.length} 个执行步骤
+                        </span>
+                      </div>
+                      <div className="divide-y overflow-hidden rounded-md border">
+                        {revision.snapshot.steps.map((step, index) => (
+                          <div
+                            className="flex items-center gap-3 bg-background px-3 py-2.5"
+                            key={`${revision.revision}-${step.id}`}
+                          >
+                            <span className="grid size-6 shrink-0 place-items-center rounded-full bg-muted font-medium text-[11px]">
+                              {index + 1}
+                            </span>
+                            <div className="min-w-0 flex-1">
+                              <div className="truncate font-medium text-sm">{step.name || step.id}</div>
+                              <div className="mt-0.5 truncate text-muted-foreground text-xs">
+                                {step.endpoint
+                                  ? `${step.endpoint.method} ${step.endpoint.path}`
+                                  : step.step_type.replaceAll("_", " ")}
+                              </div>
+                            </div>
+                            <Badge variant="secondary">{step.enabled ? "启用" : "停用"}</Badge>
+                          </div>
+                        ))}
+                        {revision.snapshot.steps.length === 0 ? (
+                          <div className="px-3 py-8 text-center text-muted-foreground text-sm">该版本没有执行步骤</div>
+                        ) : null}
+                      </div>
+                    </div>
+                  ) : null}
                 </article>
               );
             })}
