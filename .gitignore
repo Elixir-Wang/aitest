@@ -76,6 +76,13 @@ __pycache__/
 *.db
 !apps/backend/data/ai_testing.db
 
+# Generated local artifacts
+/output/
+apps/backend/data/.secrets/
+apps/backend/data/projects/**/ui_automation/**/runs/
+apps/backend/data/projects/**/performance_testing/**/runs/
+apps/backend/data/projects/**/page_exploration/**/runs/
+
 # Backend runtime data / Codex working directories
 apps/backend/data/codex-*-probe-*/
 apps/backend/data/**/codex-work/
