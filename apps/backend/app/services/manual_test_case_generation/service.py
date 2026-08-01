@@ -38,7 +38,6 @@ async def generate_manual_test_case_preview(
             exploration_artifacts_requested=payload.include_exploration_artifacts,
             exploration_artifacts_used=bool(context and context.source_count),
             page_count=len(context.pages) if context else 0,
-            operation_count=len(context.operations) if context else 0,
             truncated=bool(context and context.truncated),
         ),
     )

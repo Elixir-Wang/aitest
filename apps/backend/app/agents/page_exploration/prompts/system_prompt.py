@@ -113,7 +113,3 @@ click / fill 工具失败时会返回结构化错误：
 - 不要只写"进入页面""处理表单"这类过短描述；也不要添加探索目标之外的业务验证点。
 - 子步骤全部 completed 后必须 `write_todos` 把整份清空/标记完成，再写阶段总结。
 """
-
-def build_system_prompt() -> str:
-    # 页面与状态产物由 snapshot checkpoint 服务端生成，不再让模型手写 state tree。
-    return SYSTEM_PROMPT

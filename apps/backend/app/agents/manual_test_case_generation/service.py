@@ -24,14 +24,6 @@ def _build_prompt(input_data: ManualTestCaseGenerationInput) -> str:
                 parts.append(
                     f"元素：{element.name or element.text} 角色={element.role} 动作={element.action_type}"
                 )
-        for operation in context.operations:
-            parts.append(f"已验证操作：{operation.operation_key} 页面={operation.page_path}")
-            for index, step in enumerate(operation.steps, 1):
-                expected = "；".join(step.expected)
-                parts.append(
-                    f"  {index}. {step.action} 元素={step.element_name or step.element_key} "
-                    f"值={step.value} 预期={expected}"
-                )
         if context.warnings:
             parts.extend(["", "【上下文说明】", *context.warnings])
     parts.extend(

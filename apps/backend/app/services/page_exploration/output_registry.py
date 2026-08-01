@@ -20,8 +20,6 @@ from app.services.page_exploration.report_writer import (
     _read_timeline_events_from_run_dir,
     _write_exploration_report,
 )
-from app.services.page_exploration.replay.models import ReplayOperation
-from app.services.page_exploration.replay.store import OperationsStore
 
 logger = logging.getLogger(__name__)
 
@@ -91,15 +89,6 @@ def _register_exploration_outputs(
         timeline_events=timeline_events,
         artifact_quality_warnings=_artifact_quality_warnings(page_artifacts),
     )
-    if completion_status != "failed":
-        _write_draft_operation(
-            project_id=project_id,
-            run_id=run_id,
-            start_url=start_url,
-            timeline_events=timeline_events,
-            page_artifacts=page_artifacts,
-        )
-
     with _connect() as db:
         _exploration_run_repo().update_artifact_root(db, run_id, str(run_dir))
         for path, artifact in page_artifacts:
@@ -266,73 +255,6 @@ def _write_yaml_file(path: Path, payload: dict) -> None:
     path.write_text(yaml.safe_dump(payload, allow_unicode=True, sort_keys=False), encoding="utf-8")
 
 
-def _write_draft_operation(
-    *,
-    project_id: str,
-    run_id: str,
-    start_url: str,
-    timeline_events: list[dict],
-    page_artifacts: list[tuple[Path, dict]],
-) -> None:
-    locator_keys: dict[str, str] = {}
-
-    def collect_elements(elements: list) -> None:
-        for element in elements:
-            if not isinstance(element, dict):
-                continue
-            element_key = _string(element.get("key")).strip()
-            if not element_key:
-                continue
-            for locator in element.get("locators") or []:
-                code = _string(locator.get("code")).strip().removeprefix("page.")
-                if code:
-                    locator_keys.setdefault(code, element_key)
-
-    def collect_states(states: list) -> None:
-        for state in states:
-            if not isinstance(state, dict):
-                continue
-            collect_elements(state.get("elements") or [])
-            collect_states(state.get("children") or [])
-
-    for _path, artifact in page_artifacts:
-        page = artifact.get("page") if isinstance(artifact.get("page"), dict) else {}
-        collect_elements(page.get("elements") or [])
-        collect_states(artifact.get("states") or [])
-
-    steps: list[dict] = []
-    parameters: dict[str, dict] = {}
-    for event in timeline_events:
-        if event.get("type") != "agent_tool_completed":
-            continue
-        payload = event.get("payload") if isinstance(event.get("payload"), dict) else {}
-        tool_name = _string(payload.get("tool_name"))
-        if tool_name not in {"playwright_click_tool", "playwright_fill_tool"}:
-            continue
-        locator = _string(payload.get("locator")).strip().removeprefix("page.")
-        element_key = _string(payload.get("element_key")).strip() or locator_keys.get(locator)
-        if not element_key:
-            continue
-        action = tool_name.removeprefix("playwright_").removesuffix("_tool")
-        step: dict = {"action": action, "element_key": element_key}
-        if action == "fill":
-            parameter_name = f"value_{len(parameters) + 1}"
-            parameters[parameter_name] = {"type": "string", "required": True}
-            step["value_ref"] = parameter_name
-        steps.append(step)
-
-    if not steps:
-        return
-    operation = ReplayOperation.model_validate({
-        "key": f"exploration.{run_id}",
-        "status": "draft",
-        "page_path": urlparse(start_url).path or "/",
-        "parameters": parameters,
-        "steps": steps,
-    })
-    OperationsStore(_project_file_storage_root()).upsert(project_id, operation)
-
-
 def _checkpoint_snapshot_artifact_from_event(event: dict, *, project_id: str, run_id: str) -> Path | None:
     """Persist a minimal page artifact whenever the browser snapshot tool succeeds."""
     if not project_id or not run_id or not isinstance(event, dict):
@@ -395,51 +317,6 @@ def _checkpoint_snapshot_artifact_from_event(event: dict, *, project_id: str, ru
             exc,
         )
     return saved_path
-
-
-def _find_snapshot_state(states: list[dict], state_id: str) -> dict | None:
-    for state in states:
-        if not isinstance(state, dict):
-            continue
-        if _string(state.get("id")) == state_id:
-            return state
-        found = _find_snapshot_state(state.get("children") if isinstance(state.get("children"), list) else [], state_id)
-        if found is not None:
-            return found
-    return None
-
-
-def _upsert_snapshot_state(states: list[dict], observed: dict, *, parent_state_id: str) -> list[dict]:
-    current = _find_snapshot_state(states, _string(observed.get("id")))
-    if current is not None:
-        children = current.get("children") if isinstance(current.get("children"), list) else []
-        current.clear()
-        current.update({**observed, "children": children})
-        return states
-    if parent_state_id:
-        parent = _find_snapshot_state(states, parent_state_id)
-        if parent is None or not isinstance(observed.get("triggered_by"), dict):
-            return states
-        parent.setdefault("children", []).append(observed)
-        return states
-    if _string(observed.get("type")) == "root":
-        return [observed]
-    return states
-
-
-def _snapshot_overlay_container(overlay: dict) -> dict:
-    container = {"role": _string(overlay.get("role"))}
-    name = _string(overlay.get("name"))
-    if name:
-        container["name"] = name
-    locators: list[dict] = []
-    for selector in (overlay.get("primary_selector"), overlay.get("fallback_selector")):
-        if not _is_verified_selector(selector):
-            continue
-        locators.append({"code": _normalize_locator_code(selector["code"])})
-    if locators:
-        container["locators"] = locators
-    return container
 
 
 def _register_page_artifact_file(
@@ -687,39 +564,6 @@ def _coerce_tool_output_dict(output) -> dict:
 def _normalize_snapshot_url_path(url: str) -> str:
     parsed = urlparse(url)
     return parsed.path or "/"
-
-
-def _snapshot_assertion_texts(
-    *,
-    title: str,
-    visible_text_blocks: list,
-    elements: list[dict],
-    max_items: int = 24,
-) -> list[str]:
-    """Keep compact assertion-ready texts without persisting raw page text."""
-    values: list[str] = []
-
-    def add(value) -> None:
-        text = _string(value).strip()
-        if not text or text in values:
-            return
-        values.append(text[:240])
-
-    add(title)
-    for item in visible_text_blocks:
-        add(item)
-        if len(values) >= max_items:
-            return values
-    for element in elements:
-        if not isinstance(element, dict):
-            continue
-        role = _string(element.get("role")).lower()
-        if role in {"button", "textbox", "combobox", "checkbox", "radio", "tab", "menuitem", "option"}:
-            continue
-        add(element.get("text") or element.get("name"))
-        if len(values) >= max_items:
-            return values
-    return values
 
 
 def _normalize_action_type(role: str, action_type: str) -> str:

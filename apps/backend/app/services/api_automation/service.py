@@ -62,6 +62,8 @@ from app.schemas.api_automation import (
     ApiRunCreateIn,
     ApiScenarioAiPlanApplyIn,
     ApiScenarioAiPlanIn,
+    ApiScenarioAiReviewPlan,
+    ApiScenarioAiReviewSaveIn,
     ApiScenarioIn,
     ApiScenarioStepIn,
     ApiScenarioStepsReplaceIn,
@@ -82,7 +84,11 @@ from app.services.api_automation.orchestration_asset_analysis import (
     endpoint_summary,
     environment_schema_projection,
 )
-from app.services.api_automation.orchestration_compiler import COMPILER_VERSION, compile_plan
+from app.services.api_automation.orchestration_compiler import COMPILER_VERSION, compile_plan, compile_review_plan
+from app.services.api_automation.orchestration_job_runner import job_runner as orchestration_job_runner
+from app.services.api_automation.orchestration_planner import ApiScenarioPlanner
+from app.services.api_automation.orchestration_review import build_review_plan
+from app.services.api_automation.orchestration_validator import validate_review_plan
 
 
 MAX_AI_SCENARIO_CANDIDATE_ENDPOINTS = 12
@@ -2377,6 +2383,154 @@ def enqueue_api_scenario_ai_plan(project_id: str, payload: ApiScenarioAiPlanIn, 
         "created": True,
     }
 
+
+def submit_api_scenario_ai_plan(
+    project_id: str,
+    payload: ApiScenarioAiPlanIn,
+    actor,
+    *,
+    plan_id: str,
+) -> bool:
+    return orchestration_job_runner.submit(
+        plan_id,
+        execute_api_scenario_ai_plan,
+        project_id,
+        payload,
+        dict(actor),
+        plan_id=plan_id,
+    )
+
+
+def execute_api_scenario_ai_plan(
+    project_id: str,
+    payload: ApiScenarioAiPlanIn,
+    actor,
+    *,
+    plan_id: str,
+) -> dict | None:
+    started_at = time.monotonic()
+    try:
+        with connect() as db:
+            _require_visible_project(db, project_id, actor)
+            scenario = _require_scenario(db, project_id, payload.scenario_id) if payload.scenario_id else None
+            endpoints = _select_orchestration_endpoints(api_automation_repo.list_endpoints(db, project_id), payload)
+            if not endpoints:
+                raise ValueError("当前范围内没有可用的接口资产。")
+            endpoint_context = [_serialize_endpoint(endpoint) for endpoint in endpoints]
+            environment_row = None
+            if payload.constraints.environment_id:
+                environment_row = api_automation_repo.find_api_environment(db, payload.constraints.environment_id)
+                if not environment_row or environment_row["project_id"] != project_id:
+                    raise ValueError("接口环境不存在。")
+            environment_projection = environment_schema_projection(environment_row)
+            expected_revision = int(scenario["revision"]) if scenario else None
+            assets_hash = endpoint_fingerprint(endpoint_context)
+            row = db.execute(
+                "SELECT expires_at FROM api_scenario_ai_plans WHERE id = ? AND project_id = ?",
+                (plan_id, project_id),
+            ).fetchone()
+            if not row:
+                return None
+            expires_at = str(row["expires_at"])
+
+        try:
+            selection = resolve_model_selection("api_scenario_orchestration")
+        except (KeyError, ValueError):
+            selection = resolve_model_selection("api_test_generation")
+        model = build_agent_model(selection, extra_body=thinking_disabled_extra_body(selection))
+        planner = ApiScenarioPlanner(model)
+        snapshot = {
+            "goal": _redact_orchestration_text(payload.goal),
+            "constraints": payload.constraints.model_dump(),
+            "current_scenario_revision": expected_revision,
+            "endpoint_catalog": [endpoint_summary(endpoint) for endpoint in endpoint_context],
+            "environment_schema": environment_projection,
+        }
+        proposal = asyncio.run(planner.plan(snapshot))
+        review = build_review_plan(
+            proposal,
+            endpoint_context,
+            environment_projection,
+            plan_id=plan_id,
+            scenario_id=payload.scenario_id,
+            expected_revision=expected_revision,
+            asset_fingerprint=assets_hash,
+            expires_at=expires_at,
+        )
+        compiled = compile_review_plan(
+            review,
+            endpoint_context,
+            environment_projection,
+            require_cleanup=payload.constraints.require_cleanup,
+        )
+        compiled_validation = _validate_ai_plan(project_id, compiled, endpoint_context)
+        review_data = review.model_dump(mode="json")
+        review_data["validation"] = {
+            "valid": bool(review.validation.get("valid")) and bool(compiled_validation.get("valid")),
+            "errors": [*review.validation.get("errors", []), *compiled_validation.get("errors", [])],
+            "warnings": [*review.validation.get("warnings", []), *compiled_validation.get("warnings", [])],
+        }
+        review = ApiScenarioAiReviewPlan.model_validate(review_data)
+        compiled_response = {
+            "plan_id": plan_id,
+            "plan_version": 2,
+            "status": "preview",
+            "compiler_version": COMPILER_VERSION,
+            "asset_fingerprint": assets_hash,
+            "environment_schema": environment_projection,
+            **compiled.model_dump(),
+            "validation": compiled_validation,
+            "expected_revision": expected_revision,
+            "expires_at": expires_at,
+        }
+        generation_meta = {
+            "stage": "completed",
+            "model_call_count": planner.model_call_count,
+            "total_duration_ms": round((time.monotonic() - started_at) * 1000),
+        }
+        with connect() as db:
+            cursor = db.execute(
+                """
+                UPDATE api_scenario_ai_plans
+                SET proposal_json = ?, review_json = ?, plan_json = ?, validation_json = ?,
+                    generation_meta_json = ?, asset_fingerprint = ?, model_provider = ?, model_name = ?,
+                    lifecycle_status = 'completed', error_message = '', updated_at = CURRENT_TIMESTAMP
+                WHERE id = ? AND lifecycle_status = 'generating'
+                """,
+                (
+                    api_automation_repo.dumps_json(proposal.model_dump(mode="json")),
+                    api_automation_repo.dumps_json(review.model_dump(mode="json")),
+                    api_automation_repo.dumps_json(compiled_response),
+                    api_automation_repo.dumps_json(review.validation),
+                    api_automation_repo.dumps_json(generation_meta),
+                    assets_hash,
+                    selection.provider,
+                    selection.model,
+                    plan_id,
+                ),
+            )
+        return review.model_dump(mode="json") if cursor.rowcount else None
+    except Exception as exc:
+        with connect() as db:
+            db.execute(
+                """
+                UPDATE api_scenario_ai_plans
+                SET lifecycle_status = 'failed', error_message = ?, generation_meta_json = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE id = ? AND lifecycle_status = 'generating'
+                """,
+                (
+                    str(exc),
+                    api_automation_repo.dumps_json(
+                        {
+                            "stage": "failed",
+                            "total_duration_ms": round((time.monotonic() - started_at) * 1000),
+                        }
+                    ),
+                    plan_id,
+                ),
+            )
+        return None
+
 def create_api_scenario_ai_plan(
     project_id: str,
     payload: ApiScenarioAiPlanIn,
@@ -2525,22 +2679,23 @@ def get_api_scenario_ai_plan(project_id: str, plan_id: str, actor) -> dict:
         if not row:
             raise api_error(404, "API_SCENARIO_AI_PLAN_NOT_FOUND", "AI 编排计划不存在。")
         lifecycle_status = str(row["lifecycle_status"])
-        if lifecycle_status == "generating" and _ai_plan_generation_timed_out(row["created_at"]):
-            db.execute(
-                """
-                UPDATE api_scenario_ai_plans
-                SET lifecycle_status = 'failed', error_message = ?, updated_at = CURRENT_TIMESTAMP
-                WHERE id = ? AND lifecycle_status = 'generating'
-                """,
-                (_ai_plan_timeout_message(), plan_id),
-            )
-            lifecycle_status = "failed"
         if lifecycle_status != "completed":
-            return {
+            response = {
                 "plan_id": plan_id,
                 "scenario_id": row["scenario_id"],
                 "lifecycle_status": lifecycle_status,
             }
+            if lifecycle_status == "failed":
+                meta = api_automation_repo.loads_json(row["generation_meta_json"], {})
+                response["error"] = {
+                    "stage": meta.get("stage", "failed"),
+                    "code": "API_SCENARIO_AI_PLAN_FAILED",
+                    "message": row["error_message"],
+                }
+            return response
+        review = api_automation_repo.loads_json(row["review_json"], {})
+        if review:
+            return review
         status = str(row["status"])
         if status == "preview" and datetime.fromisoformat(row["expires_at"].replace("Z", "+00:00")) <= datetime.now(UTC):
             db.execute("UPDATE api_scenario_ai_plans SET status = 'expired' WHERE id = ?", (plan_id,))
@@ -2548,6 +2703,112 @@ def get_api_scenario_ai_plan(project_id: str, plan_id: str, actor) -> dict:
         plan = api_automation_repo.loads_json(row["plan_json"], {})
         plan["status"] = status
         return plan
+
+
+def save_api_scenario_ai_plan_review(
+    project_id: str,
+    plan_id: str,
+    payload: ApiScenarioAiReviewSaveIn,
+    actor,
+) -> dict:
+    _require_admin(actor)
+    with connect() as db:
+        _require_visible_project(db, project_id, actor)
+        row = db.execute(
+            "SELECT * FROM api_scenario_ai_plans WHERE id = ? AND project_id = ?",
+            (plan_id, project_id),
+        ).fetchone()
+        if not row:
+            raise api_error(404, "API_SCENARIO_AI_PLAN_NOT_FOUND", "AI 编排计划不存在。")
+        if row["lifecycle_status"] != "completed" or row["status"] != "preview":
+            raise api_error(409, "API_SCENARIO_AI_PLAN_NOT_REVIEWABLE", "当前 AI 编排计划不可编辑。")
+        current_revision = int(row["review_revision"] or 0)
+        if current_revision != payload.expected_review_revision:
+            raise api_error(409, "API_SCENARIO_AI_REVIEW_CONFLICT", "AI 编排审阅内容已更新，请刷新后重试。")
+        review_data = api_automation_repo.loads_json(row["review_json"], {})
+        if not review_data:
+            raise api_error(409, "API_SCENARIO_AI_REVIEW_MISSING", "AI 编排计划缺少审阅数据，请重新生成。")
+        review = ApiScenarioAiReviewPlan.model_validate(review_data)
+        request_payload = ApiScenarioAiPlanIn.model_validate(api_automation_repo.loads_json(row["request_json"], {}))
+        endpoints = _select_orchestration_endpoints(api_automation_repo.list_endpoints(db, project_id), request_payload)
+        endpoint_context = [_serialize_endpoint(endpoint) for endpoint in endpoints]
+        environment_row = None
+        if request_payload.constraints.environment_id:
+            environment_row = api_automation_repo.find_api_environment(db, request_payload.constraints.environment_id)
+        environment_projection = environment_schema_projection(environment_row)
+
+    saved_steps = {step.step_id: step for step in payload.steps}
+    if set(saved_steps) != {step.step_id for step in review.steps}:
+        raise api_error(422, "API_SCENARIO_AI_REVIEW_STEPS_INVALID", "审阅保存必须包含当前计划的全部步骤。")
+    next_steps = []
+    for step in review.steps:
+        saved_step = saved_steps[step.step_id]
+        field_updates = {field.field_id: field for field in saved_step.fields}
+        current_fields = [field for group in step.field_groups for field in group.fields]
+        if set(field_updates) != {field.field_id for field in current_fields}:
+            raise api_error(422, "API_SCENARIO_AI_REVIEW_FIELDS_INVALID", f"步骤 {step.step_id} 必须包含全部审阅字段。")
+        step_data = step.model_dump(mode="json")
+        step_data["order"] = saved_step.order
+        for group in step_data["field_groups"]:
+            for field in group["fields"]:
+                update = field_updates[field["field_id"]]
+                field["resolved"] = update.resolved.model_dump(mode="json", exclude_none=True) if update.resolved else None
+                field["status"] = update.status
+        next_steps.append(step_data)
+
+    next_review_data = review.model_dump(mode="json")
+    next_review_data["steps"] = next_steps
+    next_review_data["review_revision"] = current_revision + 1
+    next_review_data["asset_fingerprint"] = endpoint_fingerprint(endpoint_context)
+    provisional_review = ApiScenarioAiReviewPlan.model_validate(next_review_data)
+    compiled = compile_review_plan(
+        provisional_review,
+        endpoint_context,
+        environment_projection,
+        require_cleanup=request_payload.constraints.require_cleanup,
+    )
+    compiled_validation = _validate_ai_plan(project_id, compiled, endpoint_context)
+    review_validation = validate_review_plan(provisional_review, endpoint_context)
+    next_review_data["validation"] = {
+        "valid": bool(review_validation["valid"]) and bool(compiled_validation["valid"]),
+        "errors": [*review_validation["errors"], *compiled_validation["errors"]],
+        "warnings": [*review_validation["warnings"], *compiled_validation["warnings"]],
+    }
+    saved_review = ApiScenarioAiReviewPlan.model_validate(next_review_data)
+    compiled_response = {
+        "plan_id": plan_id,
+        "plan_version": 2,
+        "status": "preview",
+        "compiler_version": COMPILER_VERSION,
+        "asset_fingerprint": saved_review.asset_fingerprint,
+        "environment_schema": environment_projection,
+        **compiled.model_dump(),
+        "validation": compiled_validation,
+        "expected_revision": saved_review.expected_revision,
+        "expires_at": saved_review.expires_at,
+    }
+    with connect() as db:
+        cursor = db.execute(
+            """
+            UPDATE api_scenario_ai_plans
+            SET review_json = ?, review_revision = ?, plan_json = ?, validation_json = ?,
+                asset_fingerprint = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE id = ? AND project_id = ? AND review_revision = ?
+            """,
+            (
+                api_automation_repo.dumps_json(saved_review.model_dump(mode="json")),
+                saved_review.review_revision,
+                api_automation_repo.dumps_json(compiled_response),
+                api_automation_repo.dumps_json(saved_review.validation),
+                saved_review.asset_fingerprint,
+                plan_id,
+                project_id,
+                current_revision,
+            ),
+        )
+        if cursor.rowcount != 1:
+            raise api_error(409, "API_SCENARIO_AI_REVIEW_CONFLICT", "AI 编排审阅内容已更新，请刷新后重试。")
+    return saved_review.model_dump(mode="json")
 
 
 def apply_api_scenario_ai_plan(project_id: str, plan_id: str, payload: ApiScenarioAiPlanApplyIn, actor) -> dict:
@@ -2563,6 +2824,22 @@ def apply_api_scenario_ai_plan(project_id: str, plan_id: str, payload: ApiScenar
             db.execute("UPDATE api_scenario_ai_plans SET status = 'expired' WHERE id = ?", (plan_id,))
             raise api_error(409, "API_SCENARIO_AI_PLAN_EXPIRED", "AI 编排计划已过期，请重新生成。")
         scenario = _require_scenario(db, project_id, payload.scenario_id)
+        review_data = api_automation_repo.loads_json(row["review_json"], {})
+        if review_data:
+            if int(row["review_revision"] or 0) != payload.expected_review_revision:
+                raise api_error(409, "API_SCENARIO_AI_REVIEW_CONFLICT", "AI 编排审阅内容已更新，请刷新后重试。")
+            review = ApiScenarioAiReviewPlan.model_validate(review_data)
+            request_payload = ApiScenarioAiPlanIn.model_validate(api_automation_repo.loads_json(row["request_json"], {}))
+            endpoints = _select_orchestration_endpoints(api_automation_repo.list_endpoints(db, project_id), request_payload)
+            endpoint_context = [_serialize_endpoint(endpoint) for endpoint in endpoints]
+            review_validation = validate_review_plan(review, endpoint_context, for_apply=True)
+            if not review_validation["valid"]:
+                raise api_error(409, "API_SCENARIO_AI_REVIEW_PENDING", review_validation["errors"][0])
+            if int(scenario["revision"]) != int(row["expected_revision"] or 0):
+                raise api_error(409, "API_SCENARIO_AI_SCENARIO_CONFLICT", "场景草稿已更新，请重新生成或确认最新版本。")
+            current_fingerprint = endpoint_fingerprint(endpoint_context)
+            if row["asset_fingerprint"] and current_fingerprint != row["asset_fingerprint"]:
+                raise api_error(409, "API_SCENARIO_AI_ASSET_CONFLICT", "接口资产已更新，请重新生成。")
         plan = api_automation_repo.loads_json(row["plan_json"], {})
         if not plan.get("validation", {}).get("valid"):
             raise api_error(409, "API_SCENARIO_AI_PLAN_INVALID", "AI 编排计划未通过服务端校验。")
@@ -2632,7 +2909,7 @@ def _validate_ai_plan(project_id: str, plan: ScenarioPlanResult, endpoints: list
     if len(node_ids) != len(plan.nodes):
         errors.append("AI 计划存在重复节点 ID。")
     for node in plan.nodes:
-        if node.type in {"api_request", "poll"}:
+        if node.type == "api_request":
             if not node.endpoint_id or node.endpoint_id not in endpoint_by_id:
                 errors.append(f"节点 {node.name or node.id} 引用了无效接口资产。")
             else:
@@ -3471,7 +3748,7 @@ def _prepare_scenario_step(db, project_id: str, payload: ApiScenarioStepIn, step
         if not case or case["project_id"] != project_id:
             raise api_error(400, "API_TEST_CASE_INVALID", "接口用例不存在或不属于当前项目。")
         endpoint_id = str(case["endpoint_id"] or "") or endpoint_id
-    if payload.step_type in {"api_request", "poll"}:
+    if payload.step_type == "api_request":
         if not endpoint_id:
             raise api_error(400, "API_ENDPOINT_INVALID", "接口不存在或不属于当前项目。")
         endpoint = api_automation_repo.find_endpoint(db, endpoint_id)
@@ -3565,7 +3842,7 @@ def _validate_scenario_definition(db, scenario: Row, steps: list[dict]) -> dict:
         case = api_automation_repo.find_api_test_case(db, case_id) if case_id else None
         endpoint_id = step.get("endpoint_id")
         endpoint = api_automation_repo.find_endpoint(db, endpoint_id) if endpoint_id else None
-        if step_type in {"api_request", "poll"} and (
+        if step_type == "api_request" and (
             not endpoint or endpoint["project_id"] != scenario["project_id"]
         ):
             errors.append(f"{prefix}必须选择当前项目的接口资产。")
@@ -3573,15 +3850,6 @@ def _validate_scenario_definition(db, scenario: Row, steps: list[dict]) -> dict:
             duration_ms = config.get("duration_ms")
             if not isinstance(duration_ms, (int, float)) or not 0 <= duration_ms <= 300000:
                 errors.append(f"{prefix}的等待时长必须在 0 到 300000 毫秒之间。")
-        elif step_type == "poll":
-            interval_ms = config.get("interval_ms")
-            timeout_ms = config.get("timeout_ms")
-            if not isinstance(interval_ms, (int, float)) or interval_ms <= 0:
-                errors.append(f"{prefix}的轮询间隔必须大于 0。")
-            if not isinstance(timeout_ms, (int, float)) or timeout_ms <= 0:
-                errors.append(f"{prefix}的轮询超时必须大于 0。")
-            if not step["assertions"]:
-                errors.append(f"{prefix}至少需要一个结束断言。")
         elif step_type == "condition":
             source = config.get("source") if isinstance(config.get("source"), dict) else {}
             _validate_scenario_source(source, prior_outputs, known_ids, prefix, errors)

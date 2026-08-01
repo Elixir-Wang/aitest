@@ -23,7 +23,6 @@ import {
   Workflow,
   XCircle,
 } from "lucide-react";
-import { toast } from "@/lib/toast";
 
 import { PageShell, ShellSection } from "@/components/ai-testing/page-shell";
 import {
@@ -56,6 +55,7 @@ import {
   type UiAutomationGenerationRun,
 } from "@/lib/api-client";
 import type { ExplorationEnvironment } from "@/lib/exploration-types";
+import { toast } from "@/lib/toast";
 import { moduleBreadcrumbs } from "@/navigation/breadcrumbs";
 
 const MAIN_TABS = ["overview", "runs"] as const;
@@ -418,7 +418,7 @@ export function UiAutomationAssetDetail({ projectId, assetId }: { projectId: str
           <AlertDialogHeader>
             <AlertDialogTitle>删除选中的运行记录</AlertDialogTitle>
             <AlertDialogDescription>
-              将删除 {selectedRunIds.length} 条运行记录，以及对应的日志、截图、视频和 Trace 产物。此操作无法撤销。
+              将删除 {selectedRunIds.length} 条运行记录，以及对应的日志和截图产物。此操作无法撤销。
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -644,9 +644,7 @@ function ExecutionTable({
             <td className="px-4 py-3 text-muted-foreground text-xs">
               {formatDateTime(run.started_at || run.created_at)}
             </td>
-            <td className="px-4 py-3 text-right font-mono text-xs">
-              {(run.trace_path ? 1 : 0) + run.screenshot_paths.length}
-            </td>
+            <td className="px-4 py-3 text-right font-mono text-xs">{run.screenshot_paths.length}</td>
           </tr>
         ))}
         {runs.length === 0 ? (

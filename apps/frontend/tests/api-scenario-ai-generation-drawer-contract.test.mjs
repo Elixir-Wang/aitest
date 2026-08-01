@@ -17,6 +17,52 @@ const taskIndicatorSource = readFileSync(
   new URL("../src/components/ai-testing/task-running-indicator.tsx", import.meta.url),
   "utf8",
 );
+const reviewDrawerSource = readFileSync(
+  new URL(
+    "../src/components/ai-testing/api-automation/api-scenario-ai-review-drawer.tsx",
+    import.meta.url,
+  ),
+  "utf8",
+);
+const reviewStepSource = readFileSync(
+  new URL(
+    "../src/components/ai-testing/api-automation/api-scenario-ai-review-step-card.tsx",
+    import.meta.url,
+  ),
+  "utf8",
+);
+const reviewFieldSource = readFileSync(
+  new URL(
+    "../src/components/ai-testing/api-automation/api-scenario-ai-review-field.tsx",
+    import.meta.url,
+  ),
+  "utf8",
+);
+
+test("AI scenario review uses versioned editable review contracts", () => {
+  assert.match(clientSource, /export type ApiScenarioAiReviewPlan/);
+  assert.match(clientSource, /schema_version:\s*3/);
+  assert.match(clientSource, /review_revision:\s*number/);
+  assert.match(clientSource, /saveApiScenarioAiPlanReview/);
+  assert.match(clientSource, /expected_review_revision/);
+  assert.match(hookSource, /saveAiPlanReview/);
+  assert.match(hookSource, /expected_review_revision:\s*aiPlan\.review_revision/);
+  assert.match(hookSource, /expected_review_revision:\s*aiPlan\.review_revision[\s\S]*confirmation:\s*"overwrite_draft"/);
+});
+
+test("AI scenario review renders one editable card per step", () => {
+  assert.match(editorSource, /ApiScenarioAiReviewDrawer/);
+  assert.match(reviewDrawerSource, /plan\.steps\.map/);
+  assert.match(reviewDrawerSource, /ApiScenarioAiReviewStepCard/);
+  assert.match(reviewStepSource, /步骤 \{step\.order\}/);
+  assert.match(reviewStepSource, /step\.field_groups/);
+  assert.match(reviewStepSource, /已自动确定/);
+  assert.match(reviewStepSource, /AI 建议/);
+  assert.match(reviewStepSource, /最终值/);
+  assert.match(reviewFieldSource, /环境变量/);
+  assert.match(reviewFieldSource, /上游输出/);
+  assert.doesNotMatch(reviewDrawerSource + reviewStepSource + reviewFieldSource, /置信度|当前环境未提供|原因/);
+});
 
 test("AI scenario generation uses an accepted background task contract", () => {
   assert.match(clientSource, /ApiScenarioAiPlanAccepted/);
@@ -61,6 +107,14 @@ test("AI orchestration drawer separates dragging from text selection and copying
   assert.doesNotMatch(footerSource, /<OneClipboard/);
   assert.doesNotMatch(footerSource, /放弃计划/);
   assert.doesNotMatch(footerSource, /覆盖当前草稿/);
+});
+
+test("AI orchestration generation actions stay in the drawer header", () => {
+  const headerSource = editorSource.match(/<DrawerHeader[\s\S]*?<\/DrawerHeader>/)?.[0] ?? "";
+
+  assert.match(headerSource, /\{busy \? "关闭" : "取消"\}/);
+  assert.match(headerSource, /\{busy \? "正在生成" : "生成编排草稿"\}/);
+  assert.doesNotMatch(editorSource, /<DrawerFooter/);
 });
 
 test("AI plan apply explicitly overwrites the current draft", () => {

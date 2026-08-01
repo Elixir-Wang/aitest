@@ -8,19 +8,15 @@ import {
   AlertTriangle,
   ArrowDown,
   ArrowLeft,
-  ArrowUp,
   Braces,
   CheckCircle2,
   Clock3,
   GitBranch,
-  LayoutDashboard,
-  ListTree,
   Loader2,
   PanelRightClose,
   PanelRightOpen,
   Play,
   Plus,
-  RefreshCw,
   Save,
   ShieldCheck,
   Sparkles,
@@ -30,29 +26,27 @@ import {
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Drawer, DrawerContent, DrawerFooter, DrawerHandle, DrawerHeader, DrawerTitle } from "@/components/ui/drawer";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+import { Drawer, DrawerContent, DrawerHandle, DrawerHeader, DrawerTitle } from "@/components/ui/drawer";
 import { Input } from "@/components/ui/input";
 import { OneClipboard } from "@/components/ui/one-clipboard";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "./api-orchestration-select";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import type {
   ApiAutomationEndpoint,
-  ApiAutomationScenarioStep,
   ApiScenarioAiPlan,
   ApiScenarioAiPlanAccepted,
 } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
 
 import { buildAiPlanPresentation } from "./api-scenario-ai-plan-view.mjs";
+import { ApiScenarioAiReviewDrawer } from "./api-scenario-ai-review-drawer";
 import { ApiScenarioAssetPicker } from "./api-scenario-asset-picker";
 import { ApiScenarioCanvas } from "./api-scenario-canvas";
 import { ApiScenarioRunDrawer } from "./api-scenario-run-drawer";
@@ -62,7 +56,6 @@ import { useApiScenarioEditor } from "./use-api-scenario-editor";
 
 type ApiScenarioEditorProps = { projectId: string; scenarioId?: string };
 type EditorView = "orchestration" | "variables" | "versions";
-type OrchestrationMode = "canvas" | "list";
 
 const methodTone: Record<string, string> = {
   GET: "border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-500/35 dark:bg-blue-500/15 dark:text-blue-200",
@@ -76,7 +69,6 @@ const methodTone: Record<string, string> = {
 export function ApiScenarioEditor({ projectId, scenarioId }: ApiScenarioEditorProps) {
   const editor = useApiScenarioEditor(projectId, scenarioId);
   const [view, setView] = useState<EditorView>("orchestration");
-  const [orchestrationMode, setOrchestrationMode] = useState<OrchestrationMode>("canvas");
   const [configPanelOpen, setConfigPanelOpen] = useState(false);
   const [assetPickerOpen, setAssetPickerOpen] = useState(false);
   const [aiDrawerOpen, setAiDrawerOpen] = useState(false);
@@ -217,182 +209,60 @@ export function ApiScenarioEditor({ projectId, scenarioId }: ApiScenarioEditorPr
               </div>
               <div>
                 <div className="font-semibold text-sm">执行链路</div>
-                <div className="text-[10px] text-muted-foreground">
-                  {orchestrationMode === "canvas" ? "以依赖关系查看场景" : "按执行顺序查看场景"}
-                </div>
+                <div className="text-[10px] text-muted-foreground">以依赖关系查看场景</div>
               </div>
             </div>
-            <div className="flex items-center gap-2">
-              {orchestrationMode === "canvas" ? (
-                <Button
-                  aria-label={configPanelOpen ? "隐藏节点配置" : "显示节点配置"}
-                  className="h-8 gap-1.5 px-2.5 text-xs"
-                  onClick={() => setConfigPanelOpen((current) => !current)}
-                  size="sm"
-                  title={configPanelOpen ? "隐藏节点配置" : "显示节点配置"}
-                  variant="outline"
-                >
-                  {configPanelOpen ? <PanelRightClose className="size-3.5" /> : <PanelRightOpen className="size-3.5" />}
-                  {configPanelOpen ? "隐藏配置" : "显示配置"}
-                </Button>
-              ) : null}
-              <div className="flex items-center rounded-lg border bg-muted/25 p-0.5">
-                <Button
-                  aria-label="画布视图"
-                  className="h-8 gap-1.5 px-2.5 text-xs"
-                  onClick={() => setOrchestrationMode("canvas")}
-                  size="sm"
-                  variant={orchestrationMode === "canvas" ? "secondary" : "ghost"}
-                >
-                  <LayoutDashboard className="size-3.5" />
-                  画布
-                </Button>
-                <Button
-                  aria-label="列表视图"
-                  className="h-8 gap-1.5 px-2.5 text-xs"
-                  onClick={() => setOrchestrationMode("list")}
-                  size="sm"
-                  variant={orchestrationMode === "list" ? "secondary" : "ghost"}
-                >
-                  <ListTree className="size-3.5" />
-                  列表
-                </Button>
-              </div>
-            </div>
-          </div>
-          {orchestrationMode === "canvas" ? (
-            <div
-              className={cn(
-                "grid min-h-0 flex-1 overflow-hidden",
-                configPanelOpen ? "grid-cols-[minmax(0,1fr)_clamp(360px,32vw,500px)]" : "grid-cols-1",
-              )}
+            <Button
+              aria-label={configPanelOpen ? "隐藏节点配置" : "显示节点配置"}
+              className="h-8 gap-1.5 px-2.5 text-xs"
+              onClick={() => setConfigPanelOpen((current) => !current)}
+              size="sm"
+              title={configPanelOpen ? "隐藏节点配置" : "显示节点配置"}
+              variant="outline"
             >
-              <ApiScenarioCanvas
-                activeStepId={editor.activeStepId}
-                endpoints={editor.endpoints}
-                onAddUtilityStep={editor.actions.addUtilityStep}
-                onClearSelection={() => {
-                  editor.actions.setActiveStepId("");
-                  setConfigPanelOpen(false);
-                }}
-                onDeleteStep={(stepId) => {
-                  editor.actions.removeStep(stepId);
-                  setConfigPanelOpen(false);
-                }}
-                onOpenAssetPicker={() => setAssetPickerOpen(true)}
-                onSelectStep={(stepId) => {
-                  editor.actions.setActiveStepId(stepId);
-                  setConfigPanelOpen(true);
-                }}
-                steps={editor.draft.steps}
-              />
-              {configPanelOpen ? (
-                <div className="min-h-0 min-w-0 border-l">
-                  <ApiScenarioStepConfig
-                    activeStep={editor.activeStep}
-                    endpoints={editor.endpoints}
-                    environment={editor.selectedEnvironment}
-                    onUpdateStep={editor.actions.updateStep}
-                    precedingSteps={precedingSteps}
-                    scenarioVariables={editor.draft.variables}
-                  />
-                </div>
-              ) : null}
-            </div>
-          ) : (
-            <div className="grid min-h-0 flex-1 grid-cols-[minmax(330px,390px)_minmax(0,1fr)] overflow-hidden">
-              <aside className="flex min-h-0 flex-col border-r bg-[linear-gradient(180deg,color-mix(in_srgb,var(--muted),white_72%),color-mix(in_srgb,var(--background),white_35%))] dark:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--muted),black_8%),var(--background))]">
-                <div className="flex h-[70px] items-center justify-between border-b px-4">
-                  <div>
-                    <h2 className="font-semibold text-sm">执行链路</h2>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button
-                          className="border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100 dark:border-amber-500/35 dark:bg-amber-500/15 dark:text-amber-200 dark:hover:bg-amber-500/25"
-                          size="sm"
-                          variant="outline"
-                        >
-                          <GitBranch />
-                          辅助步骤
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" className="w-60">
-                        <DropdownMenuLabel>增强线性编排</DropdownMenuLabel>
-                        <DropdownMenuSeparator />
-                        <UtilityMenuItem
-                          icon={Variable}
-                          label="数据赋值"
-                          onClick={() => editor.actions.addUtilityStep("assign")}
-                        />
-                        <UtilityMenuItem
-                          icon={GitBranch}
-                          label="条件判断"
-                          onClick={() => editor.actions.addUtilityStep("condition")}
-                        />
-                        <UtilityMenuItem
-                          icon={Clock3}
-                          label="固定等待"
-                          onClick={() => editor.actions.addUtilityStep("wait")}
-                        />
-                        <UtilityMenuItem
-                          icon={RefreshCw}
-                          label="轮询等待"
-                          onClick={() => editor.actions.addUtilityStep("poll")}
-                        />
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                    <Button onClick={() => setAssetPickerOpen(true)} size="sm">
-                      <Plus />
-                      从接口资产添加
-                    </Button>
-                  </div>
-                </div>
-                <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3">
-                  {editor.draft.steps.length === 0 ? (
-                    <button
-                      className="grid min-h-52 w-full place-items-center rounded-xl border border-dashed bg-card/60 p-6 text-center"
-                      onClick={() => setAssetPickerOpen(true)}
-                      type="button"
-                    >
-                      <div>
-                        <Plus className="mx-auto size-7 text-primary" />
-                        <div className="mt-3 font-medium text-sm">添加第一个接口步骤</div>
-                        <p className="mt-2 text-muted-foreground text-xs leading-5">
-                          从接口资产中选择登录、创建、查询等接口，组成业务链路。
-                        </p>
-                      </div>
-                    </button>
-                  ) : (
-                    editor.draft.steps.map((step, index) => (
-                      <StepCard
-                        endpoint={editor.endpoints.find((endpoint) => endpoint.id === step.endpoint_id)}
-                        index={index}
-                        isActive={editor.activeStepId === step.id}
-                        key={step.id}
-                        onMove={(offset) => {
-                          const target = editor.draft.steps[index + offset];
-                          if (target) editor.actions.reorderSteps(step.id, target.id);
-                        }}
-                        onRemove={() => editor.actions.removeStep(step.id)}
-                        onSelect={() => editor.actions.setActiveStepId(step.id)}
-                        step={step}
-                      />
-                    ))
-                  )}
-                </div>
-              </aside>
-              <ApiScenarioStepConfig
-                activeStep={editor.activeStep}
-                endpoints={editor.endpoints}
-                environment={editor.selectedEnvironment}
-                onUpdateStep={editor.actions.updateStep}
-                precedingSteps={precedingSteps}
-                scenarioVariables={editor.draft.variables}
-              />
-            </div>
-          )}
+              {configPanelOpen ? <PanelRightClose className="size-3.5" /> : <PanelRightOpen className="size-3.5" />}
+              {configPanelOpen ? "隐藏配置" : "显示配置"}
+            </Button>
+          </div>
+          <div
+            className={cn(
+              "grid min-h-0 flex-1 overflow-hidden",
+              configPanelOpen ? "grid-cols-[minmax(0,1fr)_clamp(360px,32vw,500px)]" : "grid-cols-1",
+            )}
+          >
+            <ApiScenarioCanvas
+              activeStepId={editor.activeStepId}
+              endpoints={editor.endpoints}
+              onAddUtilityStep={editor.actions.addUtilityStep}
+              onClearSelection={() => {
+                editor.actions.setActiveStepId("");
+                setConfigPanelOpen(false);
+              }}
+              onDeleteStep={(stepId) => {
+                editor.actions.removeStep(stepId);
+                setConfigPanelOpen(false);
+              }}
+              onOpenAssetPicker={() => setAssetPickerOpen(true)}
+              onSelectStep={(stepId) => {
+                editor.actions.setActiveStepId(stepId);
+                setConfigPanelOpen(true);
+              }}
+              steps={editor.draft.steps}
+            />
+            {configPanelOpen ? (
+              <div className="flex min-h-0 min-w-0 flex-col overflow-hidden border-l">
+                <ApiScenarioStepConfig
+                  activeStep={editor.activeStep}
+                  endpoints={editor.endpoints}
+                  environment={editor.selectedEnvironment}
+                  onUpdateStep={editor.actions.updateStep}
+                  precedingSteps={precedingSteps}
+                  projectId={projectId}
+                  scenarioVariables={editor.draft.variables}
+                />
+              </div>
+            ) : null}
+          </div>
         </div>
       ) : null}
       {view === "variables" ? (
@@ -448,18 +318,35 @@ export function ApiScenarioEditor({ projectId, scenarioId }: ApiScenarioEditorPr
         onOpenChange={setAssetPickerOpen}
         open={assetPickerOpen}
       />
-      <AiOrchestrationDrawer
-        busy={editor.aiBusy}
-        endpoints={editor.endpoints}
-        lifecycleStatus={editor.aiLifecycleStatus}
-        selectedEndpointIds={aiSourceEndpointIds}
-        onApply={() => void editor.actions.applyAiPlan()}
-        onDiscard={editor.actions.discardAiPlan}
-        onGenerate={(goal, options) => editor.actions.generateAiPlan(goal, aiSourceEndpointIds, options)}
-        onOpenChange={setAiDrawerOpen}
-        open={aiDrawerOpen}
-        plan={editor.aiPlan}
-      />
+      {editor.aiPlan ? (
+        <ApiScenarioAiReviewDrawer
+          busy={editor.aiBusy}
+          onApply={() => void editor.actions.applyAiPlan()}
+          onChangeField={editor.actions.updateAiReviewField}
+          onConfirmAll={editor.actions.confirmAllAiReviewFields}
+          onConfirmField={editor.actions.confirmAiReviewField}
+          onConfirmStep={editor.actions.confirmAiReviewStep}
+          onDiscard={editor.actions.discardAiPlan}
+          onMoveStep={editor.actions.reorderAiReviewStep}
+          onOpenChange={setAiDrawerOpen}
+          onSave={() => editor.actions.saveAiPlanReview()}
+          open={aiDrawerOpen}
+          plan={editor.aiPlan}
+        />
+      ) : (
+        <AiOrchestrationDrawer
+          busy={editor.aiBusy}
+          endpoints={editor.endpoints}
+          lifecycleStatus={editor.aiLifecycleStatus}
+          selectedEndpointIds={aiSourceEndpointIds}
+          onApply={() => void editor.actions.applyAiPlan()}
+          onDiscard={editor.actions.discardAiPlan}
+          onGenerate={(goal, options) => editor.actions.generateAiPlan(goal, aiSourceEndpointIds, options)}
+          onOpenChange={setAiDrawerOpen}
+          open={aiDrawerOpen}
+          plan={null}
+        />
+      )}
       <ApiScenarioRunDrawer
         onJumpToStep={(stepId) => {
           setView("orchestration");
@@ -507,7 +394,7 @@ function AiOrchestrationDrawer({
 
   return (
     <Drawer direction="right" handleOnly open={open} onOpenChange={onOpenChange}>
-      <DrawerContent className="grid h-full w-full grid-rows-[auto_minmax(0,1fr)_auto] gap-0 overflow-hidden bg-background p-0 data-[vaul-drawer-direction=right]:w-[min(92vw,760px)] data-[vaul-drawer-direction=right]:sm:max-w-[760px]">
+      <DrawerContent className="grid h-full w-full grid-rows-[auto_minmax(0,1fr)] gap-0 overflow-hidden bg-background p-0 data-[vaul-drawer-direction=right]:w-[min(92vw,760px)] data-[vaul-drawer-direction=right]:sm:max-w-[760px]">
         <DrawerHeader className="relative border-b bg-muted/20 px-5 py-4 sm:px-6">
           <div className="flex flex-wrap items-center gap-3">
             <div className="relative grid size-8 shrink-0 place-items-center rounded-md border border-primary/20 bg-primary/8 text-primary shadow-xs">
@@ -524,6 +411,12 @@ function AiOrchestrationDrawer({
                   生成草稿
                 </Badge>
               </div>
+              {!plan ? (
+                <div className="mt-1 hidden items-center gap-2 text-[11px] text-muted-foreground sm:flex">
+                  <ShieldCheck className="size-3.5 text-primary" />
+                  应用前可预览并校验全部步骤
+                </div>
+              ) : null}
             </div>
             {plan ? (
               <div className="ml-auto flex w-full items-center justify-end gap-2 sm:w-auto sm:pl-2">
@@ -536,7 +429,23 @@ function AiOrchestrationDrawer({
                   覆盖当前草稿
                 </Button>
               </div>
-            ) : null}
+            ) : (
+              <div className="ml-auto flex w-full items-center justify-end gap-2 sm:w-auto sm:pl-2">
+                <Button className="h-8 px-3 text-xs" onClick={() => onOpenChange(false)} variant="outline">
+                  {busy ? "关闭" : "取消"}
+                </Button>
+                <Button
+                  className="h-8 px-3 text-xs shadow-sm"
+                  disabled={busy || !goal.trim()}
+                  onClick={async () => {
+                    await onGenerate(goal.trim(), { requireCleanup });
+                  }}
+                >
+                  {busy ? <Loader2 className="animate-spin" /> : <Sparkles />}
+                  {busy ? "正在生成" : "生成编排草稿"}
+                </Button>
+              </div>
+            )}
           </div>
           <div className="absolute inset-y-0 left-0 z-10 flex w-3 items-center justify-center">
             <DrawerHandle
@@ -843,29 +752,6 @@ function AiOrchestrationDrawer({
             </div>
           </div>
         )}
-        {!plan ? (
-          <DrawerFooter className="mx-0 mb-0 min-h-16 items-center rounded-none border-t bg-background px-5 py-3 sm:justify-between sm:px-6">
-            <div className="hidden items-center gap-2 text-[11px] text-muted-foreground sm:flex">
-              <ShieldCheck className="size-3.5 text-primary" />
-              应用前可预览并校验全部步骤
-            </div>
-            <div className="flex w-full gap-2 sm:w-auto">
-              <Button className="flex-1 sm:flex-none" onClick={() => onOpenChange(false)} variant="outline">
-                {busy ? "关闭" : "取消"}
-              </Button>
-              <Button
-                className="flex-1 px-4 shadow-sm sm:flex-none"
-                disabled={busy || !goal.trim()}
-                onClick={async () => {
-                  await onGenerate(goal.trim(), { requireCleanup });
-                }}
-              >
-                {busy ? <Loader2 className="animate-spin" /> : <Sparkles />}
-                {busy ? "正在生成" : "生成编排草稿"}
-              </Button>
-            </div>
-          </DrawerFooter>
-        ) : null}
       </DrawerContent>
     </Drawer>
   );
@@ -943,105 +829,6 @@ function NavButton({
       {label}
       {count !== undefined ? <span className="rounded-full bg-muted px-1.5 text-[10px]">{count}</span> : null}
     </button>
-  );
-}
-
-function StepCard({
-  step,
-  endpoint,
-  index,
-  isActive,
-  onSelect,
-  onMove,
-  onRemove,
-}: {
-  step: ApiAutomationScenarioStep;
-  endpoint?: ApiAutomationEndpoint;
-  index: number;
-  isActive: boolean;
-  onSelect: () => void;
-  onMove: (offset: number) => void;
-  onRemove: () => void;
-}) {
-  return (
-    <article
-      className={cn(
-        "group relative grid grid-cols-[28px_1fr_auto] gap-2 rounded-xl border bg-card/90 p-3 shadow-sm transition-all",
-        isActive &&
-          "border-primary/60 bg-card shadow-[0_10px_28px_color-mix(in_srgb,var(--primary),transparent_84%)] before:absolute before:inset-y-2 before:left-0 before:w-0.5 before:rounded-full before:bg-primary",
-      )}
-    >
-      <button
-        className="grid size-6 place-items-center rounded-md bg-muted font-semibold text-[11px] text-muted-foreground"
-        onClick={onSelect}
-        type="button"
-      >
-        {index + 1}
-      </button>
-      <button className="min-w-0 text-left" onClick={onSelect} type="button">
-        <div className="flex items-center gap-2">
-          <Badge
-            className={cn("h-5 min-w-11 justify-center font-mono text-[9px]", methodTone[endpoint?.method ?? ""])}
-            variant="outline"
-          >
-            {endpoint?.method ?? step.step_type.toUpperCase()}
-          </Badge>
-          <span className="truncate font-medium text-sm">{step.name}</span>
-        </div>
-        <div className="mt-1 truncate font-mono text-[10px] text-muted-foreground">{endpoint?.path ?? "辅助步骤"}</div>
-        <div className="mt-2 flex flex-wrap gap-1">
-          {step.bindings.length ? <MiniTag icon={Variable} text={`引用 ${step.bindings.length}`} /> : null}
-          {step.extractors.length ? <MiniTag icon={Braces} text={`输出 ${step.extractors.length}`} /> : null}
-          {step.assertions.length ? (
-            <MiniTag icon={CheckCircle2} text={`${step.assertions.length} 个断言`} success />
-          ) : null}
-        </div>
-      </button>
-      <div className="flex flex-col opacity-20 transition-opacity group-hover:opacity-100">
-        <Button disabled={index === 0} onClick={() => onMove(-1)} size="icon-xs" variant="ghost">
-          <ArrowUp />
-        </Button>
-        <Button onClick={() => onMove(1)} size="icon-xs" variant="ghost">
-          <ArrowDown />
-        </Button>
-        <Button onClick={onRemove} size="icon-xs" variant="ghost">
-          <Trash2 />
-        </Button>
-      </div>
-    </article>
-  );
-}
-
-function MiniTag({ icon: Icon, text, success }: { icon: typeof Variable; text: string; success?: boolean }) {
-  return (
-    <span
-      className={cn(
-        "inline-flex items-center gap-1 rounded bg-primary/8 px-1.5 py-0.5 text-[9px] text-primary",
-        success && "bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-200",
-      )}
-    >
-      <Icon className="size-2.5" />
-      {text}
-    </span>
-  );
-}
-
-function UtilityMenuItem({
-  icon: Icon,
-  label,
-  onClick,
-}: {
-  icon: typeof Variable;
-  label: string;
-  onClick: () => void;
-}) {
-  return (
-    <DropdownMenuItem className="gap-3 py-2.5" onClick={onClick}>
-      <span className="grid size-7 place-items-center rounded-lg bg-amber-50 text-amber-700 dark:bg-amber-500/15 dark:text-amber-200">
-        <Icon className="size-3.5" />
-      </span>
-      <span>{label}</span>
-    </DropdownMenuItem>
   );
 }
 

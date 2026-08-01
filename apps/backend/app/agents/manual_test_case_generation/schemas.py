@@ -32,23 +32,8 @@ class ExplorationPageContext(BaseModel):
     elements: list[ExplorationElementContext] = Field(default_factory=list)
 
 
-class ExplorationOperationStepContext(BaseModel):
-    action: str
-    element_key: str = ""
-    element_name: str = ""
-    value: str = ""
-    expected: list[str] = Field(default_factory=list)
-
-
-class ExplorationOperationContext(BaseModel):
-    operation_key: str
-    page_path: str = ""
-    steps: list[ExplorationOperationStepContext] = Field(default_factory=list)
-
-
 class ExplorationContext(BaseModel):
     pages: list[ExplorationPageContext] = Field(default_factory=list)
-    operations: list[ExplorationOperationContext] = Field(default_factory=list)
     source_count: int = 0
     truncated: bool = False
     warnings: list[str] = Field(default_factory=list)
@@ -90,7 +75,6 @@ class ManualTestCaseAiSourceSummaryOut(BaseModel):
     exploration_artifacts_requested: bool
     exploration_artifacts_used: bool
     page_count: int = 0
-    operation_count: int = 0
     truncated: bool = False
 
 
@@ -101,8 +85,6 @@ class ManualTestCaseAiGenerateOut(ManualTestCaseGenerationResult):
 __all__ = [
     "ExplorationContext",
     "ExplorationElementContext",
-    "ExplorationOperationContext",
-    "ExplorationOperationStepContext",
     "ExplorationPageContext",
     "ManualTestCaseAiGenerateIn",
     "ManualTestCaseAiGenerateOut",

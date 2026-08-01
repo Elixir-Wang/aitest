@@ -6,6 +6,10 @@ const workspaceSource = readFileSync(
   new URL("../src/components/ai-testing/exploration-workspace.tsx", import.meta.url),
   "utf8",
 );
+const runsTableSource = readFileSync(
+  new URL("../src/components/ai-testing/exploration-runs-table.tsx", import.meta.url),
+  "utf8",
+);
 const detailSource = readFileSync(
   new URL("../src/app/(main)/projects/[projectId]/exploration/[runId]/page.tsx", import.meta.url),
   "utf8",
@@ -43,12 +47,12 @@ test("exploration overview and list no longer expose inline edit dialogs", () =>
     workspaceSource,
     /router\.push\(`\/projects\/\$\{run\.project_id\}\/exploration\/\$\{run\.id\}\/edit`\)/,
   );
-  assert.match(workspaceSource, /label: "编辑"/);
+  assert.match(runsTableSource, /label: "编辑"/);
 });
 
 test("exploration workspace exposes restart action from available actions", () => {
-  assert.match(workspaceSource, /\(item\.available_actions \?\? \[\]\)\.includes\("start"\)/);
-  assert.match(workspaceSource, /label: item\.status === "pending" \? "开始探索" : "重新探索"/);
+  assert.match(runsTableSource, /\(item\.available_actions \?\? \[\]\)\.includes\("start"\)/);
+  assert.match(runsTableSource, /label: item\.status === "pending" \? "开始探索" : "重新探索"/);
   assert.match(workspaceSource, /\/page-exploration\/runs\/\$\{run\.id\}\/start/);
-  assert.match(workspaceSource, /onSelect: \(\) => void startExplorationRun\(item\)/);
+  assert.match(runsTableSource, /onSelect: \(\) => onStart\(item\)/);
 });

@@ -1,9 +1,0 @@
-Intended use: a modular room background for a high-fidelity AI employee operations dashboard.
-Scene: one compact modern software testing department office, shown as a self-contained cutaway room.
-Camera: orthographic isometric top-down view at approximately 55 degrees, centered, symmetrical, matching polished enterprise dashboard illustrations.
-Architecture: pale cool-gray floor, soft white walls, open front side, rear wall with low storage cabinets, shelves, small equipment and several green potted plants.
-Furniture: four identical clean white computer desks arranged in a precise two-by-two grid, each with a white monitor, keyboard and a gray-blue swivel chair. Three desks are occupied by realistic Asian office workers seated naturally and viewed mostly from above; one front-right desk is empty.
-People: two men and one woman in understated dark business-casual clothing, natural seated working poses, no facial close-up, consistent scale and perspective.
-Lighting and materials: soft cool daylight, subtle ambient occlusion, gentle contact shadows, premium photorealistic 3D architectural visualization, low saturation, bluish-white palette, crisp but not harsh.
-Composition: the room fills the square canvas with a small even margin; every desk is clearly visible and separated; no objects are cut off.
-Constraints: no text, no labels, no logos, no UI overlays, no selection box, no watermark, no distorted furniture, no extra desks, no extra people, no dramatic perspective, no fisheye lens.

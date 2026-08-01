@@ -1,10 +1,5 @@
-"""Independent loop-based website exploration agent."""
+"""Deterministic page-exploration loop decisions."""
 
-__all__ = ["page_exploration_loop_agent"]
+from app.agents.page_exploration_loop.agent import loop_action_decider
 
-
-def page_exploration_loop_agent(*args, **kwargs):
-    """Lazy import to keep state/merge utilities usable without model dependencies."""
-    from app.agents.page_exploration_loop.agent import page_exploration_loop_agent as factory
-
-    return factory(*args, **kwargs)
+__all__ = ["loop_action_decider"]

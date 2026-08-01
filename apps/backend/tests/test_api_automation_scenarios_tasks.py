@@ -280,7 +280,7 @@ def test_scenario_utility_steps_validate_with_supported_control_config(
 ) -> None:
     _use_temp_db(monkeypatch, tmp_path)
     _seed_project_endpoint_and_runs()
-    scenario = service.create_api_scenario("project-1", ApiScenarioIn(name="轮询资料"), ACTOR)
+    scenario = service.create_api_scenario("project-1", ApiScenarioIn(name="资料编排"), ACTOR)
     service.replace_api_scenario_steps(
         "project-1",
         scenario["id"],
@@ -302,19 +302,17 @@ def test_scenario_utility_steps_validate_with_supported_control_config(
                     },
                 ),
                 ApiScenarioStepIn(step_type="wait", name="固定等待", control_config={"duration_ms": 10}),
-                ApiScenarioStepIn(
-                    step_type="poll",
-                    endpoint_id="apiend-1",
-                    name="轮询资料",
-                    control_config={"interval_ms": 10, "timeout_ms": 100},
-                    assertions=[{"type": "status_code", "expected": 200}],
-                ),
             ]
         ),
         ACTOR,
     )
 
     assert service.validate_api_scenario("project-1", scenario["id"], ACTOR)["valid"] is True
+
+
+def test_poll_step_type_is_rejected() -> None:
+    with pytest.raises(ValueError, match="poll"):
+        ApiScenarioStepIn(step_type="poll")
 
 
 def test_scenario_run_result_path_is_persisted_and_exposed(

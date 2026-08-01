@@ -56,7 +56,7 @@ def test_run_case_executes_exact_node_and_writes_generic_result(monkeypatch, tmp
 
     assert captured["command"][-1] == "testcases/generated/test_login.py::test_uiauto_1"
     assert captured["kwargs"]["env"]["UI_BASE_URL"] == "https://example.test"
-    assert captured["kwargs"]["env"]["UI_ARTIFACT_DIR"].endswith("run/browser")
+    assert Path(captured["kwargs"]["env"]["UI_ARTIFACT_DIR"]) == tmp_path / "run" / "browser"
     assert captured["kwargs"]["env"]["UI_RUNNER_PARENT_PID"] == str(os.getpid())
     assert captured["kwargs"]["env"]["UI_VIEWPORT_WIDTH"] == "1440"
     assert captured["kwargs"]["env"]["UI_VIEWPORT_HEIGHT"] == "900"
@@ -108,30 +108,34 @@ def test_runner_uses_headed_browser_with_xvfb_when_enabled(monkeypatch, tmp_path
     assert captured["command"][0] == "/usr/bin/xvfb-run"
     assert "--server-args=-screen 0 1440x900x24" in captured["command"]
     assert "--headed" in captured["command"]
-    assert "--video=on" in captured["command"]
+    assert not any(option.startswith("--tracing=") for option in captured["command"])
+    assert not any(option.startswith("--video=") for option in captured["command"])
     plugin_index = captured["command"].index("-p")
     assert captured["command"][plugin_index + 1] == "app.services.ui_automation.live_pytest_plugin"
 
 
-def test_runner_collects_recorded_video(monkeypatch, tmp_path: Path):
+def test_runner_does_not_collect_trace_or_video_artifacts(monkeypatch, tmp_path: Path):
     captured = {}
 
-    def write_video():
+    def write_disabled_artifacts():
+        trace = tmp_path / "run" / "browser" / "case" / "trace.zip"
         video = tmp_path / "run" / "browser" / "case" / "video.webm"
         video.parent.mkdir(parents=True, exist_ok=True)
+        trace.write_bytes(b"trace")
         video.write_bytes(b"video")
 
-    _stub_process(monkeypatch, captured, on_communicate=write_video)
+    _stub_process(monkeypatch, captured, on_communicate=write_disabled_artifacts)
 
     result = runner.run_case(
-        run_id="uirun-video",
+        run_id="uirun-no-trace-video",
         suite_path=tmp_path / "suite",
         run_dir=tmp_path / "run",
         pytest_node_id="testcases/generated/test_login.py::test_uiauto_1",
         environment={"site_url": "https://example.test", "storage_state_path": ""},
     )
 
-    assert result["video_path"].endswith("video.webm")
+    assert "trace_path" not in result
+    assert "video_path" not in result
 
 
 def test_runner_passes_live_cdp_port_and_cleans_it_up(monkeypatch, tmp_path: Path):
@@ -156,7 +160,7 @@ def test_runner_passes_live_cdp_port_and_cleans_it_up(monkeypatch, tmp_path: Pat
     assert "--headed" not in captured["command"]
     assert "app.services.ui_automation.live_pytest_plugin" in captured["command"]
     assert captured["kwargs"]["env"]["UI_LIVE_CDP_PORT"] == "39521"
-    assert captured["kwargs"]["env"]["PYTHONPATH"].split(os.pathsep)[0].endswith("apps/backend")
+    assert Path(captured["kwargs"]["env"]["PYTHONPATH"].split(os.pathsep)[0]) == Path(runner.__file__).parents[3]
     assert captured["finished"] == "uirun-live"
 
 

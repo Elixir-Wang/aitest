@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import re
-from pathlib import Path
 from typing import Any
 
 import yaml
@@ -9,19 +8,14 @@ import yaml
 from app.agents.manual_test_case_generation.schemas import (
     ExplorationContext,
     ExplorationElementContext,
-    ExplorationOperationContext,
-    ExplorationOperationStepContext,
     ExplorationPageContext,
 )
-from app.core import settings
 from app.services.page_exploration import page_exploration_service
 
 
 MAX_PAGES = 100
 MAX_FULL_PAGES = 20
 MAX_ELEMENTS_PER_FULL_PAGE = 80
-MAX_OPERATIONS = 100
-MAX_FULL_OPERATIONS = 30
 MAX_CONTEXT_CHARS = 80_000
 
 
@@ -103,54 +97,6 @@ def _read_page(page: dict, actor, project_id: str) -> ExplorationPageContext:
     )
 
 
-def _operations_path(project_id: str) -> Path:
-    root = (settings.PROJECT_FILE_STORAGE_ROOT / project_id / "page_exploration").resolve()
-    storage_root = settings.PROJECT_FILE_STORAGE_ROOT.resolve()
-    root.relative_to(storage_root)
-    return root / "operations.yaml"
-
-
-def _read_operations(project_id: str) -> list[ExplorationOperationContext]:
-    path = _operations_path(project_id)
-    if not path.exists():
-        return []
-    payload = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
-    operations = payload.get("operations", []) if isinstance(payload, dict) else []
-    result = []
-    for operation in operations:
-        if not isinstance(operation, dict):
-            continue
-        steps = []
-        for raw_step in operation.get("steps", []) or []:
-            if not isinstance(raw_step, dict):
-                continue
-            expected = raw_step.get("expected", []) or []
-            if isinstance(expected, str):
-                expected = [expected]
-            element_key = _text(raw_step.get("element_key"))
-            element_name = _text(raw_step.get("element_name"))
-            steps.append(
-                ExplorationOperationStepContext(
-                    action=_text(raw_step.get("action")),
-                    element_key=element_key,
-                    element_name=element_name,
-                    value=_redact(
-                        _text(raw_step.get("value") or raw_step.get("value_ref")),
-                        hint=f"{element_key} {element_name}",
-                    ),
-                    expected=[_redact(_text(item)) for item in expected if _text(item)],
-                )
-            )
-        result.append(
-            ExplorationOperationContext(
-                operation_key=_text(operation.get("key")),
-                page_path=_text(operation.get("page_path")),
-                steps=steps,
-            )
-        )
-    return result
-
-
 def build_exploration_context(
     actor,
     project_id: str,
@@ -198,30 +144,9 @@ def build_exploration_context(
     for index, page in enumerate(pages):
         if index >= MAX_FULL_PAGES:
             page.elements = page.elements[:10]
-    operations: list[ExplorationOperationContext] = []
-    try:
-        operations = _read_operations(project_id)
-    except Exception:
-        warnings.append("项目操作探索产物无法解析，已跳过。")
-    operations.sort(
-        key=lambda operation: _score(
-            " ".join(
-                [operation.operation_key, operation.page_path]
-                + [step.action + step.element_name for step in operation.steps]
-            ),
-            keywords,
-        ),
-        reverse=True,
-    )
-    operations = operations[:MAX_OPERATIONS]
-    for index, operation in enumerate(operations):
-        if index >= MAX_FULL_OPERATIONS:
-            operation.steps = operation.steps[:3]
-
     context = ExplorationContext(
         pages=pages,
-        operations=operations,
-        source_count=len(pages) + len(operations),
+        source_count=len(pages),
         warnings=warnings,
     )
     serialized_size = len(context.model_dump_json())
@@ -229,6 +154,4 @@ def build_exploration_context(
         context.truncated = True
         for page in context.pages[MAX_FULL_PAGES:]:
             page.elements = page.elements[:3]
-        for operation in context.operations[MAX_FULL_OPERATIONS:]:
-            operation.steps = operation.steps[:1]
     return context

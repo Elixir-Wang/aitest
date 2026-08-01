@@ -102,8 +102,6 @@ def _scenario_py() -> str:
             if step_type == "wait":
                 time.sleep(float((step.get("control_config") or {}).get("duration_ms", 0)) / 1000)
                 return {}
-            if step_type == "poll":
-                return _poll(api_client, step, variables, outputs)
             return _request_with_lifecycle(api_client, step, variables, outputs)
 
 
@@ -134,20 +132,6 @@ def _scenario_py() -> str:
                 if not name:
                     raise ValueError("生命周期变量动作缺少变量名")
                 target[name] = _resolve_source(action.get("source") or {}, variables, outputs)
-
-
-        def _poll(api_client, step, variables, outputs):
-            config = step.get("control_config") or {}
-            interval = float(config.get("interval_ms", 1000)) / 1000
-            timeout = float(config.get("timeout_ms", 30000)) / 1000
-            deadline = time.monotonic() + timeout
-            while True:
-                try:
-                    return _request(api_client, step, variables, outputs)
-                except AssertionError:
-                    if time.monotonic() >= deadline:
-                        raise
-                    time.sleep(interval)
 
 
         def _request(api_client, step, variables, outputs):
@@ -301,6 +285,9 @@ def _scenario_py() -> str:
 
         def _extract(response, extractors):
             result = {}
+            sse_events = _sse_events(response) if any(
+                extractor.get("source") == "sse_event_json" for extractor in extractors
+            ) else []
             for extractor in extractors:
                 source = extractor.get("source") or "response.body"
                 path = extractor.get("path") or extractor.get("expression") or ""
@@ -313,11 +300,67 @@ def _scenario_py() -> str:
                 elif source == "text_regex":
                     match = re.search(path, getattr(response, "text", ""))
                     result[extractor["name"]] = match.group(1) if match else None
+                elif source == "sse_event_json":
+                    result[extractor["name"]] = _extract_sse_event_json(sse_events, extractor, path)
                 else:
                     raise ValueError("当前执行器不支持提取器来源: " + str(source))
-                if extractor.get("required", True) and result[extractor["name"]] is None:
+                missing = result[extractor["name"]] is None or (
+                    source == "sse_event_json"
+                    and extractor.get("occurrence") == "all"
+                    and result[extractor["name"]] == []
+                )
+                if extractor.get("required", True) and missing:
                     raise AssertionError("未提取到必填变量: " + extractor["name"])
             return result
+
+
+        def _sse_events(response):
+            events = []
+            event_name = "message"
+            data_lines = []
+
+            def flush():
+                nonlocal event_name, data_lines
+                if data_lines:
+                    events.append({"event": event_name or "message", "data": "\n".join(data_lines)})
+                event_name = "message"
+                data_lines = []
+
+            for raw_line in response.iter_lines(decode_unicode=True):
+                line = raw_line.decode("utf-8") if isinstance(raw_line, bytes) else str(raw_line)
+                if not line:
+                    flush()
+                elif line.startswith(":"):
+                    continue
+                elif line.startswith("event:"):
+                    event_name = line[6:].lstrip()
+                elif line.startswith("data:"):
+                    data_lines.append(line[5:].lstrip())
+            flush()
+            return events
+
+
+        def _extract_sse_event_json(events, extractor, path):
+            expected_event = str(extractor.get("event") or "message")
+            occurrence = str(extractor.get("occurrence") or "first")
+            values = []
+            for event in events:
+                if event["event"] != expected_event:
+                    continue
+                try:
+                    payload = json.loads(event["data"])
+                except (TypeError, json.JSONDecodeError):
+                    continue
+                value = _json_path(payload, path)
+                if value is not None:
+                    values.append(value)
+            if occurrence == "all":
+                return values
+            if occurrence == "last":
+                return values[-1] if values else None
+            if occurrence != "first":
+                raise ValueError("不支持的 SSE 提取 occurrence: " + occurrence)
+            return values[0] if values else None
 
 
         def _json_path(value, path):

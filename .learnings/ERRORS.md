@@ -26,6 +26,36 @@ Use a working apply_patch executable or allow the Codex wrapper to launch.
 
 ---
 
+## [ERR-20260801-001] self-review regex used unescaped question marks
+
+**Logged**: 2026-08-01T00:00:00+08:00
+**Priority**: low
+**Status**: resolved
+**Area**: tooling
+
+### Summary
+A placeholder scan command failed because the regex alternation included `???` without escaping the question marks.
+
+### Resolution
+Use fixed-string searches or escape regex metacharacters when scanning documentation for literal placeholder text.
+
+---
+
+## [ERR-20260801-001] apply_patch context omitted adjacent class spacing
+
+**Logged**: 2026-08-01T10:30:00+08:00
+**Priority**: low
+**Status**: resolved
+**Area**: tooling
+
+### Summary
+A combined patch failed because the schema insertion context assumed two blank lines before `ApiScenarioAiPlanNode`, while the current file had one.
+
+### Resolution
+Read the exact narrow target range and apply schema, table, and migration changes as separate patches.
+
+---
+
 ## [ERR-20260728-003] frontend-biome-preexisting-formatting
 
 **Logged**: 2026-07-28T00:00:00+08:00

@@ -125,7 +125,7 @@ def get_exploration_run(actor, run_id: str) -> dict:
 
         return {
             "run": run_dict,
-            "artifact_schema_version": 3,
+            "artifact_schema_version": 4,
             "unsupported_artifact": False,
             "unsupported_reason": "",
             "modules": modules,
@@ -489,13 +489,6 @@ def _project_page_parent_index(project_id: str) -> dict[str, str]:
     return parent_by_page_id
 
 
-def list_run_artifacts(actor, run_id: str) -> list[dict]:
-    """列出探索任务的产物"""
-    with connect() as db:
-        artifacts = exploration_artifact_repo.list_by_run(db, run_id)
-        return [dict(a) for a in artifacts]
-
-
 def get_exploration_report(actor, run_id: str) -> dict:
     """获取探索报告"""
     with connect() as db:
@@ -522,7 +515,7 @@ def get_exploration_report(actor, run_id: str) -> dict:
             "title": f"{run_dict['title']} - 探索报告",
             "markdown_content": report_content,
             "change_summary": "",
-            "artifact_schema_version": 3,
+            "artifact_schema_version": 4,
             "unsupported_artifact": False,
             "unsupported_reason": "",
         }

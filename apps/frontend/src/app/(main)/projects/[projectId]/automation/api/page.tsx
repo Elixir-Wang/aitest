@@ -32,7 +32,15 @@ import { ApiScenarioList } from "@/components/ai-testing/api-automation/api-scen
 import { IllustratedEmptyState } from "@/components/ai-testing/illustrated-empty-state";
 import { ListToolbar, PageShell, RowActions, ShellSection } from "@/components/ai-testing/page-shell";
 import { TableLoadingRow } from "@/components/ai-testing/table-loading-row";
-import { Select as AnimatedSelect, SelectOption } from "@/components/ui/animated-select-1";
+import {
+  AnimatedSelect,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectOption,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ai-testing/api-automation/api-orchestration-select";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -46,7 +54,6 @@ import {
 } from "@/components/ui/dialog";
 import FileUpload1 from "@/components/ui/file-upload-1";
 import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { notifyAiTaskStarted } from "@/lib/ai-task-events";
@@ -195,6 +202,7 @@ export default function Page() {
   const searchParams = useSearchParams();
   const projectId = params.projectId;
   const selectedCaseSetId = searchParams.get("set");
+  const requestedEndpointId = searchParams.get("endpoint");
   const [activeTab, setActiveTab] = useState(() => tabFromSearchParam(searchParams.get("tab")));
   const [selectedCaseSet, setSelectedCaseSet] = useState<ApiAutomationCaseSet | null>(null);
   const [endpoints, setEndpoints] = useState<ApiAutomationEndpoint[]>([]);
@@ -554,7 +562,11 @@ export default function Page() {
         setSelectedApiCaseEndpointIds((current) =>
           current.filter((id) => apiCaseRows.some((testCase) => testCase.endpoint_id === id)),
         );
-        setActiveEndpointId(endpointRows[0]?.id ?? "");
+        setActiveEndpointId(
+          endpointRows.some((endpoint) => endpoint.id === requestedEndpointId)
+            ? requestedEndpointId ?? ""
+            : endpointRows[0]?.id ?? "",
+        );
         setSelectedEnvironmentId(environmentRows[0]?.id ?? "");
       })
       .catch((error) => toast.error(error instanceof Error ? error.message : "接口自动化数据加载失败"));
@@ -562,7 +574,7 @@ export default function Page() {
     return () => {
       cancelled = true;
     };
-  }, [projectId]);
+  }, [projectId, requestedEndpointId]);
 
   useEffect(() => {
     void loadRuns();

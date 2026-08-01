@@ -70,8 +70,6 @@ class UiAutomationExecutionRunOut(BaseModel):
     result: dict = Field(default_factory=dict)
     stdout_path: str = ""
     stderr_path: str = ""
-    trace_path: str = ""
-    video_path: str = ""
     screenshot_paths: list[str] = Field(default_factory=list)
     error_message: str = ""
     created_by: str

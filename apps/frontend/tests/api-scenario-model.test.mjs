@@ -208,14 +208,15 @@ test("validates utility step control config before saving", () => {
     ...createUtilityStep("assign", "project-1", "scenario-1", "assign-1"),
     control_config: { name: "", source: {} },
   };
-  const poll = createUtilityStep("poll", "project-1", "scenario-1", "poll-1");
-
-  const result = validateScenarioDraft({ name: "异步流程", steps: [wait, assign, poll] });
+  const result = validateScenarioDraft({ name: "异步流程", steps: [wait, assign] });
 
   assert.equal(result.valid, false);
   assert.ok(result.errors.some((error) => error.includes("等待时长")));
   assert.ok(result.errors.some((error) => error.includes("变量名")));
-  assert.ok(result.errors.some((error) => error.includes("结束断言")));
+});
+
+test("rejects removed polling utility steps", () => {
+  assert.throws(() => createUtilityStep("poll", "project-1", "scenario-1", "poll-1"), /Unsupported utility step: poll/);
 });
 
 test("moves steps and rewrites stable step order", () => {
@@ -247,6 +248,19 @@ test("only exposes outputs from preceding steps", () => {
   const options = buildVariableOptions(steps, "step-2", { tenant: "demo" }, { region: "cn" });
 
   assert.deepEqual(options.stepOutputs, [{ stepId: "step-1", stepName: "创建订单", name: "token" }]);
+});
+
+test("requires event and path for SSE event JSON extractors", () => {
+  const step = {
+    ...createEndpointStep(endpoint, "project-1", "scenario-1", "step-1"),
+    extractors: [{ name: "dialog_id", source: "sse_event_json", event: "", path: "" }],
+  };
+
+  const issues = validateScenarioDraft({ name: "SSE 对话", steps: [step] });
+
+  assert.equal(issues.valid, false);
+  assert.ok(issues.errors.some((issue) => issue.includes("SSE 事件名称")));
+  assert.ok(issues.errors.some((issue) => issue.includes("SSE 提取路径")));
 });
 
 test("rejects forward output references", () => {

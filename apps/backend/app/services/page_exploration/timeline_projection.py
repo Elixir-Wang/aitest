@@ -204,25 +204,6 @@ def _projection_tool_event_to_timeline_event(
         if status != "completed":
             return None
         plan_steps = _todo_plan_steps(input_data.get("todos"))
-        # 把 todo 列表落盘到 subgoals.yaml，下一次 check_explored_url 就能读出来
-        try:
-            from app.agents.page_exploration.tools.url_tools import write_subgoals_snapshot
-            from app.core import settings as _settings
-
-            if project_id and run_id:
-                write_subgoals_snapshot(
-                    project_id=project_id,
-                run_id=run_id,
-                    base_dir=_settings.PROJECT_FILE_STORAGE_ROOT,
-                    todos=input_data.get("todos") if isinstance(input_data.get("todos"), list) else [],
-                )
-        except Exception as exc:
-            logger.warning(
-                "failed to persist page exploration subgoals: project_id=%s run_id=%s error=%s",
-                project_id,
-                run_id,
-                exc,
-            )
         return {
             "type": "agent_plan_updated",
             "payload": _clean_compact_payload(

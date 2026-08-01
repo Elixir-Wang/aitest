@@ -28,7 +28,6 @@ import {
   PanelLeftOpen,
   Play,
   Plus,
-  RefreshCw,
   Trash2,
   Variable,
 } from "lucide-react";
@@ -329,7 +328,6 @@ function CanvasPalette({
         <PaletteAction icon={Variable} label="数据赋值" onClick={() => onAddUtilityStep("assign")} />
         <PaletteAction icon={GitBranch} label="条件判断" onClick={() => onAddUtilityStep("condition")} />
         <PaletteAction icon={Clock3} label="固定等待" onClick={() => onAddUtilityStep("wait")} />
-        <PaletteAction icon={RefreshCw} label="轮询等待" onClick={() => onAddUtilityStep("poll")} />
       </div>
       <div className="mt-6 border-t pt-4">
         <div className="px-2 font-semibold text-[10px] text-muted-foreground uppercase tracking-[0.08em]">画布提示</div>
@@ -402,7 +400,6 @@ function ScenarioNodeCard({ data }: NodeProps<ScenarioNode>) {
             {step.step_type === "condition" ? <GitBranch className="size-3.5" /> : null}
             {step.step_type === "assign" ? <Variable className="size-3.5" /> : null}
             {step.step_type === "wait" ? <Clock3 className="size-3.5" /> : null}
-            {step.step_type === "poll" ? <RefreshCw className="size-3.5" /> : null}
             {step.step_type === "api_request" ? <Play className="size-3.5" /> : null}
           </span>
           <span className="truncate font-medium text-xs">{step.name}</span>

@@ -4,8 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import Link from "next/link";
 
-import { ArrowLeft, Download, ImageIcon, Loader2, MonitorPlay, Play, Radio, RefreshCw, Square } from "lucide-react";
-import { toast } from "@/lib/toast";
+import { ArrowLeft, ImageIcon, Loader2, MonitorPlay, Play, Radio, RefreshCw, Square } from "lucide-react";
 
 import { PageShell, ShellSection } from "@/components/ai-testing/page-shell";
 import { Button } from "@/components/ui/button";
@@ -30,6 +29,7 @@ import {
   type UiAutomationExecutionRun,
   type UiAutomationLiveView,
 } from "@/lib/api-client";
+import { toast } from "@/lib/toast";
 import { moduleBreadcrumbs } from "@/navigation/breadcrumbs";
 
 const activeStatuses = new Set(["queued", "running", "stopping"]);
@@ -47,7 +47,6 @@ export function UiAutomationRunDetail({
   const [run, setRun] = useState<UiAutomationExecutionRun | null>(null);
   const [logs, setLogs] = useState({ stdout: "", stderr: "" });
   const [screenshotUrls, setScreenshotUrls] = useState<string[]>([]);
-  const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [rerunning, setRerunning] = useState(false);
   const [stopDialogOpen, setStopDialogOpen] = useState(false);
@@ -144,37 +143,6 @@ export function UiAutomationRunDetail({
     };
   }, [liveViewOpen, projectId, runId]);
 
-  useEffect(() => {
-    if (!run?.video_path || activeStatuses.has(run.status)) return;
-    let disposed = false;
-    let url = "";
-    void apiBlobRequest(`/projects/${projectId}/ui-automation/runs/${runId}/artifacts/video`)
-      .then((blob) => {
-        if (disposed) return;
-        url = URL.createObjectURL(blob);
-        setVideoUrl(url);
-      })
-      .catch(() => setVideoUrl(null));
-    return () => {
-      disposed = true;
-      if (url) URL.revokeObjectURL(url);
-    };
-  }, [projectId, run, runId]);
-
-  async function downloadTrace() {
-    try {
-      const blob = await apiBlobRequest(`/projects/${projectId}/ui-automation/runs/${runId}/artifacts/trace`);
-      const url = URL.createObjectURL(blob);
-      const anchor = document.createElement("a");
-      anchor.href = url;
-      anchor.download = `${runId}-trace.zip`;
-      anchor.click();
-      URL.revokeObjectURL(url);
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Trace 下载失败");
-    }
-  }
-
   async function rerun() {
     if (!run || activeStatuses.has(run.status)) return;
     setRerunning(true);
@@ -261,14 +229,8 @@ export function UiAutomationRunDetail({
             )}
             <Button disabled={!run} onClick={() => setLiveViewOpen(true)} variant="outline">
               <MonitorPlay className="size-4" />
-              {activeStatuses.has(run?.status ?? "") ? "实时查看" : "浏览器回放"}
+              {activeStatuses.has(run?.status ?? "") ? "实时查看" : "查看运行状态"}
             </Button>
-            {run?.trace_path ? (
-              <Button onClick={() => void downloadTrace()} variant="outline">
-                <Download className="size-4" />
-                下载 Trace
-              </Button>
-            ) : null}
           </div>
         </div>
 
@@ -288,7 +250,6 @@ export function UiAutomationRunDetail({
               <DetailValue label="完成时间" value={run.finished_at ? formatDateTime(run.finished_at) : "-"} />
               <DetailValue label="退出码" value={String(run.result.exitcode ?? "-")} />
               <DetailValue label="截图" value={String(run.screenshot_paths.length)} />
-              <DetailValue label="Trace" value={run.trace_path ? "已保存" : "未生成"} />
               <DetailValue label="执行人" mono value={run.created_by} />
             </div>
 
@@ -320,11 +281,6 @@ export function UiAutomationRunDetail({
 
             <section>
               <SectionTitle title="浏览器证据" />
-              {videoUrl ? (
-                <video className="mb-4 aspect-video w-full rounded-md border bg-black" controls src={videoUrl}>
-                  <track kind="captions" label="执行步骤" src="data:text/vtt,WEBVTT" srcLang="zh-CN" />
-                </video>
-              ) : null}
               {screenshotUrls.length > 0 ? (
                 <div className="grid gap-4 md:grid-cols-2">
                   {screenshotUrls.map((url, index) => (
@@ -361,7 +317,7 @@ export function UiAutomationRunDetail({
         <DialogContent showCloseButton={!stopping}>
           <DialogHeader>
             <DialogTitle>停止此次运行？</DialogTitle>
-            <DialogDescription>停止后不能继续本次运行，已生成的日志、截图和录像仍会保留。</DialogDescription>
+            <DialogDescription>停止后不能继续本次运行，已生成的日志和截图仍会保留。</DialogDescription>
           </DialogHeader>
           <div className="rounded-md border bg-muted/40 px-3 py-2 font-mono text-muted-foreground text-xs">{runId}</div>
           <DialogFooter>
@@ -403,11 +359,6 @@ export function UiAutomationRunDetail({
                 width={liveView.width}
               />
             ) : null}
-            {liveView?.status === "ended" && videoUrl ? (
-              <video className="h-full w-full object-contain" controls src={videoUrl}>
-                <track kind="captions" label="执行步骤" src="data:text/vtt,WEBVTT" srcLang="zh-CN" />
-              </video>
-            ) : null}
             {(liveViewLoading || liveView?.status === "waiting" || liveView?.status === "starting") &&
             liveView?.status !== "ready" ? (
               <div className="flex flex-col items-center gap-3 text-sm text-zinc-400">
@@ -415,7 +366,7 @@ export function UiAutomationRunDetail({
                 <span>{liveView?.message ?? "正在连接浏览器画面"}</span>
               </div>
             ) : null}
-            {liveView?.status === "unavailable" || (liveView?.status === "ended" && !videoUrl) ? (
+            {liveView?.status === "unavailable" || liveView?.status === "ended" ? (
               <div className="flex max-w-md flex-col items-center gap-3 px-6 text-center text-sm text-zinc-400">
                 <MonitorPlay className="size-8 text-zinc-500" />
                 <span>{liveView.message}</span>

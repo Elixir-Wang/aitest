@@ -71,7 +71,7 @@ def finish_session(run_id: str) -> None:
         session.watcher.join(timeout=2)
     session.token = ""
     session.status = "ended"
-    session.message = "本次运行已结束，可查看录制视频。"
+    session.message = "本次运行已结束，实时浏览器画面已关闭。"
     session.ended_at = time.monotonic()
 
 
@@ -149,7 +149,7 @@ def _capture_screencast(session: LiveViewSession) -> None:
             deadline = time.monotonic() + 30
     if not session.stop_event.is_set() and not session.latest_frame:
         session.status = "unavailable"
-        session.message = "未能连接 Chromium 实时画面，任务将继续执行并保留录像。"
+        session.message = "未能连接 Chromium 实时画面，任务将继续执行并保留日志和截图。"
         session.token = ""
         with session.frame_condition:
             session.frame_condition.notify_all()

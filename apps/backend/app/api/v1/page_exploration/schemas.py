@@ -39,28 +39,6 @@ class UpdateExplorationRunRequest(BaseModel):
     timeout_minutes: int | None = Field(None, ge=1, le=1440, description="超时时间（分钟）")
 
 
-class ExplorationRunResponse(BaseModel):
-    """探索任务响应"""
-
-    id: str
-    project_id: str
-    environment_id: str
-    title: str
-    status: str
-    exploration_mode: str
-    scope: str
-    goal: str
-    forbidden_paths: str
-    max_pages: int
-    max_actions: int
-    timeout_minutes: int
-    created_at: str
-    created_by: str
-    started_at: str | None = None
-    finished_at: str | None = None
-    result_summary: str = ""
-
-
 class ExplorationRunDetailResponse(BaseModel):
     """探索任务详情响应"""
 
@@ -70,13 +48,3 @@ class ExplorationRunDetailResponse(BaseModel):
     unsupported_reason: str
     modules: list[dict]
     timeline_events: list[dict] = Field(default_factory=list)
-
-
-class ReplayOperationRequest(BaseModel):
-    environment_id: str = Field(..., description="当前项目中任选的运行环境 ID")
-    operation_key: str = Field(..., min_length=1, description="项目级永久操作 key")
-    parameters: dict = Field(default_factory=dict, description="运行时参数")
-
-
-class SaveReplayOperationRequest(BaseModel):
-    operation: dict = Field(..., description="引用永久 element_key 的项目级操作")

@@ -4,10 +4,13 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.agents.api_automation.orchestration.schemas import (
+    ParameterLocation,
     ScenarioAssertion,
     ScenarioBinding,
     ScenarioExtractor,
     ScenarioPlanInput,
+    ValueSource,
+    ValueType,
     normalize_legacy_assertion,
     normalize_legacy_binding,
     normalize_legacy_extractor,
@@ -385,7 +388,7 @@ class ApiScenarioIn(_StrippedModel):
 
 class ApiScenarioStepIn(_StrippedModel):
     id: str | None = None
-    step_type: Literal["api_request", "condition", "wait", "poll", "assign"] = "api_request"
+    step_type: Literal["api_request", "condition", "wait", "assign"] = "api_request"
     api_test_case_id: str | None = None
     endpoint_id: str | None = None
     step_order: int = Field(default=0, ge=0)
@@ -447,9 +450,102 @@ class ApiScenarioAiPlanAcceptedOut(_StrippedModel):
     scenario_id: str | None = None
     lifecycle_status: Literal["generating", "completed", "failed", "expired"] = "generating"
 
+
+class ApiScenarioAiReviewField(_StrippedModel):
+    field_id: str = Field(min_length=1, max_length=200)
+    path: str = Field(min_length=1, max_length=500)
+    display_name: str = Field(min_length=1, max_length=200)
+    required: bool = True
+    value_type: ValueType = "any"
+    sensitive: bool = False
+    proposal: ValueSource
+    resolved: ValueSource | None = None
+    status: Literal["resolved", "pending", "confirmed"] = "pending"
+
+
+class ApiScenarioAiReviewFieldGroup(_StrippedModel):
+    location: ParameterLocation
+    label: str = Field(min_length=1, max_length=100)
+    pending_count: int = Field(default=0, ge=0)
+    fields: list[ApiScenarioAiReviewField] = Field(default_factory=list, max_length=200)
+
+    def model_post_init(self, __context: Any) -> None:
+        self.pending_count = sum(field.status == "pending" for field in self.fields)
+
+
+class ApiScenarioAiReviewSummary(_StrippedModel):
+    pending_count: int = Field(default=0, ge=0)
+    resolved_count: int = Field(default=0, ge=0)
+    blocking_count: int = Field(default=0, ge=0)
+
+
+class ApiScenarioAiReviewStep(_StrippedModel):
+    step_id: str = Field(min_length=1, max_length=100)
+    endpoint_id: str = Field(min_length=1, max_length=100)
+    order: int = Field(ge=1, le=100)
+    phase: Literal["setup", "main", "verify", "cleanup"] = "main"
+    name: str = Field(default="", max_length=200)
+    method: str = Field(min_length=1, max_length=20)
+    path: str = Field(min_length=1, max_length=1000)
+    depends_on: list[str] = Field(default_factory=list, max_length=100)
+    field_groups: list[ApiScenarioAiReviewFieldGroup] = Field(default_factory=list, max_length=20)
+    extractors: list[ScenarioExtractor] = Field(default_factory=list, max_length=100)
+    assertions: list[ScenarioAssertion] = Field(default_factory=list, max_length=100)
+    on_failure: Literal["stop", "continue", "always_run"] = "stop"
+    enabled: bool = True
+    review_summary: ApiScenarioAiReviewSummary = Field(default_factory=ApiScenarioAiReviewSummary)
+
+    def model_post_init(self, __context: Any) -> None:
+        fields = [field for group in self.field_groups for field in group.fields]
+        self.review_summary = ApiScenarioAiReviewSummary(
+            pending_count=sum(field.status == "pending" for field in fields),
+            resolved_count=sum(field.status in {"resolved", "confirmed"} for field in fields),
+            blocking_count=self.review_summary.blocking_count,
+        )
+
+
+class ApiScenarioAiReviewPlan(_StrippedModel):
+    plan_id: str = Field(min_length=1, max_length=100)
+    scenario_id: str | None = None
+    schema_version: Literal[3] = 3
+    lifecycle_status: Literal["generating", "completed", "failed", "expired"] = "completed"
+    review_status: Literal["pending", "ready"] = "pending"
+    review_revision: int = Field(default=0, ge=0)
+    scenario_name: str = Field(default="", max_length=200)
+    description: str = Field(default="", max_length=2000)
+    steps: list[ApiScenarioAiReviewStep] = Field(default_factory=list, max_length=100)
+    validation: dict[str, Any] = Field(default_factory=lambda: {"valid": True, "errors": [], "warnings": []})
+    expected_revision: int | None = None
+    asset_fingerprint: str = ""
+    expires_at: str
+
+    def model_post_init(self, __context: Any) -> None:
+        pending_count = sum(step.review_summary.pending_count for step in self.steps)
+        blocking_count = sum(step.review_summary.blocking_count for step in self.steps)
+        valid = bool(self.validation.get("valid", True))
+        self.review_status = "ready" if pending_count == 0 and blocking_count == 0 and valid else "pending"
+
+
+class ApiScenarioAiReviewFieldSaveIn(_StrippedModel):
+    field_id: str = Field(min_length=1, max_length=200)
+    resolved: ValueSource | None = None
+    status: Literal["pending", "confirmed"]
+
+
+class ApiScenarioAiReviewStepSaveIn(_StrippedModel):
+    step_id: str = Field(min_length=1, max_length=100)
+    order: int = Field(ge=1, le=100)
+    fields: list[ApiScenarioAiReviewFieldSaveIn] = Field(default_factory=list, max_length=500)
+
+
+class ApiScenarioAiReviewSaveIn(_StrippedModel):
+    expected_review_revision: int = Field(ge=0)
+    steps: list[ApiScenarioAiReviewStepSaveIn] = Field(min_length=1, max_length=100)
+
+
 class ApiScenarioAiPlanNode(_StrippedModel):
     id: str = Field(min_length=1, max_length=100)
-    type: Literal["api_request", "condition", "wait", "poll", "assign"]
+    type: Literal["api_request", "condition", "wait", "assign"]
     endpoint_id: str | None = None
     phase: Literal["setup", "main", "verify", "cleanup"] = "main"
     name: str = ""
@@ -494,6 +590,7 @@ class ApiScenarioAiPlanOut(_StrippedModel):
 class ApiScenarioAiPlanApplyIn(_StrippedModel):
     scenario_id: str = Field(min_length=1)
     confirmation: Literal["overwrite_draft"]
+    expected_review_revision: int = Field(ge=0)
 
 
 class ApiScenarioPublishIn(_StrippedModel):

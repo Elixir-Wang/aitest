@@ -438,8 +438,6 @@ def execute_execution_run(run_id: str) -> dict:
                 "result": result,
                 "stdout_path": store_path(Path(result["stdout_path"])) or result["stdout_path"],
                 "stderr_path": store_path(Path(result["stderr_path"])) or result["stderr_path"],
-                "trace_path": store_path(Path(result["trace_path"])) if result.get("trace_path") else "",
-                "video_path": store_path(Path(result["video_path"])) if result.get("video_path") else "",
                 "screenshot_paths": result.get("screenshot_paths", []),
                 "error_message": result.get("error_message", ""),
                 "finished_at": _now(),
@@ -567,7 +565,7 @@ def get_execution_live_view(project_id: str, run_id: str, actor) -> dict:
         message = "浏览器画面正在启动。"
     else:
         status = "ended"
-        message = "本次运行已结束，可查看录制视频。"
+        message = "本次运行已结束，实时浏览器画面已关闭。"
     return {
         "status": status,
         "message": message,
@@ -592,19 +590,14 @@ def stream_execution_live_view(project_id: str, run_id: str, token: str):
 
 
 def get_execution_artifact(project_id: str, run_id: str, artifact_kind: str, index: int, actor):
-    if artifact_kind not in {"trace", "screenshot", "video"}:
+    if artifact_kind != "screenshot":
         raise api_error(400, "UI_ARTIFACT_KIND_INVALID", "不支持的 UI 自动化运行证据类型。")
     with connect() as db:
         _require_visible_project(db, project_id, actor)
         row = ui_automation_repo.find_execution_run(db, run_id)
         if not row or row["project_id"] != project_id:
             raise api_error(404, "UI_EXECUTION_RUN_NOT_FOUND", "UI 自动化执行任务不存在。")
-    if artifact_kind == "trace":
-        paths = [row["trace_path"]]
-    elif artifact_kind == "video":
-        paths = [row["video_path"]]
-    else:
-        paths = json.loads(row["screenshot_paths_json"] or "[]")
+    paths = json.loads(row["screenshot_paths_json"] or "[]")
     if index >= len(paths) or not paths[index]:
         raise api_error(404, "UI_ARTIFACT_NOT_FOUND", "运行证据文件不存在。")
     path = resolve_stored_path(paths[index])

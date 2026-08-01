@@ -3,7 +3,7 @@ from pathlib import Path
 import yaml
 
 
-def test_build_exploration_context_normalizes_pages_operations_and_redacts_values(monkeypatch, tmp_path: Path) -> None:
+def test_build_exploration_context_ignores_legacy_operations_file(monkeypatch, tmp_path: Path) -> None:
     from app.core import settings
     from app.services.manual_test_case_generation import exploration_context_builder as builder
 
@@ -77,10 +77,10 @@ def test_build_exploration_context_normalizes_pages_operations_and_redacts_value
     )
 
     assert context is not None
-    assert context.source_count == 2
+    assert context.source_count == 1
     assert context.pages[0].display_name == "用户登录"
     assert context.pages[0].elements[0].name in {"用户名", "密码"}
-    assert context.operations[0].steps[0].value == "<redacted-password>"
+    assert not hasattr(context, "operations")
 
 
 def test_build_exploration_context_skips_broken_page_and_returns_warning(monkeypatch) -> None:
@@ -96,8 +96,6 @@ def test_build_exploration_context_skips_broken_page_and_returns_warning(monkeyp
         raise ValueError("invalid yaml")
 
     monkeypatch.setattr(builder.page_exploration_service, "get_project_page_yaml_content", raise_broken)
-    monkeypatch.setattr(builder, "_read_operations", lambda project_id: [])
-
     context = builder.build_exploration_context(
         actor={"id": "u-admin"},
         project_id="project-1",

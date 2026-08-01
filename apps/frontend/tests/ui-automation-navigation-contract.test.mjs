@@ -123,8 +123,11 @@ test("UI automation asset detail declares its environment panel before rendering
 
 test("UI automation run detail exposes logs and browser evidence", () => {
   assert.match(runDetailSource, /getUiAutomationRunLogs/);
-  assert.match(runDetailSource, /artifacts\/trace/);
   assert.match(runDetailSource, /artifacts\/screenshot/);
+  assert.doesNotMatch(runDetailSource, /artifacts\/trace/);
+  assert.doesNotMatch(runDetailSource, /artifacts\/video/);
+  assert.doesNotMatch(runDetailSource, /<video/);
+  assert.doesNotMatch(runDetailSource, /trace_path|video_path/);
   assert.match(runDetailSource, /运行日志/);
   assert.match(runDetailSource, /浏览器证据/);
   assert.match(runDetailSource, /实时查看/);

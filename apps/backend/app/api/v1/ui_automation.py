@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Literal
+
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import FileResponse
 
@@ -108,7 +110,7 @@ def stream_execution_live_view(project_id: str, run_id: str, token: str = Query(
 def get_execution_artifact(
     project_id: str,
     run_id: str,
-    artifact_kind: str,
+    artifact_kind: Literal["screenshot"],
     index: int = Query(default=0, ge=0),
     actor=Depends(current_user),
 ):

@@ -8,7 +8,6 @@ from typing import Any
 
 from app.agents.api_automation.orchestration.schemas import (
     GeneratedValueSource,
-    LiteralValueSource,
     ScenarioBinding,
     ScenarioExtractor,
     ScenarioPlanInput,
@@ -16,6 +15,7 @@ from app.agents.api_automation.orchestration.schemas import (
     SecretValueSource,
     StatusCodeAssertion,
 )
+from app.schemas.api_automation import ApiScenarioAiReviewPlan
 from app.services.api_automation.orchestration_asset_analysis import dependency_candidates, request_slots, response_slots
 
 
@@ -45,7 +45,7 @@ def compile_plan(
     environment_secret_keys = {str(item.get("key")) for item in environment.get("secrets", [])}
     for index, node in enumerate(nodes):
         endpoint = endpoint_by_id.get(str(node.endpoint_id or ""))
-        if not endpoint or node.type not in {"api_request", "poll"}:
+        if not endpoint or node.type != "api_request":
             continue
         if not node.name:
             node.name = str(endpoint.get("summary") or f"{endpoint.get('method', '')} {endpoint.get('path', '')}").strip()
@@ -119,19 +119,7 @@ def compile_plan(
                 )
                 edges.add((source_node.id, node.id, "success"))
                 bound_targets.add(key)
-            elif target.has_default:
-                node.bindings.append(
-                    ScenarioBinding.model_validate(
-                        {"target": {"location": target.location, "path": target.path}, "source": {"type": "literal", "value": target.default_value}}
-                    )
-                )
-                bound_targets.add(key)
-            elif len(target.enum) == 1:
-                node.bindings.append(
-                    ScenarioBinding.model_validate(
-                        {"target": {"location": target.location, "path": target.path}, "source": {"type": "literal", "value": target.enum[0]}}
-                    )
-                )
+            elif target.has_default or len(target.enum) == 1:
                 bound_targets.add(key)
             else:
                 node.bindings.append(
@@ -143,7 +131,7 @@ def compile_plan(
                 bound_targets.add(key)
 
     if require_cleanup and any(
-        node.type in {"api_request", "poll"}
+        node.type == "api_request"
         and str((endpoint_by_id.get(str(node.endpoint_id)) or {}).get("method", "")).upper() in {"POST", "PUT", "PATCH", "DELETE"}
         for node in nodes
     ) and not any(node.phase == "cleanup" for node in nodes):
@@ -164,6 +152,62 @@ def compile_plan(
             "confidence": compiled.confidence,
         }
     )
+
+
+def compile_review_plan(
+    review: ApiScenarioAiReviewPlan,
+    endpoints: list[dict[str, Any]],
+    environment: dict[str, Any],
+    *,
+    require_cleanup: bool = False,
+) -> ScenarioPlanResult:
+    nodes = []
+    edges = set()
+    for step in sorted(review.steps, key=lambda item: item.order):
+        bindings = []
+        for group in step.field_groups:
+            for field in group.fields:
+                if field.resolved is None:
+                    continue
+                bindings.append(
+                    ScenarioBinding.model_validate(
+                        {
+                            "target": {"location": group.location, "path": field.path},
+                            "source": field.resolved.model_dump(exclude_none=True),
+                            "required": field.required,
+                        }
+                    )
+                )
+                if field.resolved.type == "step_output":
+                    edges.add((field.resolved.step_id, step.step_id, "success"))
+        for dependency in step.depends_on:
+            edges.add((dependency, step.step_id, "success"))
+        nodes.append(
+            {
+                "id": step.step_id,
+                "type": "api_request",
+                "endpoint_id": step.endpoint_id,
+                "phase": step.phase,
+                "name": step.name,
+                "bindings": [binding.model_dump(exclude_none=True) for binding in bindings],
+                "extractors": [extractor.model_dump(exclude_none=True) for extractor in step.extractors],
+                "assertions": [assertion.model_dump(exclude_none=True) for assertion in step.assertions],
+                "on_failure": step.on_failure,
+                "enabled": step.enabled,
+            }
+        )
+    semantic_plan = ScenarioPlanResult.model_validate(
+        {
+            "scenario_name": review.scenario_name,
+            "description": review.description,
+            "nodes": nodes,
+            "edges": [
+                {"source": source, "target": target, "condition": condition}
+                for source, target, condition in sorted(edges)
+            ],
+        }
+    )
+    return compile_plan(semantic_plan, endpoints, environment, require_cleanup=require_cleanup)
 
 
 def _candidate_target(candidate: dict[str, Any]) -> tuple[str, str]:
@@ -270,9 +314,9 @@ def _apply_asset_values(bindings: list[ScenarioBinding], endpoint: dict[str, Any
         slot = slots.get((binding.target.location, binding.target.path))
         source = binding.source
         if slot and not slot.sensitive and len(slot.enum) == 1 and source.type in {"user_input", "literal"}:
-            source = LiteralValueSource(type="literal", value=slot.enum[0])
-        elif slot and not slot.sensitive and slot.has_default and source.type == "user_input":
-            source = LiteralValueSource(type="literal", value=slot.default_value)
+            continue
+        if slot and not slot.sensitive and slot.has_default and source.type in {"user_input", "literal"}:
+            continue
         normalized.append(binding.model_copy(update={"source": source}))
     return normalized
 

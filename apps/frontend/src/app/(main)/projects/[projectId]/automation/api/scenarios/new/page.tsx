@@ -2,7 +2,7 @@
 
 import { useParams } from "next/navigation";
 
-import { ApiScenarioEditor } from "@/components/ai-testing/api-automation/api-scenario-editor";
+import { ApiScenarioCreateForm } from "@/components/ai-testing/api-automation/api-scenario-create-form";
 import { PageShell } from "@/components/ai-testing/page-shell";
 import { moduleBreadcrumbs } from "@/navigation/breadcrumbs";
 
@@ -11,12 +11,10 @@ export default function NewApiScenarioPage() {
   return (
     <PageShell
       breadcrumbs={moduleBreadcrumbs("apiAutomation", { label: "新建场景" })}
-      description="组合接口用例、配置变量并定义执行顺序。"
-      fillViewport
       projectScope="project"
-      title="新建接口场景"
+      title="新建场景"
     >
-      <ApiScenarioEditor projectId={params.projectId} />
+      <ApiScenarioCreateForm projectId={params.projectId} />
     </PageShell>
   );
 }

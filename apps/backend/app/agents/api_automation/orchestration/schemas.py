@@ -125,6 +125,7 @@ class ScenarioExtractor(StrictModel):
     source: Literal["json_body", "header", "cookie", "text_regex", "sse_event_json", "status_code"] = "json_body"
     path: str = ""
     event: str = ""
+    occurrence: Literal["first", "last", "all"] = "first"
     value_type: ValueType = "any"
     required: bool = True
     sensitive: bool = False
@@ -186,12 +187,6 @@ class WaitControlConfig(StrictModel):
     duration_ms: int = Field(ge=0, le=300_000)
 
 
-class PollControlConfig(StrictModel):
-    interval_ms: int = Field(gt=0, le=300_000)
-    timeout_ms: int = Field(gt=0, le=3_600_000)
-    max_attempts: int = Field(default=100, ge=1, le=10_000)
-
-
 class ConditionControlConfig(StrictModel):
     source: ValueSource
     operator: Literal["equals", "not_equals", "contains", "not_contains", "truthy", "falsy", "gt", "gte", "lt", "lte"]
@@ -216,7 +211,7 @@ class ScenarioPlanInput(StrictModel):
 
 class ScenarioPlanNode(StrictModel):
     id: str = Field(min_length=1, max_length=100)
-    type: Literal["api_request", "condition", "wait", "poll", "assign"]
+    type: Literal["api_request", "condition", "wait", "assign"]
     phase: StepPhase = "main"
     endpoint_id: str | None = None
     name: str = Field(default="", max_length=200)
@@ -230,13 +225,12 @@ class ScenarioPlanNode(StrictModel):
 
     @model_validator(mode="after")
     def validate_node_contract(self) -> ScenarioPlanNode:
-        if self.type in {"api_request", "poll"} and not self.endpoint_id:
+        if self.type == "api_request" and not self.endpoint_id:
             raise ValueError(f"{self.type} 步骤必须指定 endpoint_id。")
-        if self.type not in {"api_request", "poll"} and self.endpoint_id:
+        if self.type != "api_request" and self.endpoint_id:
             raise ValueError(f"{self.type} 步骤不允许指定 endpoint_id。")
         config_models = {
             "wait": WaitControlConfig,
-            "poll": PollControlConfig,
             "condition": ConditionControlConfig,
             "assign": AssignControlConfig,
         }
@@ -266,6 +260,36 @@ class ScenarioPlanResult(StrictModel):
     warnings: list[str] = Field(default_factory=list, max_length=30)
     unresolved_items: list[str] = Field(default_factory=list, max_length=30)
     confidence: float = Field(default=0.5, ge=0, le=1)
+
+
+class PlannerFieldProposal(StrictModel):
+    target: ParameterTarget
+    display_name: str = Field(min_length=1, max_length=200)
+    required: bool = True
+    value_type: ValueType = "any"
+    sensitive: bool = False
+    proposal: ValueSource
+
+
+class PlannerStepProposal(StrictModel):
+    client_step_id: str = Field(min_length=1, max_length=100)
+    endpoint_id: str = Field(min_length=1, max_length=100)
+    order: int = Field(ge=1, le=100)
+    phase: StepPhase = "main"
+    name: str = Field(default="", max_length=200)
+    fields: list[PlannerFieldProposal] = Field(default_factory=list, max_length=500)
+    extractors: list[ScenarioExtractor] = Field(default_factory=list, max_length=100)
+    assertions: list[ScenarioAssertion] = Field(default_factory=list, max_length=100)
+    depends_on: list[str] = Field(default_factory=list, max_length=100)
+    on_failure: Literal["stop", "continue", "always_run"] = "stop"
+    enabled: bool = True
+
+
+class PlannerProposal(StrictModel):
+    schema_version: Literal[1] = 1
+    scenario_name: str = Field(default="", max_length=200)
+    description: str = Field(default="", max_length=2000)
+    steps: list[PlannerStepProposal] = Field(default_factory=list, min_length=1, max_length=100)
 
 
 def normalize_legacy_source(source: Any) -> dict[str, Any]:
@@ -376,6 +400,8 @@ def extractor_to_runtime(extractor: ScenarioExtractor | dict[str, Any]) -> dict[
         result["expression"] = parsed.path
     if parsed.event:
         result["event"] = parsed.event
+    if parsed.source == "sse_event_json" and parsed.occurrence != "first":
+        result["occurrence"] = parsed.occurrence
     if parsed.value_type != "any":
         result["value_type"] = parsed.value_type
     if parsed.sensitive:

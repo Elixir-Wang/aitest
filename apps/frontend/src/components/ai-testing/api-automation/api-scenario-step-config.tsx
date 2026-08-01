@@ -1,12 +1,22 @@
 "use client";
 
+import { useEffect } from "react";
+
+import Link from "next/link";
+
 import { Plus, Trash2 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "./api-orchestration-select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import type {
@@ -22,7 +32,6 @@ import { cn } from "@/lib/utils";
 import {
   buildEndpointRequestFields,
   buildVariableOptions,
-  formatValueSource,
   normalizeRequestLifecycleConfig,
 } from "./api-scenario-model.mjs";
 
@@ -33,6 +42,7 @@ type ApiScenarioStepConfigProps = {
   precedingSteps: ApiAutomationScenarioStep[];
   scenarioVariables: Record<string, unknown>;
   onUpdateStep: (stepId: string, updates: Partial<ApiAutomationScenarioStep>) => void;
+  projectId: string;
 };
 
 const methodTone: Record<string, string> = {
@@ -50,6 +60,7 @@ export function ApiScenarioStepConfig({
   precedingSteps,
   scenarioVariables,
   onUpdateStep,
+  projectId,
 }: ApiScenarioStepConfigProps) {
   if (!activeStep) {
     return (
@@ -74,7 +85,7 @@ export function ApiScenarioStepConfig({
   const utilityStep = ["assign", "condition", "wait"].includes(activeStep.step_type);
 
   return (
-    <section className="flex min-h-0 min-w-0 flex-col overflow-hidden bg-card">
+    <section className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-card">
       {utilityStep ? null : (
         <div className="flex h-[72px] shrink-0 items-center justify-between border-b px-5">
           <div className="min-w-0">
@@ -89,14 +100,15 @@ export function ApiScenarioStepConfig({
                 onChange={(event) => onUpdateStep(activeStep.id, { name: event.target.value })}
                 value={activeStep.name}
               />
-              <Badge variant="secondary">{activeStep.step_type === "poll" ? "轮询节点" : "接口资产"}</Badge>
             </div>
             <div className="mt-1 truncate font-mono text-[11px] text-muted-foreground">
               {endpoint?.path ?? "请选择接口资产"}
             </div>
           </div>
-          <Button disabled={!endpoint} size="sm" variant="outline">
-            查看接口资产
+          <Button asChild disabled={!endpoint} size="sm" variant="outline">
+            <Link href={endpoint ? `/projects/${projectId}/automation/api?endpoint=${encodeURIComponent(endpoint.id)}` : "#"}>
+              查看接口资产
+            </Link>
           </Button>
         </div>
       )}
@@ -109,7 +121,7 @@ export function ApiScenarioStepConfig({
           />
         </div>
       ) : (
-        <Tabs className="min-h-0 flex-1 gap-0" defaultValue="request">
+        <Tabs className="min-h-0 flex-1 gap-0 overflow-hidden" defaultValue="request">
           <TabsList
             className="h-11 w-full shrink-0 justify-start rounded-none border-b bg-muted/15 px-5"
             variant="line"
@@ -130,15 +142,8 @@ export function ApiScenarioStepConfig({
               执行控制
             </TabsTrigger>
           </TabsList>
-          <div className="min-h-0 flex-1 overflow-y-auto">
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
             <TabsContent className="m-0 p-5" value="request">
-              {activeStep.step_type === "poll" ? (
-                <PollEndpointSelector
-                  endpointId={activeStep.endpoint_id}
-                  endpoints={endpoints}
-                  onChange={(endpointId) => onUpdateStep(activeStep.id, { endpoint_id: endpointId })}
-                />
-              ) : null}
               <RequestEditor
                 bindings={activeStep.bindings}
                 endpoint={endpoint}
@@ -182,35 +187,6 @@ export function ApiScenarioStepConfig({
         </Tabs>
       )}
     </section>
-  );
-}
-
-function PollEndpointSelector({
-  endpointId,
-  endpoints,
-  onChange,
-}: {
-  endpointId: string | null;
-  endpoints: ApiAutomationEndpoint[];
-  onChange: (endpointId: string) => void;
-}) {
-  return (
-    <div className="mb-5 rounded-xl border border-amber-200 bg-amber-50/70 p-4">
-      <div className="font-medium text-amber-900 text-sm">轮询接口资产</div>
-      <p className="mt-1 text-amber-800/75 text-xs">重复调用该接口，直到断言通过或达到超时时间。</p>
-      <Select onValueChange={onChange} value={endpointId ?? ""}>
-        <SelectTrigger className="mt-3 bg-background">
-          <SelectValue placeholder="选择要轮询的接口资产" />
-        </SelectTrigger>
-        <SelectContent>
-          {endpoints.map((endpoint) => (
-            <SelectItem key={endpoint.id} value={endpoint.id}>
-              {endpoint.method} {endpoint.path} · {endpoint.summary}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-    </div>
   );
 }
 
@@ -329,7 +305,7 @@ function SourceEditor({
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="literal">固定值</SelectItem>
+            <SelectItem value="literal">{sourceType === "literal" ? displayBindingValue(source.value) : "固定值"}</SelectItem>
             <SelectItem value="step_output">前序步骤输出</SelectItem>
             <SelectItem value="scenario">场景变量</SelectItem>
             <SelectItem value="environment">环境变量</SelectItem>
@@ -489,7 +465,6 @@ function RequestEditor({
   const cookieFields = requestModel.fields.filter((field) => field.location === "cookie");
   const bodyFields = requestModel.fields.filter((field) => ["json_body", "form", "multipart"].includes(field.location));
   const request = (requestOverrides.request ?? {}) as Record<string, unknown>;
-  const authorization = (request.authorization ?? { type: "inherit" }) as Record<string, unknown>;
   const bodyMode = String(request.body_mode ?? requestModel.bodyMode);
   const bodyRaw = String(
     request.body_raw ??
@@ -497,12 +472,6 @@ function RequestEditor({
         ? JSON.stringify(request.json, null, 2)
         : (request.raw_body ?? "")),
   );
-
-  function updateLiteral(target: string, value: string) {
-    const nextBindings = bindings.filter((binding) => binding.target !== target);
-    const nextOverrides = setPointer(requestOverrides, target, value);
-    onChange({ request_overrides: nextOverrides, bindings: nextBindings });
-  }
 
   function updateBinding(target: string, encoded: string, fallbackValue?: unknown) {
     if (encoded === "literal") {
@@ -545,9 +514,6 @@ function RequestEditor({
 
   return (
     <div className="space-y-6">
-      <div className="rounded-lg border border-primary/20 bg-primary/5 p-3 text-primary text-sm">
-        请求结构来自接口资产；当前节点只保存覆盖值和动态引用。
-      </div>
       <RequestBlock title="URL / Params">
         <div className="grid grid-cols-[90px_1fr] gap-3">
           <Input disabled value={endpoint.method} />
@@ -560,29 +526,9 @@ function RequestEditor({
           bindings={bindings}
           emptyText="该接口没有声明 Path 或 Query 参数。"
           fields={parameterFields}
-          requestOverrides={requestOverrides}
           variableOptions={variableOptions}
           onBindingChange={updateBinding}
-          onLiteralChange={updateLiteral}
         />
-      </RequestBlock>
-
-      <RequestBlock title="Authorization">
-        <Select
-          onValueChange={(type) => updateRequestField("authorization", { type })}
-          value={String(authorization.type ?? "inherit")}
-        >
-          <SelectTrigger>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="inherit">继承环境鉴权</SelectItem>
-            <SelectItem value="none">无鉴权</SelectItem>
-            <SelectItem value="bearer">Bearer Token</SelectItem>
-            <SelectItem value="basic">Basic Auth</SelectItem>
-            <SelectItem value="api_key">API Key</SelectItem>
-          </SelectContent>
-        </Select>
       </RequestBlock>
 
       <RequestBlock title="Headers">
@@ -590,10 +536,8 @@ function RequestEditor({
           bindings={bindings}
           emptyText="该接口没有声明 Header。"
           fields={headerFields}
-          requestOverrides={requestOverrides}
           variableOptions={variableOptions}
           onBindingChange={updateBinding}
-          onLiteralChange={updateLiteral}
         />
       </RequestBlock>
 
@@ -624,10 +568,8 @@ function RequestEditor({
             className="mt-3"
             emptyText="该请求体没有声明字段。"
             fields={bodyFields}
-            requestOverrides={requestOverrides}
             variableOptions={variableOptions}
             onBindingChange={updateBinding}
-            onLiteralChange={updateLiteral}
           />
         ) : bodyMode === "none" ? null : (
           <Textarea
@@ -644,10 +586,8 @@ function RequestEditor({
           bindings={bindings}
           emptyText="该接口没有声明 Cookie。"
           fields={cookieFields}
-          requestOverrides={requestOverrides}
           variableOptions={variableOptions}
           onBindingChange={updateBinding}
-          onLiteralChange={updateLiteral}
         />
       </RequestBlock>
     </div>
@@ -666,20 +606,16 @@ function defaultValueSource(type: string): Record<string, unknown> {
 function RequestFieldsEditor({
   fields,
   bindings,
-  requestOverrides,
   variableOptions,
   emptyText,
   className,
-  onLiteralChange,
   onBindingChange,
 }: {
   fields: ReturnType<typeof buildEndpointRequestFields>["fields"];
   bindings: ApiAutomationScenarioBinding[];
-  requestOverrides: Record<string, unknown>;
   variableOptions: ReturnType<typeof buildVariableOptions>;
   emptyText: string;
   className?: string;
-  onLiteralChange: (target: string, value: string) => void;
   onBindingChange: (target: string, value: string, fallbackValue?: unknown) => void;
 }) {
   return (
@@ -689,38 +625,19 @@ function RequestFieldsEditor({
       ) : (
         fields.map((field) => {
           const persistedBinding = bindings.find((item) => item.target === field.target);
-          const dynamicBinding = persistedBinding?.source.type === "literal" ? undefined : persistedBinding;
-          const override = readPointer(requestOverrides, field.target);
-          const literal =
-            persistedBinding?.source.type === "literal"
-              ? persistedBinding.source.value
-              : (override ?? field.defaultValue);
           return (
             <div
-              className="grid min-h-16 min-w-0 grid-cols-[minmax(140px,0.8fr)_minmax(160px,1fr)_minmax(125px,0.7fr)] items-center gap-3 border-b px-3 py-2 last:border-b-0"
+              className="grid min-h-16 min-w-0 grid-cols-[minmax(140px,0.9fr)_minmax(0,1.1fr)] items-center gap-3 border-b px-3 py-2 last:border-b-0"
               key={`${field.location}:${field.key}`}
             >
               <div>
                 <div className="font-medium text-sm">
                   {field.key} {field.required ? <span className="text-destructive">*</span> : null}
                 </div>
-                <div className="mt-1 text-[10px] text-muted-foreground">
-                  {field.location.toUpperCase()} {field.description ? `· ${field.description}` : ""}
-                </div>
               </div>
-              {dynamicBinding ? (
-                <div className="rounded-lg border border-primary/35 bg-primary/5 px-3 py-2 font-mono text-primary text-xs">
-                  {bindingLabel(dynamicBinding, precedingName(variableOptions, dynamicBinding))}
-                </div>
-              ) : (
-                <Input
-                  onChange={(event) => onLiteralChange(field.target, event.target.value)}
-                  placeholder="输入固定值"
-                  value={literal == null ? "" : String(literal)}
-                />
-              )}
               <BindingSourceSelect
                 binding={persistedBinding}
+                literalValue={field.defaultValue}
                 variableOptions={variableOptions}
                 onChange={(value) => onBindingChange(field.target, value, field.defaultValue)}
               />
@@ -734,10 +651,12 @@ function RequestFieldsEditor({
 
 function BindingSourceSelect({
   binding,
+  literalValue,
   variableOptions,
   onChange,
 }: {
   binding?: ApiAutomationScenarioBinding;
+  literalValue?: unknown;
   variableOptions: ReturnType<typeof buildVariableOptions>;
   onChange: (value: string) => void;
 }) {
@@ -760,7 +679,9 @@ function BindingSourceSelect({
         <SelectValue />
       </SelectTrigger>
       <SelectContent>
-        <SelectItem value="literal">固定值</SelectItem>
+        <SelectItem value="literal">
+          {displayBindingValue(binding?.source.type === "literal" ? binding.source.value : literalValue)}
+        </SelectItem>
         {variableOptions.stepOutputs.map((option) => (
           <SelectItem
             key={`${option.stepId}:${option.name}`}
@@ -780,7 +701,7 @@ function BindingSourceSelect({
           </SelectItem>
         ))}
         {binding && !standardValues.has(currentValue) ? (
-          <SelectItem value={currentValue}>{sourceTypeLabel(binding.source.type)} · 当前引用</SelectItem>
+          <SelectItem value={currentValue}>{sourceTypeLabel(binding.source.type)} · {bindingSourceName(binding.source)}</SelectItem>
         ) : null}
       </SelectContent>
     </Select>
@@ -895,52 +816,129 @@ function ExtractorEditor({
       description="把响应字段保存为具名输出，供后续步骤引用。"
       onAdd={() => onChange([...extractors, { name: "", source: "response.body", expression: "$.", required: true }])}
     >
-      {extractors.map((extractor, index) => (
-        <div
-          className="grid grid-cols-[150px_170px_1fr_36px] gap-2 border-b p-3 last:border-b-0"
-          key={`${extractor.name}:${extractor.source}:${extractor.expression ?? extractor.path ?? ""}`}
-        >
-          <Input
-            onChange={(event) => onChange(replaceAt(extractors, index, { ...extractor, name: event.target.value }))}
-            placeholder="输出变量名"
-            value={extractor.name}
-          />
-          <Select
-            onValueChange={(source) =>
-              onChange(
-                replaceAt(extractors, index, {
-                  ...extractor,
-                  source: source as ApiAutomationScenarioExtractor["source"],
-                }),
-              )
-            }
-            value={extractor.source ?? "response.body"}
+      {extractors.map((extractor, index) => {
+        const source = extractor.source ?? "response.body";
+        const isStatusSource = source === "response.status";
+        const isSseSource = source === "sse_event_json";
+        const pathPlaceholder = source === "response.header" ? "Header 名称" : "$.data.id";
+
+        return (
+          <div
+            className="relative space-y-3 border-b p-3 pr-12 last:border-b-0"
+            key={`${extractor.name}:${extractor.source}:${extractor.expression ?? extractor.path ?? ""}`}
           >
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="response.body">响应 Body</SelectItem>
-              <SelectItem value="response.header">响应 Header</SelectItem>
-              <SelectItem value="response.status">状态码</SelectItem>
-            </SelectContent>
-          </Select>
-          <Input
-            onChange={(event) =>
-              onChange(replaceAt(extractors, index, { ...extractor, expression: event.target.value }))
-            }
-            placeholder="$.data.id"
-            value={extractor.expression ?? extractor.path ?? ""}
-          />
-          <Button
-            onClick={() => onChange(extractors.filter((_, itemIndex) => itemIndex !== index))}
-            size="icon-sm"
-            variant="ghost"
-          >
-            <Trash2 />
-          </Button>
-        </div>
-      ))}
+            <div className="min-w-0 space-y-1">
+              <span className="block text-muted-foreground text-xs">来源</span>
+              <Select
+                onValueChange={(nextSource) =>
+                  onChange(
+                    replaceAt(extractors, index, {
+                      ...extractor,
+                      source: nextSource as ApiAutomationScenarioExtractor["source"],
+                      event: nextSource === "sse_event_json" ? extractor.event || "message" : undefined,
+                      occurrence: nextSource === "sse_event_json" ? extractor.occurrence || "first" : undefined,
+                    }),
+                  )
+                }
+                value={source}
+              >
+                <SelectTrigger aria-label="来源">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="response.body">响应 Body</SelectItem>
+                  <SelectItem value="response.header">响应 Header</SelectItem>
+                  <SelectItem value="response.status">状态码</SelectItem>
+                  <SelectItem value="sse_event_json">SSE 事件 JSON</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            {isSseSource ? (
+              <div className="grid grid-cols-2 gap-3">
+                <div className="min-w-0 space-y-1">
+                  <span className="block text-muted-foreground text-xs">事件名称</span>
+                  <Input
+                    aria-label="事件名称"
+                    onChange={(event) =>
+                      onChange(replaceAt(extractors, index, { ...extractor, event: event.target.value }))
+                    }
+                    placeholder="例如 message"
+                    value={extractor.event ?? ""}
+                  />
+                </div>
+                <div className="min-w-0 space-y-1">
+                  <span className="block text-muted-foreground text-xs">匹配策略</span>
+                  <Select
+                    onValueChange={(occurrence) =>
+                      onChange(
+                        replaceAt(extractors, index, {
+                          ...extractor,
+                          occurrence: occurrence as ApiAutomationScenarioExtractor["occurrence"],
+                        }),
+                      )
+                    }
+                    value={extractor.occurrence ?? "first"}
+                  >
+                    <SelectTrigger aria-label="匹配策略">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="first">首次匹配</SelectItem>
+                      <SelectItem value="last">最后匹配</SelectItem>
+                      <SelectItem value="all">全部匹配</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            ) : null}
+            <div className="min-w-0 space-y-1">
+              <span className="block text-muted-foreground text-xs">提取路径</span>
+              {isStatusSource ? (
+                <div className="flex h-9 items-center rounded-md border bg-muted/40 px-3 text-muted-foreground text-sm">
+                  自动取 HTTP 状态码
+                </div>
+              ) : (
+                <Input
+                  aria-label="提取路径"
+                  onChange={(event) =>
+                    onChange(replaceAt(extractors, index, { ...extractor, expression: event.target.value }))
+                  }
+                  placeholder={pathPlaceholder}
+                  value={extractor.expression ?? extractor.path ?? ""}
+                />
+              )}
+            </div>
+            <div className="min-w-0 space-y-1">
+              <span className="block text-muted-foreground text-xs">保存为</span>
+              <Input
+                aria-label="保存为"
+                onChange={(event) => onChange(replaceAt(extractors, index, { ...extractor, name: event.target.value }))}
+                placeholder="输出变量名"
+                value={extractor.name}
+              />
+            </div>
+            <Button
+              aria-label={`删除第 ${index + 1} 条响应提取`}
+              className="absolute top-2 right-2 text-muted-foreground hover:text-destructive"
+              onClick={() => onChange(extractors.filter((_, itemIndex) => itemIndex !== index))}
+              size="icon-sm"
+              variant="ghost"
+            >
+              <Trash2 />
+            </Button>
+            <div className="flex min-w-0 items-center gap-2 text-muted-foreground text-xs">
+              <Checkbox
+                aria-label="未提取到时终止步骤"
+                checked={extractor.required ?? true}
+                onCheckedChange={(value) =>
+                  onChange(replaceAt(extractors, index, { ...extractor, required: value === true }))
+                }
+              />
+              <span>未提取到时终止步骤</span>
+            </div>
+          </div>
+        );
+      })}
     </EditorSection>
   );
 }
@@ -952,47 +950,59 @@ function AssertionEditor({
   assertions: ApiAutomationScenarioAssertion[];
   onChange: (items: ApiAutomationScenarioAssertion[]) => void;
 }) {
+  useEffect(() => {
+    if (assertions.some((assertion) => !assertion.id)) {
+      onChange(
+        assertions.map((assertion) =>
+          assertion.id ? assertion : { ...assertion, id: `assertion-${crypto.randomUUID()}` },
+        ),
+      );
+    }
+  }, [assertions, onChange]);
+
   return (
     <EditorSection
       title="断言"
-      description="明确每个接口步骤的成功标准。"
-      onAdd={() => onChange([...assertions, { type: "status_code", expected: 200 }])}
+      onAdd={() => onChange([...assertions, createAssertion("status_code")])}
     >
       {assertions.map((assertion, index) => (
-        <div
-          className="grid grid-cols-[180px_1fr_1fr_36px] gap-2 border-b p-3 last:border-b-0"
-          key={`${assertion.type}:${assertion.path ?? ""}:${String(assertion.expected ?? "")}`}
-        >
-          <Select
-            onValueChange={(type) => onChange(replaceAt(assertions, index, createAssertion(type)))}
-            value={assertion.type}
-          >
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="status_code">状态码等于</SelectItem>
-              <SelectItem value="jsonpath_exists">字段存在</SelectItem>
-              <SelectItem value="jsonpath_equals">字段等于</SelectItem>
-              <SelectItem value="jsonpath_type">字段类型</SelectItem>
-              <SelectItem value="header_exists">Header 存在</SelectItem>
-              <SelectItem value="header_equals">Header 等于</SelectItem>
-              <SelectItem value="content_type">Content-Type 包含</SelectItem>
-              <SelectItem value="response_time_max">响应时间不超过</SelectItem>
-              <SelectItem value="schema_basic">基础结构</SelectItem>
-            </SelectContent>
-          </Select>
-          <Input
-            disabled={["status_code", "response_time_max", "schema_basic"].includes(assertion.type)}
-            onChange={(event) => onChange(replaceAt(assertions, index, { ...assertion, path: event.target.value }))}
-            placeholder="$.data.id / Header 名"
-            value={assertion.path ?? ""}
-          />
-          <AssertionExpectedEditor
-            assertion={assertion}
-            onChange={(expected) => onChange(replaceAt(assertions, index, { ...assertion, expected }))}
-          />
+        <div className="relative space-y-3 border-b p-4 pr-12 last:border-b-0" key={assertion.id ?? assertion.type}>
+          <AssertionField label="响应来源 / 目标路径">
+            <AssertionPathEditor
+              assertion={assertion}
+              onChange={(path) => onChange(replaceAt(assertions, index, { ...assertion, path }))}
+            />
+          </AssertionField>
+          <AssertionField label="判断条件">
+            <Select
+              onValueChange={(type) => onChange(replaceAt(assertions, index, createAssertion(type)))}
+              value={assertion.type}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="status_code">状态码等于</SelectItem>
+                <SelectItem value="jsonpath_exists">字段存在</SelectItem>
+                <SelectItem value="jsonpath_equals">字段等于</SelectItem>
+                <SelectItem value="jsonpath_type">字段类型</SelectItem>
+                <SelectItem value="header_exists">Header 存在</SelectItem>
+                <SelectItem value="header_equals">Header 等于</SelectItem>
+                <SelectItem value="content_type">Content-Type 包含</SelectItem>
+                <SelectItem value="response_time_max">响应时间不超过</SelectItem>
+                <SelectItem value="schema_basic">基础结构</SelectItem>
+              </SelectContent>
+            </Select>
+          </AssertionField>
+          <AssertionField label="期望值">
+            <AssertionExpectedEditor
+              assertion={assertion}
+              onChange={(expected) => onChange(replaceAt(assertions, index, { ...assertion, expected }))}
+            />
+          </AssertionField>
           <Button
+            aria-label={`删除第 ${index + 1} 条断言`}
+            className="absolute top-3 right-3 text-muted-foreground hover:text-destructive"
             onClick={() => onChange(assertions.filter((_, itemIndex) => itemIndex !== index))}
             size="icon-sm"
             variant="ghost"
@@ -1005,6 +1015,40 @@ function AssertionEditor({
   );
 }
 
+function AssertionField({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="min-w-0 space-y-1.5">
+      <span className="block font-medium text-muted-foreground text-xs">{label}</span>
+      {children}
+    </div>
+  );
+}
+
+function AssertionPathEditor({
+  assertion,
+  onChange,
+}: {
+  assertion: ApiAutomationScenarioAssertion;
+  onChange: (path: string) => void;
+}) {
+  if (["status_code", "response_time_max", "schema_basic"].includes(assertion.type)) {
+    return (
+      <div className="flex h-9 items-center rounded-md border border-dashed bg-muted/35 px-3 text-muted-foreground text-sm">
+        {assertion.type === "status_code" ? "响应状态" : assertion.type === "response_time_max" ? "响应耗时" : "响应 Body"}
+      </div>
+    );
+  }
+  return (
+    <Input
+      aria-label="目标路径"
+      className="font-mono text-sm"
+      onChange={(event) => onChange(event.target.value)}
+      placeholder={assertion.type.startsWith("header_") ? "Header 名，例如 X-Request-Id" : "JSONPath，例如 $.data.id"}
+      value={assertion.path ?? ""}
+    />
+  );
+}
+
 function AssertionExpectedEditor({
   assertion,
   onChange,
@@ -1013,7 +1057,11 @@ function AssertionExpectedEditor({
   onChange: (expected: unknown) => void;
 }) {
   if (["jsonpath_exists", "header_exists"].includes(assertion.type)) {
-    return <Input disabled placeholder="无需期望值" />;
+    return (
+      <div className="flex h-9 items-center rounded-md border border-dashed bg-emerald-50/60 px-3 text-emerald-700 text-sm">
+        无需设置期望值
+      </div>
+    );
   }
   if (assertion.type === "jsonpath_type") {
     return (
@@ -1079,11 +1127,12 @@ function AssertionExpectedEditor({
 }
 
 function createAssertion(type: string): ApiAutomationScenarioAssertion {
-  if (type === "status_code") return { type, expected: 200 };
-  if (type === "response_time_max") return { type, expected: 1000 };
-  if (type === "jsonpath_type") return { type, path: "$.data", expected: "string" };
-  if (type === "schema_basic") return { type, expected: { type: "object", required: [] } };
-  return { type, expected: "" };
+  const id = `assertion-${crypto.randomUUID()}`;
+  if (type === "status_code") return { id, type, expected: 200 };
+  if (type === "response_time_max") return { id, type, expected: 1000 };
+  if (type === "jsonpath_type") return { id, type, path: "$.data", expected: "string" };
+  if (type === "schema_basic") return { id, type, expected: { type: "object", required: [] } };
+  return { id, type, expected: "" };
 }
 
 function ControlEditor({
@@ -1130,24 +1179,18 @@ function ControlEditor({
           />
         </div>
         <div>
-          <span className="mb-2 block font-medium text-sm">
-            {step.step_type === "poll" ? "轮询间隔（毫秒）" : "重试次数"}
-          </span>
+          <span className="mb-2 block font-medium text-sm">重试次数</span>
           <Input
             onChange={(event) =>
               onChange({
                 control_config: {
                   ...step.control_config,
-                  [step.step_type === "poll" ? "interval_ms" : "retries"]: Number(event.target.value) || 0,
+                  retries: Number(event.target.value) || 0,
                 },
               })
             }
             type="number"
-            value={Number(
-              step.step_type === "poll"
-                ? (step.control_config.interval_ms ?? 1000)
-                : (step.control_config.retries ?? 0),
-            )}
+            value={Number(step.control_config.retries ?? 0)}
           />
         </div>
       </div>
@@ -1162,7 +1205,7 @@ function EditorSection({
   children,
 }: {
   title: string;
-  description: string;
+  description?: string;
   onAdd: () => void;
   children: React.ReactNode;
 }) {
@@ -1171,7 +1214,7 @@ function EditorSection({
       <div className="flex items-center justify-between">
         <div>
           <h3 className="font-semibold">{title}</h3>
-          <p className="mt-1 text-muted-foreground text-sm">{description}</p>
+          {description ? <p className="mt-1 text-muted-foreground text-sm">{description}</p> : null}
         </div>
         <Button onClick={onAdd} size="sm" variant="outline">
           <Plus />
@@ -1197,30 +1240,28 @@ function setPointer(document: Record<string, unknown>, pointer: string, value: u
   return next;
 }
 
-function readPointer(document: Record<string, unknown>, pointer: string) {
-  return pointer
-    .split("/")
-    .filter(Boolean)
-    .map(unescapePointer)
-    .reduce<unknown>(
-      (current, part) =>
-        current && typeof current === "object" ? (current as Record<string, unknown>)[part] : undefined,
-      document,
-    );
-}
-
 function bindingValue(binding?: ApiAutomationScenarioBinding) {
   if (!binding) return "literal";
   if (binding.source.type === "literal") return "literal";
   return encodeBindingSource(binding.source);
 }
 
-function bindingLabel(binding: ApiAutomationScenarioBinding, stepName: string) {
-  return formatValueSource(binding.source, stepName);
-}
-
 function encodeBindingSource(source: ApiAutomationScenarioBinding["source"]) {
   return JSON.stringify(source);
+}
+
+function displayBindingValue(value: unknown) {
+  if (typeof value === "string") return value;
+  if (value === undefined) return "未配置";
+  return JSON.stringify(value);
+}
+
+function bindingSourceName(source: ApiAutomationScenarioBinding["source"]) {
+  if (source.type === "step_output") return source.variable;
+  if (source.type === "environment" || source.type === "secret") return source.key;
+  if (source.type === "scenario" || source.type === "user_input") return source.name;
+  if (source.type === "generated") return source.generator;
+  return "当前引用";
 }
 
 function sourceTypeLabel(sourceType: ApiAutomationScenarioBinding["source"]["type"]) {
@@ -1235,14 +1276,6 @@ function sourceTypeLabel(sourceType: ApiAutomationScenarioBinding["source"]["typ
     object: "对象",
   };
   return labels[sourceType];
-}
-
-function precedingName(options: ReturnType<typeof buildVariableOptions>, binding: ApiAutomationScenarioBinding) {
-  return (
-    options.stepOutputs.find((option) => option.stepId === binding.source.step_id)?.stepName ??
-    binding.source.step_id ??
-    "步骤"
-  );
 }
 
 function replaceAt<T>(items: T[], index: number, value: T) {

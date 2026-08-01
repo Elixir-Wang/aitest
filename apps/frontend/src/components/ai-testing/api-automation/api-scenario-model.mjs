@@ -37,7 +37,6 @@ export function normalizeRequestLifecycleConfig(step) {
 const utilityDefaults = {
   condition: { name: "条件判断", control_config: { source: { type: "literal", value: true }, operator: "truthy" } },
   wait: { name: "固定等待", control_config: { duration_ms: 1000 } },
-  poll: { name: "轮询等待", control_config: { interval_ms: 1000, timeout_ms: 30000 } },
   assign: { name: "数据赋值", control_config: { name: "variable", source: { type: "literal", value: "" } } },
 };
 
@@ -134,16 +133,11 @@ export function validateScenarioDraft(draft) {
   enabledSteps.forEach((step, index) => {
     const label = `步骤 ${index + 1}（${step.name || step.id}）`;
     const config = step.control_config || {};
-    if (["api_request", "poll"].includes(step.step_type) && !step.endpoint_id) {
+    if (step.step_type === "api_request" && !step.endpoint_id) {
       errors.push(`${label}必须选择接口资产。`);
     }
     if (step.step_type === "wait" && !(Number(config.duration_ms) >= 0 && Number(config.duration_ms) <= 300000)) {
       errors.push(`${label}的等待时长必须在 0 到 300000 毫秒之间。`);
-    }
-    if (step.step_type === "poll") {
-      if (!(Number(config.interval_ms) > 0)) errors.push(`${label}的轮询间隔必须大于 0。`);
-      if (!(Number(config.timeout_ms) > 0)) errors.push(`${label}的轮询超时必须大于 0。`);
-      if ((step.assertions || []).length === 0) errors.push(`${label}至少需要一个结束断言。`);
     }
     if (step.step_type === "assign") {
       if (!String(config.name || "").trim()) errors.push(`${label}必须填写变量名。`);
@@ -165,6 +159,11 @@ export function validateScenarioDraft(draft) {
       if (!name) errors.push(`${label}存在未命名的响应提取。`);
       else if (extractorNames.has(name)) errors.push(`${label}重复提取变量 ${name}。`);
       else extractorNames.add(name);
+      if (extractor.source === "sse_event_json") {
+        if (!String(extractor.event || "").trim()) errors.push(`${label}的 SSE 事件名称不能为空。`);
+        if (!String(extractor.path || extractor.expression || "").trim())
+          errors.push(`${label}的 SSE 提取路径不能为空。`);
+      }
     }
     if (step.step_type === "assign" && String(config.name || "").trim()) extractorNames.add(String(config.name).trim());
     stepOutputs.set(step.id, extractorNames);
@@ -247,7 +246,7 @@ export function buildEndpointRequestFields(endpoint) {
 }
 
 function validateRequestLifecycle(step, label, currentIndex, stepIndexes, stepOutputs, errors) {
-  if (!["api_request", "poll"].includes(step.step_type)) return;
+  if (step.step_type !== "api_request") return;
   const request = step.request_overrides?.request || {};
   const rawBody = request.body_raw ?? request.raw_body;
   if (request.body_mode === "json" && typeof rawBody === "string" && rawBody.trim()) {

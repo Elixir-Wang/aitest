@@ -9,7 +9,6 @@ def seed_system_defaults(db: sqlite3.Connection) -> None:
     _ensure_exploration_loop_mode(db)
     _repair_exploration_run_foreign_keys(db)
     _migrate_ui_automation_case_sources(db)
-    _ensure_ui_automation_video_column(db)
     _drop_legacy_performance_run_tables(db)
     _ensure_performance_test_columns(db)
     _migrate_performance_scripts_to_single_record(db)
@@ -371,8 +370,6 @@ def _migrate_ui_automation_case_sources(db: sqlite3.Connection) -> None:
           result_json TEXT NOT NULL DEFAULT '{}',
           stdout_path TEXT NOT NULL DEFAULT '',
           stderr_path TEXT NOT NULL DEFAULT '',
-          trace_path TEXT NOT NULL DEFAULT '',
-          video_path TEXT NOT NULL DEFAULT '',
           screenshot_paths_json TEXT NOT NULL DEFAULT '[]',
           error_message TEXT NOT NULL DEFAULT '',
           created_by TEXT NOT NULL,
@@ -403,11 +400,11 @@ def _migrate_ui_automation_case_sources(db: sqlite3.Connection) -> None:
     db.execute(
         """INSERT INTO ui_automation_execution_runs (
              id, project_id, asset_id, environment_id, task_id, status, run_dir,
-             result_json, stdout_path, stderr_path, trace_path, screenshot_paths_json,
+             result_json, stdout_path, stderr_path, screenshot_paths_json,
              error_message, created_by, started_at, finished_at, created_at, updated_at
            )
            SELECT id, project_id, asset_id, environment_id, task_id, status, run_dir,
-                  result_json, stdout_path, stderr_path, trace_path, screenshot_paths_json,
+                   result_json, stdout_path, stderr_path, screenshot_paths_json,
                   error_message, created_by, started_at, finished_at, created_at, updated_at
            FROM ui_automation_execution_runs_legacy"""
     )
@@ -425,12 +422,6 @@ def _migrate_ui_automation_case_sources(db: sqlite3.Connection) -> None:
     violations = db.execute("PRAGMA foreign_key_check").fetchall()
     if violations:
         raise RuntimeError(f"UI automation source migration has foreign key violations: {violations}")
-
-
-def _ensure_ui_automation_video_column(db: sqlite3.Connection) -> None:
-    columns = {str(column["name"]) for column in db.execute("PRAGMA table_info(ui_automation_execution_runs)")}
-    if "video_path" not in columns:
-        db.execute("ALTER TABLE ui_automation_execution_runs ADD COLUMN video_path TEXT NOT NULL DEFAULT ''")
 
 
 def _ensure_test_point_coverage_structure(db: sqlite3.Connection) -> None:
@@ -783,6 +774,11 @@ def _ensure_api_scenario_ai_plan_table(db: sqlite3.Connection) -> None:
           expected_revision INTEGER,
           goal TEXT NOT NULL,
           request_json TEXT NOT NULL DEFAULT '{}',
+          proposal_json TEXT NOT NULL DEFAULT '{}',
+          review_json TEXT NOT NULL DEFAULT '{}',
+          review_revision INTEGER NOT NULL DEFAULT 0,
+          generation_meta_json TEXT NOT NULL DEFAULT '{}',
+          asset_fingerprint TEXT NOT NULL DEFAULT '',
           plan_json TEXT NOT NULL DEFAULT '{}',
           validation_json TEXT NOT NULL DEFAULT '{}',
           status TEXT NOT NULL CHECK(status IN ('preview', 'applied', 'discarded', 'expired')) DEFAULT 'preview',
@@ -808,6 +804,11 @@ def _ensure_api_scenario_ai_plan_table(db: sqlite3.Connection) -> None:
         "lifecycle_status": "TEXT NOT NULL DEFAULT 'completed'",
         "error_message": "TEXT NOT NULL DEFAULT ''",
         "updated_at": "TEXT NOT NULL DEFAULT ''",
+        "proposal_json": "TEXT NOT NULL DEFAULT '{}'",
+        "review_json": "TEXT NOT NULL DEFAULT '{}'",
+        "review_revision": "INTEGER NOT NULL DEFAULT 0",
+        "generation_meta_json": "TEXT NOT NULL DEFAULT '{}'",
+        "asset_fingerprint": "TEXT NOT NULL DEFAULT ''",
     }.items():
         if column not in columns:
             db.execute(f"ALTER TABLE api_scenario_ai_plans ADD COLUMN {column} {definition}")

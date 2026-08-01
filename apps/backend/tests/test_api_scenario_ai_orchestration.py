@@ -9,14 +9,25 @@ from app.agents.api_automation.orchestration.schemas import (
     ScenarioPlanNode,
     ScenarioPlanResult,
     binding_to_runtime,
+    extractor_to_runtime,
 )
 from app.core import db as db_core
 from app.core import settings, storage
 from app.core.db import connect
 from app.repositories import api_automation_repo
 from app.schemas.api_automation import ApiScenarioAiPlanApplyIn, ApiScenarioAiPlanIn, ApiScenarioIn, ApiScenarioStepIn
+from app.schemas.api_automation import (
+    ApiScenarioAiReviewField,
+    ApiScenarioAiReviewFieldGroup,
+    ApiScenarioAiReviewPlan,
+    ApiScenarioAiReviewSaveIn,
+    ApiScenarioAiReviewStep,
+    ApiScenarioAiReviewStepSaveIn,
+    ApiScenarioAiReviewFieldSaveIn,
+)
 from app.seed.init_db import init_db
 from app.services.api_automation import service
+from app.api.v1 import api_automation as api_automation_routes
 from app.services.api_automation.orchestration_compiler import compile_plan
 
 
@@ -90,12 +101,326 @@ def test_ai_plan_apply_payload_uses_explicit_overwrite_confirmation() -> None:
     payload = ApiScenarioAiPlanApplyIn(
         scenario_id="apiscn-1",
         confirmation="overwrite_draft",
+        expected_review_revision=3,
     )
 
     assert payload.model_dump() == {
         "scenario_id": "apiscn-1",
         "confirmation": "overwrite_draft",
+        "expected_review_revision": 3,
     }
+
+
+def test_ai_review_plan_groups_fields_by_request_location() -> None:
+    username = ApiScenarioAiReviewField(
+        field_id="field-step-1-username",
+        path="/username",
+        display_name="username",
+        required=True,
+        value_type="string",
+        sensitive=False,
+        proposal={"type": "environment", "key": "username"},
+        resolved={"type": "environment", "key": "username"},
+        status="resolved",
+    )
+    question = ApiScenarioAiReviewField(
+        field_id="field-step-1-question",
+        path="/data/question",
+        display_name="question",
+        required=True,
+        value_type="string",
+        sensitive=False,
+        proposal={"type": "literal", "value": "查询用户资料"},
+        resolved={"type": "literal", "value": "查询用户资料"},
+        status="pending",
+    )
+    step = ApiScenarioAiReviewStep(
+        step_id="step-1",
+        endpoint_id="apiend-1",
+        order=1,
+        name="查询资料",
+        method="POST",
+        path="/profile",
+        field_groups=[
+            ApiScenarioAiReviewFieldGroup(location="multipart", label="Form Data", fields=[username, question])
+        ],
+    )
+    plan = ApiScenarioAiReviewPlan(
+        plan_id="aiplan-1",
+        scenario_id="apiscn-1",
+        scenario_name="查询资料",
+        review_revision=0,
+        steps=[step],
+        expected_revision=0,
+        expires_at="2026-08-01T12:00:00+00:00",
+    )
+
+    assert plan.schema_version == 3
+    assert plan.review_status == "pending"
+    assert plan.steps[0].field_groups[0].pending_count == 1
+    assert plan.steps[0].review_summary.pending_count == 1
+    assert plan.steps[0].review_summary.resolved_count == 1
+
+
+def test_ai_review_save_uses_full_step_order_and_review_revision() -> None:
+    payload = ApiScenarioAiReviewSaveIn(
+        expected_review_revision=2,
+        steps=[
+            ApiScenarioAiReviewStepSaveIn(
+                step_id="step-2",
+                order=1,
+                fields=[
+                    ApiScenarioAiReviewFieldSaveIn(
+                        field_id="field-step-2-question",
+                        resolved={"type": "literal", "value": "新的问题"},
+                        status="confirmed",
+                    )
+                ],
+            )
+        ],
+    )
+
+    assert payload.expected_review_revision == 2
+    assert payload.steps[0].step_id == "step-2"
+    assert payload.steps[0].fields[0].status == "confirmed"
+
+
+def test_ai_plan_table_migrates_review_columns(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    _setup(monkeypatch, tmp_path)
+
+    with connect() as db:
+        columns = {str(column["name"]) for column in db.execute("PRAGMA table_info(api_scenario_ai_plans)")}
+
+    assert {
+        "proposal_json",
+        "review_json",
+        "review_revision",
+        "generation_meta_json",
+        "asset_fingerprint",
+    } <= columns
+
+
+def test_ai_plan_route_does_not_depend_on_fastapi_background_tasks() -> None:
+    import inspect
+
+    parameters = inspect.signature(api_automation_routes.create_api_scenario_ai_plan).parameters
+
+    assert "background_tasks" not in parameters
+
+
+def test_execute_ai_plan_persists_review_plan_v3(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    scenario_id = _setup(monkeypatch, tmp_path)
+    accepted = service.enqueue_api_scenario_ai_plan(
+        "project-1",
+        ApiScenarioAiPlanIn(goal="查询用户资料", scenario_id=scenario_id, source_scope={"endpoint_ids": ["apiend-1"]}),
+        ACTOR,
+    )
+
+    class FakePlanner:
+        model_call_count = 1
+
+        def __init__(self, _model):
+            pass
+
+        async def plan(self, _snapshot):
+            from app.agents.api_automation.orchestration.schemas import PlannerProposal
+
+            return PlannerProposal.model_validate(
+                {
+                    "scenario_name": "查询资料",
+                    "steps": [
+                        {
+                            "client_step_id": "step-1",
+                            "endpoint_id": "apiend-1",
+                            "order": 1,
+                            "name": "查询资料",
+                        }
+                    ],
+                }
+            )
+
+    monkeypatch.setattr(service, "ApiScenarioPlanner", FakePlanner)
+    monkeypatch.setattr(
+        service,
+        "resolve_model_selection",
+        lambda _capability: SimpleNamespace(provider="test", model="fake"),
+    )
+    monkeypatch.setattr(service, "thinking_disabled_extra_body", lambda _selection: None)
+    monkeypatch.setattr(service, "build_agent_model", lambda _selection, extra_body=None: object())
+
+    service.execute_api_scenario_ai_plan(
+        "project-1",
+        ApiScenarioAiPlanIn(goal="查询用户资料", scenario_id=scenario_id, source_scope={"endpoint_ids": ["apiend-1"]}),
+        ACTOR,
+        plan_id=accepted["plan_id"],
+    )
+    recovered = service.get_api_scenario_ai_plan("project-1", accepted["plan_id"], ACTOR)
+
+    assert recovered["schema_version"] == 3
+    assert recovered["steps"][0]["endpoint_id"] == "apiend-1"
+    assert recovered["review_revision"] == 0
+
+
+def test_save_ai_plan_review_increments_revision_and_recompiles(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    scenario_id = _setup(monkeypatch, tmp_path)
+    review = ApiScenarioAiReviewPlan(
+        plan_id="aiplan-review",
+        scenario_id=scenario_id,
+        scenario_name="查询资料",
+        review_revision=0,
+        steps=[
+            ApiScenarioAiReviewStep(
+                step_id="step-1",
+                endpoint_id="apiend-1",
+                order=1,
+                name="查询资料",
+                method="GET",
+                path="/profile",
+            )
+        ],
+        expected_revision=0,
+        asset_fingerprint="",
+        expires_at="2026-08-01T12:00:00+00:00",
+    )
+    with connect() as db:
+        db.execute(
+            """
+            INSERT INTO api_scenario_ai_plans
+              (id, project_id, scenario_id, expected_revision, goal, request_json, review_json,
+               review_revision, status, lifecycle_status, created_by, expires_at)
+            VALUES (?, 'project-1', ?, 0, '查询资料', ?, ?, 0, 'preview', 'completed', ?, ?)
+            """,
+            (
+                review.plan_id,
+                scenario_id,
+                api_automation_repo.dumps_json(
+                    ApiScenarioAiPlanIn(
+                        goal="查询资料",
+                        scenario_id=scenario_id,
+                        source_scope={"endpoint_ids": ["apiend-1"]},
+                    ).model_dump()
+                ),
+                api_automation_repo.dumps_json(review.model_dump(mode="json")),
+                ACTOR["id"],
+                review.expires_at,
+            ),
+        )
+
+    saved = service.save_api_scenario_ai_plan_review(
+        "project-1",
+        review.plan_id,
+        ApiScenarioAiReviewSaveIn(
+            expected_review_revision=0,
+            steps=[ApiScenarioAiReviewStepSaveIn(step_id="step-1", order=1, fields=[])],
+        ),
+        ACTOR,
+    )
+
+    assert saved["review_revision"] == 1
+    with connect() as db:
+        row = db.execute(
+            "SELECT review_revision, plan_json FROM api_scenario_ai_plans WHERE id = ?",
+            (review.plan_id,),
+        ).fetchone()
+    assert row["review_revision"] == 1
+    assert api_automation_repo.loads_json(row["plan_json"], {}).get("nodes")
+
+
+def test_apply_review_plan_rejects_required_pending_field(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    scenario_id = _setup(monkeypatch, tmp_path)
+    with connect() as db:
+        api_automation_repo.upsert_endpoint(
+            db,
+            endpoint_id="apiend-1",
+            project_id="project-1",
+            document_id=None,
+            method="GET",
+            path="/profile",
+            normalized_path="/profile",
+            summary="用户资料",
+            description="",
+            tags=["user"],
+            parameters=[{"name": "username", "in": "query", "required": True, "schema": {"type": "string"}}],
+            request_body={},
+            responses={"200": {"description": "ok"}},
+            auth={},
+            source={},
+            created_by=ACTOR["id"],
+        )
+    review = ApiScenarioAiReviewPlan(
+        plan_id="aiplan-pending",
+        scenario_id=scenario_id,
+        scenario_name="查询资料",
+        review_revision=1,
+        steps=[
+            ApiScenarioAiReviewStep(
+                step_id="step-1",
+                endpoint_id="apiend-1",
+                order=1,
+                name="查询资料",
+                method="GET",
+                path="/profile",
+                field_groups=[
+                    ApiScenarioAiReviewFieldGroup(
+                        location="query",
+                        label="Query",
+                        fields=[
+                            ApiScenarioAiReviewField(
+                                field_id="field-step-1-username",
+                                path="/username",
+                                display_name="username",
+                                required=True,
+                                value_type="string",
+                                proposal={"type": "literal", "value": "tester"},
+                                resolved={"type": "literal", "value": "tester"},
+                                status="pending",
+                            )
+                        ],
+                    )
+                ],
+            )
+        ],
+        expected_revision=0,
+        expires_at="2026-08-01T12:00:00+00:00",
+    )
+    with connect() as db:
+        db.execute(
+            """
+            INSERT INTO api_scenario_ai_plans
+              (id, project_id, scenario_id, expected_revision, goal, request_json, review_json,
+               review_revision, status, lifecycle_status, created_by, expires_at)
+            VALUES (?, 'project-1', ?, 0, '查询资料', ?, ?, 1, 'preview', 'completed', ?, ?)
+            """,
+            (
+                review.plan_id,
+                scenario_id,
+                api_automation_repo.dumps_json(
+                    ApiScenarioAiPlanIn(
+                        goal="查询资料",
+                        scenario_id=scenario_id,
+                        source_scope={"endpoint_ids": ["apiend-1"]},
+                    ).model_dump()
+                ),
+                api_automation_repo.dumps_json(review.model_dump(mode="json")),
+                ACTOR["id"],
+                review.expires_at,
+            ),
+        )
+
+    with pytest.raises(Exception, match="尚未确认"):
+        service.apply_api_scenario_ai_plan(
+            "project-1",
+            review.plan_id,
+            ApiScenarioAiPlanApplyIn(
+                scenario_id=scenario_id,
+                confirmation="overwrite_draft",
+                expected_review_revision=1,
+            ),
+            ACTOR,
+        )
 
 
 def test_ai_plan_is_preview_until_explicitly_applied(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -119,6 +444,7 @@ def test_ai_plan_is_preview_until_explicitly_applied(monkeypatch: pytest.MonkeyP
         ApiScenarioAiPlanApplyIn(
             scenario_id=scenario_id,
             confirmation="overwrite_draft",
+            expected_review_revision=0,
         ),
         ACTOR,
     )
@@ -156,7 +482,11 @@ def test_ai_plan_apply_persists_non_sensitive_input_defaults(monkeypatch: pytest
     applied = service.apply_api_scenario_ai_plan(
         "project-1",
         plan["plan_id"],
-        ApiScenarioAiPlanApplyIn(scenario_id=scenario_id, confirmation="overwrite_draft"),
+        ApiScenarioAiPlanApplyIn(
+            scenario_id=scenario_id,
+            confirmation="overwrite_draft",
+            expected_review_revision=0,
+        ),
         ACTOR,
     )
 
@@ -225,6 +555,7 @@ def test_ai_plan_overwrites_draft_changed_after_generation(monkeypatch: pytest.M
         ApiScenarioAiPlanApplyIn(
             scenario_id=scenario_id,
             confirmation="overwrite_draft",
+            expected_review_revision=0,
         ),
         ACTOR,
     )
@@ -418,7 +749,25 @@ def test_binding_to_runtime_preserves_execution_metadata() -> None:
     }
 
 
-def test_compiler_replaces_dynamic_binding_for_single_value_enum() -> None:
+def test_sse_extractor_to_runtime_preserves_event_and_occurrence() -> None:
+    assert extractor_to_runtime(
+        {
+            "name": "tokens",
+            "source": "sse_event_json",
+            "event": "token",
+            "path": "/text",
+            "occurrence": "all",
+        }
+    ) == {
+        "name": "tokens",
+        "source": "sse_event_json",
+        "expression": "/text",
+        "event": "token",
+        "occurrence": "all",
+    }
+
+
+def test_compiler_uses_asset_single_value_enum_without_node_binding() -> None:
     endpoint = {
         "id": "sse",
         "method": "POST",
@@ -452,8 +801,7 @@ def test_compiler_replaces_dynamic_binding_for_single_value_enum() -> None:
 
     compiled = compile_plan(plan, [endpoint], {"configured": False, "variables": [], "secrets": [], "auth_type": "none"})
 
-    assert compiled.nodes[0].bindings[0].source.type == "literal"
-    assert compiled.nodes[0].bindings[0].source.value == "sse"
+    assert compiled.nodes[0].bindings == []
 
 
 def test_compiler_normalizes_json_string_before_json_encode() -> None:
@@ -948,6 +1296,7 @@ def test_enqueued_ai_plan_can_be_applied_when_draft_is_unchanged(monkeypatch: py
         ApiScenarioAiPlanApplyIn(
             scenario_id=scenario_id,
             confirmation="overwrite_draft",
+            expected_review_revision=0,
         ),
         ACTOR,
     )
@@ -983,5 +1332,4 @@ def test_enqueue_ai_plan_marks_reused_generating_task_as_not_created(monkeypatch
     assert first["created"] is True
     assert second["created"] is False
     assert second["plan_id"] == first["plan_id"]
-
 

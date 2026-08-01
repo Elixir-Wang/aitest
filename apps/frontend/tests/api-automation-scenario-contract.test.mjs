@@ -48,7 +48,6 @@ test("new and existing scenarios use dedicated editor routes", () => {
 
 test("scenario editor supports ordered steps, saving, validation, publishing, and execution", () => {
   assert.match(scenarioEditorSource, /执行链路/);
-  assert.match(scenarioEditorSource, /从接口资产添加/);
   assert.match(scenarioEditorSource, /场景变量/);
   assert.match(scenarioEditorSource, /版本记录/);
   assert.match(scenarioEditorSource, /运行场景/);
@@ -83,9 +82,9 @@ test("scenario editor supports ordered steps, saving, validation, publishing, an
 
 test("scenario editor provides a constrained canvas backed by the existing step model", () => {
   assert.match(scenarioEditorSource, /ApiScenarioCanvas/);
-  assert.match(scenarioEditorSource, /orchestrationMode/);
-  assert.match(scenarioEditorSource, /画布视图/);
-  assert.match(scenarioEditorSource, /列表视图/);
+  assert.doesNotMatch(scenarioEditorSource, /orchestrationMode/);
+  assert.doesNotMatch(scenarioEditorSource, /画布视图/);
+  assert.doesNotMatch(scenarioEditorSource, /列表视图/);
   assert.match(scenarioCanvasSource, /@xyflow\/react/);
   assert.match(scenarioCanvasSource, /ReactFlow/);
   assert.match(scenarioCanvasSource, /MiniMap/);

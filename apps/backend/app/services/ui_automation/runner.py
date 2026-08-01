@@ -54,8 +54,6 @@ def run_case(
         "pytest",
         "-p",
         "app.services.ui_automation.live_pytest_plugin",
-        "--tracing=retain-on-failure",
-        "--video=on",
         f"--output={browser_output}",
         pytest_node_id,
     ]
@@ -112,17 +110,13 @@ def run_case(
     if timed_out:
         result["error_message"] = f"UI 自动化执行超过 {timeout} 秒，已终止。"
     result_path.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
-    traces = sorted(browser_output.rglob("trace.zip"))
     screenshots = sorted(browser_output.rglob("*.png"))
-    videos = sorted(browser_output.rglob("*.webm")) + sorted(browser_output.rglob("*.mp4"))
     return {
         **result,
         "result_path": str(result_path),
         "stdout_path": str(stdout_path),
         "stderr_path": str(stderr_path),
-        "trace_path": str(traces[0]) if traces else "",
         "screenshot_paths": [str(path) for path in screenshots],
-        "video_path": str(videos[0]) if videos else "",
     }
 
 

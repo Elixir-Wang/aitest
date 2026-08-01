@@ -336,8 +336,6 @@ export type UiAutomationExecutionRun = {
   result: Record<string, unknown>;
   stdout_path: string;
   stderr_path: string;
-  trace_path: string;
-  video_path: string;
   screenshot_paths: string[];
   error_message: string;
   created_by: string;
@@ -999,20 +997,12 @@ export type ApiRepairSession = {
   available_actions: string[];
 };
 
-export type ApiAutomationScenarioStepType = "api_request" | "condition" | "wait" | "poll" | "assign";
+export type ApiAutomationScenarioStepType = "api_request" | "condition" | "wait" | "assign";
 
 export type ApiAutomationScenarioBinding = {
   target: string;
   source: {
-    type:
-      | "literal"
-      | "user_input"
-      | "environment"
-      | "secret"
-      | "scenario"
-      | "step_output"
-      | "generated"
-      | "object";
+    type: "literal" | "user_input" | "environment" | "secret" | "scenario" | "step_output" | "generated" | "object";
     value?: unknown;
     name?: string;
     key?: string;
@@ -1031,9 +1021,79 @@ export type ApiScenarioAiPlanValueSource = {
   name?: string;
   key?: string;
   generator?: string;
+  length?: number;
   step_id?: string;
   variable?: string;
   properties?: Record<string, ApiScenarioAiPlanValueSource>;
+};
+
+export type ApiScenarioAiReviewField = {
+  field_id: string;
+  path: string;
+  display_name: string;
+  required: boolean;
+  value_type: "string" | "integer" | "number" | "boolean" | "object" | "array" | "file" | "any";
+  sensitive: boolean;
+  proposal: ApiScenarioAiPlanValueSource;
+  resolved: ApiScenarioAiPlanValueSource | null;
+  status: "resolved" | "pending" | "confirmed";
+};
+
+export type ApiScenarioAiReviewFieldGroup = {
+  location: "path" | "query" | "header" | "cookie" | "json_body" | "form" | "multipart" | "raw_body";
+  label: string;
+  pending_count: number;
+  fields: ApiScenarioAiReviewField[];
+};
+
+export type ApiScenarioAiReviewStep = {
+  step_id: string;
+  endpoint_id: string;
+  order: number;
+  phase: "setup" | "main" | "verify" | "cleanup";
+  name: string;
+  method: string;
+  path: string;
+  depends_on: string[];
+  field_groups: ApiScenarioAiReviewFieldGroup[];
+  extractors: ApiAutomationScenarioExtractor[];
+  assertions: ApiAutomationScenarioAssertion[];
+  on_failure: "stop" | "continue" | "always_run";
+  enabled: boolean;
+  review_summary: {
+    pending_count: number;
+    resolved_count: number;
+    blocking_count: number;
+  };
+};
+
+export type ApiScenarioAiReviewPlan = {
+  plan_id: string;
+  scenario_id: string | null;
+  schema_version: 3;
+  lifecycle_status: "generating" | "completed" | "failed" | "expired";
+  review_status: "pending" | "ready";
+  review_revision: number;
+  scenario_name: string;
+  description: string;
+  steps: ApiScenarioAiReviewStep[];
+  validation: ApiAutomationScenarioValidation;
+  expected_revision: number | null;
+  asset_fingerprint: string;
+  expires_at: string;
+};
+
+export type ApiScenarioAiReviewSaveInput = {
+  expected_review_revision: number;
+  steps: Array<{
+    step_id: string;
+    order: number;
+    fields: Array<{
+      field_id: string;
+      resolved: ApiScenarioAiPlanValueSource | null;
+      status: "pending" | "confirmed";
+    }>;
+  }>;
 };
 
 export type ApiScenarioAiPlanBinding = {
@@ -1048,13 +1108,16 @@ export type ApiScenarioAiPlanBinding = {
 
 export type ApiAutomationScenarioExtractor = {
   name: string;
-  source?: "response.body" | "response.header" | "response.status";
+  source?: "response.body" | "response.header" | "response.status" | "sse_event_json";
   expression?: string;
   path?: string;
+  event?: string;
+  occurrence?: "first" | "last" | "all";
   required?: boolean;
 };
 
 export type ApiAutomationScenarioAssertion = {
+  id?: string;
   type: string;
   path?: string;
   expected?: unknown;
@@ -1138,7 +1201,7 @@ export type ApiScenarioAiPlanAccepted = {
   scenario_id: string | null;
   lifecycle_status: "generating" | "completed" | "failed" | "expired";
 };
-export type ApiScenarioAiPlanResponse = ApiScenarioAiPlan | ApiScenarioAiPlanAccepted;
+export type ApiScenarioAiPlanResponse = ApiScenarioAiReviewPlan | ApiScenarioAiPlan | ApiScenarioAiPlanAccepted;
 export type ApiScenarioAiPlan = {
   plan_id: string;
   plan_version: number;
@@ -2275,10 +2338,17 @@ export function createApiScenarioAiPlan(
 export function applyApiScenarioAiPlan(
   projectId: string,
   planId: string,
-  payload: { scenario_id: string; confirmation: "overwrite_draft" },
+  payload: { scenario_id: string; confirmation: "overwrite_draft"; expected_review_revision: number },
 ) {
   return apiRequest<ApiAutomationScenario>(`/projects/${projectId}/api-scenarios/ai-plans/${planId}/apply`, {
     method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function saveApiScenarioAiPlanReview(projectId: string, planId: string, payload: ApiScenarioAiReviewSaveInput) {
+  return apiRequest<ApiScenarioAiReviewPlan>(`/projects/${projectId}/api-scenarios/ai-plans/${planId}/review`, {
+    method: "PUT",
     body: JSON.stringify(payload),
   });
 }

@@ -25,6 +25,8 @@ from app.schemas.api_automation import (
     ApiScenarioAiPlanApplyIn,
     ApiScenarioAiPlanIn,
     ApiScenarioAiPlanOut,
+    ApiScenarioAiReviewPlan,
+    ApiScenarioAiReviewSaveIn,
     ApiScenarioExecuteIn,
     ApiScenarioIn,
     ApiScenarioPublishIn,
@@ -498,24 +500,35 @@ def list_api_scenarios(project_id: str, actor=Depends(current_user)) -> list[dic
 def create_api_scenario_ai_plan(
     project_id: str,
     payload: ApiScenarioAiPlanIn,
-    background_tasks: BackgroundTasks,
     actor=Depends(require_admin),
 ) -> dict:
     accepted = service.enqueue_api_scenario_ai_plan(project_id, payload, actor)
     if accepted.pop("created"):
-        background_tasks.add_task(
-            service.create_api_scenario_ai_plan,
+        service.submit_api_scenario_ai_plan(
             project_id,
             payload,
             actor,
-            existing_plan_id=accepted["plan_id"],
+            plan_id=accepted["plan_id"],
         )
     return accepted
 
 
-@router.get("/api-scenarios/ai-plans/{plan_id}", response_model=ApiScenarioAiPlanOut | ApiScenarioAiPlanAcceptedOut)
+@router.get(
+    "/api-scenarios/ai-plans/{plan_id}",
+    response_model=ApiScenarioAiReviewPlan | ApiScenarioAiPlanOut | ApiScenarioAiPlanAcceptedOut,
+)
 def get_api_scenario_ai_plan(project_id: str, plan_id: str, actor=Depends(current_user)) -> dict:
     return service.get_api_scenario_ai_plan(project_id, plan_id, actor)
+
+
+@router.put("/api-scenarios/ai-plans/{plan_id}/review", response_model=ApiScenarioAiReviewPlan)
+def save_api_scenario_ai_plan_review(
+    project_id: str,
+    plan_id: str,
+    payload: ApiScenarioAiReviewSaveIn,
+    actor=Depends(require_admin),
+) -> dict:
+    return service.save_api_scenario_ai_plan_review(project_id, plan_id, payload, actor)
 
 
 @router.post("/api-scenarios/ai-plans/{plan_id}/apply")

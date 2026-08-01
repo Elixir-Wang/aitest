@@ -128,22 +128,18 @@ def _update_execution_paths(
         "run_dir": _relocate_path(row["run_dir"], legacy_root, target_root, default=target_run),
         "stdout_path": _relocate_path(row["stdout_path"], legacy_root, target_root),
         "stderr_path": _relocate_path(row["stderr_path"], legacy_root, target_root),
-        "trace_path": _relocate_path(row["trace_path"], legacy_root, target_root),
-        "video_path": _relocate_path(row["video_path"], legacy_root, target_root),
         "screenshot_paths_json": _relocate_json(row["screenshot_paths_json"], legacy_root, target_root, []),
         "result_json": _relocate_json(row["result_json"], legacy_root, target_root, {}),
     }
     db.execute(
         """UPDATE ui_automation_execution_runs
-           SET run_dir = ?, stdout_path = ?, stderr_path = ?, trace_path = ?, video_path = ?,
+           SET run_dir = ?, stdout_path = ?, stderr_path = ?,
                screenshot_paths_json = ?, result_json = ?
            WHERE id = ?""",
         (
             replacements["run_dir"],
             replacements["stdout_path"],
             replacements["stderr_path"],
-            replacements["trace_path"],
-            replacements["video_path"],
             replacements["screenshot_paths_json"],
             replacements["result_json"],
             row["id"],

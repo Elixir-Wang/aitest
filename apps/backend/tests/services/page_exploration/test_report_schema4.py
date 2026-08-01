@@ -61,3 +61,11 @@ def test_report_with_page_artifact_does_not_claim_no_page_artifacts(tmp_path: Pa
     report = report_path.read_text(encoding="utf-8")
     assert "共采集 **1** 个页面" in report
     assert "本次探索未产生页面产物" not in report
+
+
+def test_exploration_service_exposes_schema_4_metadata() -> None:
+    service_path = Path(__file__).parents[3] / "app" / "services" / "page_exploration" / "service.py"
+    source = service_path.read_text(encoding="utf-8")
+
+    assert '"artifact_schema_version": 3' not in source
+    assert source.count('"artifact_schema_version": 4') == 2

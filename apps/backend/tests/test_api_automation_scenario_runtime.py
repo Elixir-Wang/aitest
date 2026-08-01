@@ -9,6 +9,90 @@ from app.agents.api_automation.pytest_requests import renderer
 from app.services.api_automation.runner import collect_script_suite
 
 
+def test_generated_scenario_runtime_extracts_sse_event_json_by_event_and_path() -> None:
+    namespace = {}
+    exec(renderer._scenario_py(), namespace)
+
+    class FakeSseResponse:
+        status_code = 200
+        headers = {"content-type": "text/event-stream"}
+
+        def iter_lines(self, decode_unicode=False):
+            yield b"event: message"
+            yield b'data: {"data":{"dialog_id":"dialog-1"}}'
+            yield b""
+            yield b"event: done"
+            yield b'data: {"finish_reason":"stop"}'
+
+    assert namespace["_extract"](
+        FakeSseResponse(),
+        [
+            {
+                "name": "dialog_id",
+                "source": "sse_event_json",
+                "event": "message",
+                "path": "/data/dialog_id",
+            }
+        ],
+    ) == {"dialog_id": "dialog-1"}
+
+
+def test_generated_scenario_runtime_extracts_all_matching_sse_event_values() -> None:
+    namespace = {}
+    exec(renderer._scenario_py(), namespace)
+
+    class FakeSseResponse:
+        status_code = 200
+        headers = {"content-type": "text/event-stream"}
+
+        def iter_lines(self, decode_unicode=False):
+            yield b"event: token"
+            yield b'data: {"text":"hello"}'
+            yield b""
+            yield b"event: token"
+            yield b'data: {"text":" world"}'
+
+    assert namespace["_extract"](
+        FakeSseResponse(),
+        [
+            {
+                "name": "tokens",
+                "source": "sse_event_json",
+                "event": "token",
+                "path": "/text",
+                "occurrence": "all",
+            }
+        ],
+    ) == {"tokens": ["hello", " world"]}
+
+
+def test_generated_scenario_runtime_rejects_missing_required_sse_event_values() -> None:
+    namespace = {}
+    exec(renderer._scenario_py(), namespace)
+
+    class FakeSseResponse:
+        status_code = 200
+        headers = {"content-type": "text/event-stream"}
+
+        def iter_lines(self, decode_unicode=False):
+            yield b"event: done"
+            yield b'data: {"finish_reason":"stop"}'
+
+    with pytest.raises(AssertionError, match="未提取到必填变量: tokens"):
+        namespace["_extract"](
+            FakeSseResponse(),
+            [
+                {
+                    "name": "tokens",
+                    "source": "sse_event_json",
+                    "event": "token",
+                    "path": "/text",
+                    "occurrence": "all",
+                }
+            ],
+        )
+
+
 def test_generated_scenario_runtime_passes_step_output_to_later_request(monkeypatch) -> None:
     support_module = ModuleType("support")
     assertions_module = ModuleType("support.assertions")
@@ -395,15 +479,12 @@ def test_generated_segment_code_sse_flow_dispatches_dependency_and_dynamic_data(
     assert calls[0][1]["stream"] is True
 
 
-def test_generated_scenario_runtime_executes_assign_condition_wait_and_poll(monkeypatch) -> None:
+def test_generated_scenario_runtime_executes_assign_condition_and_wait(monkeypatch) -> None:
     support_module = ModuleType("support")
     assertions_module = ModuleType("support.assertions")
-    poll_attempts = []
 
     def assert_response(response, assertions):
-        if assertions and assertions[0].get("type") == "poll_ready":
-            poll_attempts.append(response.json()["ready"])
-            assert response.json()["ready"] is True
+        return None
 
     assertions_module.assert_response_assertions = assert_response
     monkeypatch.setitem(sys.modules, "support", support_module)
@@ -412,16 +493,9 @@ def test_generated_scenario_runtime_executes_assign_condition_wait_and_poll(monk
     exec(renderer._scenario_py(), namespace)
     sleeps = []
     namespace["time"].sleep = lambda seconds: sleeps.append(seconds)
-    requests = []
-
-    class FakeClient:
-        def request(self, request_data, test_data):
-            requests.append(request_data["path"])
-            ready = requests.count("/status") >= 2
-            return SimpleNamespace(status_code=200, headers={}, json=lambda: {"ready": ready})
 
     outputs = namespace["run_scenario"](
-        FakeClient(),
+        object(),
         {
             "variables": {},
             "steps": [
@@ -442,22 +516,12 @@ def test_generated_scenario_runtime_executes_assign_condition_wait_and_poll(monk
                     },
                 },
                 {"id": "wait", "name": "固定等待", "step_type": "wait", "control_config": {"duration_ms": 20}},
-                {
-                    "id": "poll",
-                    "name": "轮询状态",
-                    "step_type": "poll",
-                    "endpoint": {"method": "GET", "path": "/status"},
-                    "control_config": {"interval_ms": 10, "timeout_ms": 100},
-                    "assertions": [{"type": "poll_ready"}],
-                },
             ],
         },
     )
 
     assert outputs["assign"] == {"tenant": "acme"}
-    assert poll_attempts == [False, True]
-    assert requests == ["/status", "/status"]
-    assert sleeps == [0.02, 0.01]
+    assert sleeps == [0.02]
 
 
 def test_generated_scenario_runtime_runs_cleanup_after_stopped_failure(monkeypatch) -> None:

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 
 import { notifyAiTaskStarted } from "@/lib/ai-task-events";
 import {
@@ -12,8 +12,9 @@ import {
   type ApiAutomationScenarioRevision,
   type ApiAutomationScenarioRunResult,
   type ApiAutomationScenarioStep,
-  type ApiScenarioAiPlan,
   type ApiScenarioAiPlanAccepted,
+  type ApiScenarioAiPlanValueSource,
+  type ApiScenarioAiReviewPlan,
   applyApiScenarioAiPlan,
   createApiAutomationScenario,
   createApiScenarioAiPlan,
@@ -27,6 +28,7 @@ import {
   listApiAutomationScenarioRevisions,
   restoreApiAutomationScenarioRevision,
   saveApiAutomationScenarioVersion,
+  saveApiScenarioAiPlanReview,
   validateApiAutomationScenario,
 } from "@/lib/api-client";
 import { toast } from "@/lib/toast";
@@ -48,12 +50,43 @@ type ScenarioDraft = {
 
 const emptyDraft: ScenarioDraft = { name: "", description: "", variables: {}, steps: [] };
 
+function summarizeAiReviewPlan(plan: ApiScenarioAiReviewPlan): ApiScenarioAiReviewPlan {
+  const steps = [...plan.steps]
+    .sort((left, right) => left.order - right.order)
+    .map((step, index) => {
+      const fieldGroups = step.field_groups.map((group) => ({
+        ...group,
+        pending_count: group.fields.filter((field) => field.status === "pending").length,
+      }));
+      const fields = fieldGroups.flatMap((group) => group.fields);
+      return {
+        ...step,
+        order: index + 1,
+        field_groups: fieldGroups,
+        review_summary: {
+          ...step.review_summary,
+          pending_count: fields.filter((field) => field.status === "pending").length,
+          resolved_count: fields.filter((field) => field.status !== "pending").length,
+        },
+      };
+    });
+  const pendingCount = steps.reduce((total, step) => total + step.review_summary.pending_count, 0);
+  const blockingCount = steps.reduce((total, step) => total + step.review_summary.blocking_count, 0);
+  return {
+    ...plan,
+    steps,
+    review_status: pendingCount === 0 && blockingCount === 0 && plan.validation.valid ? "ready" : "pending",
+  };
+}
+
 function aiPlanStorageKey(projectId: string, scenarioId: string) {
   return `api-scenario-ai-plan:${projectId}:${scenarioId}`;
 }
 
 export function useApiScenarioEditor(projectId: string, scenarioId?: string) {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const initialEnvironmentId = searchParams.get("environmentId") ?? "";
   const [scenario, setScenario] = useState<ApiAutomationScenario | null>(null);
   const [draft, setDraft] = useState<ScenarioDraft>(emptyDraft);
   const [endpoints, setEndpoints] = useState<ApiAutomationEndpoint[]>([]);
@@ -70,7 +103,7 @@ export function useApiScenarioEditor(projectId: string, scenarioId?: string) {
   const [latestRunStatus, setLatestRunStatus] = useState("");
   const [scenarioRunResult, setScenarioRunResult] = useState<ApiAutomationScenarioRunResult | null>(null);
   const [runDrawerOpen, setRunDrawerOpen] = useState(false);
-  const [aiPlan, setAiPlan] = useState<ApiScenarioAiPlan | null>(null);
+  const [aiPlan, setAiPlan] = useState<ApiScenarioAiReviewPlan | null>(null);
   const [activeAiPlanId, setActiveAiPlanId] = useState("");
   const [aiBusy, setAiBusy] = useState(false);
   const [aiLifecycleStatus, setAiLifecycleStatus] = useState<ApiScenarioAiPlanAccepted["lifecycle_status"] | null>(
@@ -108,7 +141,11 @@ export function useApiScenarioEditor(projectId: string, scenarioId?: string) {
         if (cancelled) return;
         setEndpoints(endpointRows);
         setEnvironments(environmentRows);
-        setSelectedEnvironmentId(environmentRows[0]?.id ?? "");
+        setSelectedEnvironmentId(
+          environmentRows.some((environment) => environment.id === initialEnvironmentId)
+            ? initialEnvironmentId
+            : (environmentRows[0]?.id ?? ""),
+        );
         setRevisions(revisionRows);
         if (selectedScenario) applyScenario(selectedScenario);
       } catch (error) {
@@ -124,7 +161,7 @@ export function useApiScenarioEditor(projectId: string, scenarioId?: string) {
     return () => {
       cancelled = true;
     };
-  }, [applyScenario, projectId, scenarioId]);
+  }, [applyScenario, initialEnvironmentId, projectId, scenarioId]);
 
   useEffect(() => {
     if (!scenario?.id || aiPlan) return;
@@ -139,7 +176,11 @@ export function useApiScenarioEditor(projectId: string, scenarioId?: string) {
       try {
         const response = await getApiScenarioAiPlan(projectId, recoveredPlanId);
         if (cancelled) return;
-        if ("status" in response && response.status === "preview") {
+        if (
+          "schema_version" in response &&
+          response.schema_version === 3 &&
+          response.lifecycle_status === "completed"
+        ) {
           setAiPlan(response);
           setActiveAiPlanId("");
           setAiLifecycleStatus("completed");
@@ -339,7 +380,20 @@ export function useApiScenarioEditor(projectId: string, scenarioId?: string) {
     setAiBusy(true);
     setAiLifecycleStatus("generating");
     try {
-      const saved = await saveScenario(false);
+      const name = draft.name.trim();
+      if (!name) throw new Error("请填写场景名称");
+      const creating = !scenario;
+      const saved =
+        scenario ??
+        (await createApiAutomationScenario(projectId, {
+          name,
+          description: draft.description.trim(),
+          variables: draft.variables,
+        }));
+      if (creating) {
+        applyScenario(saved);
+        router.replace(`/projects/${projectId}/automation/api/scenarios/${saved.id}`);
+      }
       const accepted = await createApiScenarioAiPlan(projectId, {
         goal,
         scenario_id: saved.id,
@@ -363,11 +417,159 @@ export function useApiScenarioEditor(projectId: string, scenarioId?: string) {
     }
   }
 
+  function updateAiReviewField(
+    stepId: string,
+    fieldId: string,
+    resolved: ApiScenarioAiPlanValueSource,
+    status: "pending" | "confirmed" = "pending",
+  ) {
+    setAiPlan((current) => {
+      if (!current) return current;
+      return summarizeAiReviewPlan({
+        ...current,
+        steps: current.steps.map((step) =>
+          step.step_id === stepId
+            ? {
+                ...step,
+                field_groups: step.field_groups.map((group) => ({
+                  ...group,
+                  fields: group.fields.map((field) =>
+                    field.field_id === fieldId ? { ...field, resolved, status } : field,
+                  ),
+                })),
+              }
+            : step,
+        ),
+      });
+    });
+  }
+
+  function confirmAiReviewField(stepId: string, fieldId: string) {
+    setAiPlan((current) => {
+      if (!current) return current;
+      return summarizeAiReviewPlan({
+        ...current,
+        steps: current.steps.map((step) =>
+          step.step_id === stepId
+            ? {
+                ...step,
+                field_groups: step.field_groups.map((group) => ({
+                  ...group,
+                  fields: group.fields.map((field) =>
+                    field.field_id === fieldId
+                      ? { ...field, resolved: field.resolved ?? field.proposal, status: "confirmed" }
+                      : field,
+                  ),
+                })),
+              }
+            : step,
+        ),
+      });
+    });
+  }
+
+  function confirmAiReviewStep(stepId: string) {
+    setAiPlan((current) => {
+      if (!current) return current;
+      return summarizeAiReviewPlan({
+        ...current,
+        steps: current.steps.map((step) =>
+          step.step_id === stepId
+            ? {
+                ...step,
+                field_groups: step.field_groups.map((group) => ({
+                  ...group,
+                  fields: group.fields.map((field) => ({
+                    ...field,
+                    resolved: field.resolved ?? field.proposal,
+                    status: "confirmed" as const,
+                  })),
+                })),
+              }
+            : step,
+        ),
+      });
+    });
+  }
+
+  function confirmAllAiReviewFields() {
+    setAiPlan((current) => {
+      if (!current) return current;
+      return summarizeAiReviewPlan({
+        ...current,
+        steps: current.steps.map((step) => ({
+          ...step,
+          field_groups: step.field_groups.map((group) => ({
+            ...group,
+            fields: group.fields.map((field) => ({
+              ...field,
+              resolved: field.resolved ?? field.proposal,
+              status: "confirmed" as const,
+            })),
+          })),
+        })),
+      });
+    });
+  }
+
+  function reorderAiReviewStep(stepId: string, direction: -1 | 1) {
+    setAiPlan((current) => {
+      if (!current) return current;
+      const ordered = [...current.steps].sort((left, right) => left.order - right.order);
+      const fromIndex = ordered.findIndex((step) => step.step_id === stepId);
+      const toIndex = fromIndex + direction;
+      if (fromIndex < 0 || toIndex < 0 || toIndex >= ordered.length) return current;
+      [ordered[fromIndex], ordered[toIndex]] = [ordered[toIndex], ordered[fromIndex]];
+      return summarizeAiReviewPlan({ ...current, steps: ordered });
+    });
+  }
+
+  async function saveAiPlanReview(plan: ApiScenarioAiReviewPlan | null = aiPlan) {
+    if (!plan) return null;
+    const saved = await saveApiScenarioAiPlanReview(projectId, plan.plan_id, {
+      expected_review_revision: plan.review_revision,
+      steps: plan.steps.map((step) => ({
+        step_id: step.step_id,
+        order: step.order,
+        fields: step.field_groups.flatMap((group) =>
+          group.fields.map((field) => ({
+            field_id: field.field_id,
+            resolved: field.resolved ?? field.proposal,
+            status: field.status === "pending" ? "pending" : "confirmed",
+          })),
+        ),
+      })),
+    });
+    setAiPlan(saved);
+    return saved;
+  }
+
+  async function handleSaveAiPlanReview() {
+    setAiBusy(true);
+    try {
+      const saved = await saveAiPlanReview();
+      if (saved) toast.success(`审核已保存（版本 ${saved.review_revision}）`);
+      return saved;
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "审核保存失败");
+      return null;
+    } finally {
+      setAiBusy(false);
+    }
+  }
+
   async function applyAiPlan() {
     if (!aiPlan || !scenario) return;
     setAiBusy(true);
     try {
+      const savedPlan = await saveAiPlanReview();
+      if (savedPlan?.review_status !== "ready") {
+        toast.error("仍有字段待确认，请完成审核后再应用");
+        return;
+      }
+      const aiPlan = savedPlan;
       const applied = await applyApiScenarioAiPlan(projectId, aiPlan.plan_id, {
+        expected_review_revision: aiPlan.review_revision,
         scenario_id: scenario.id,
         confirmation: "overwrite_draft",
       });
@@ -438,6 +640,12 @@ export function useApiScenarioEditor(projectId: string, scenarioId?: string) {
       executeScenario: handleExecute,
       restoreRevision: handleRestoreRevision,
       generateAiPlan,
+      saveAiPlanReview: handleSaveAiPlanReview,
+      updateAiReviewField,
+      confirmAiReviewField,
+      confirmAiReviewStep,
+      confirmAllAiReviewFields,
+      reorderAiReviewStep,
       applyAiPlan,
       discardAiPlan: () => {
         if (scenario?.id) window.sessionStorage.removeItem(aiPlanStorageKey(projectId, scenario.id));

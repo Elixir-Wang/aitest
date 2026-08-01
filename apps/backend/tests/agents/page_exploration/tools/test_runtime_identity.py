@@ -2,6 +2,7 @@ import asyncio
 from pathlib import Path
 
 import pytest
+import yaml
 
 from app.agents.page_exploration.tools import check_explored_url_tool, get_local_tools
 from app.agents.page_exploration.tools.runtime_context import (
@@ -27,11 +28,17 @@ def test_check_explored_url_tool_uses_bound_project_and_storage_root(tmp_path: P
     page_path = tmp_path / "project-real" / "page_exploration" / "pages" / "page-home.yaml"
     page_path.parent.mkdir(parents=True)
     page_path.write_text(
-        "schema_version: '3.0'\n"
-        "page:\n"
-        "  id: page-home\n"
-        "  normalized_path: /home\n"
-        "states: []\n",
+        yaml.safe_dump(
+            {
+                "schema_version": "4.0",
+                "page": {"id": "page-home", "normalized_path": "/home"},
+                "states": [{"id": "home.root"}],
+                "elements": [],
+                "transitions": [],
+                "quality": {"status": "partial", "unresolved": []},
+            },
+            sort_keys=False,
+        ),
         encoding="utf-8",
     )
 
@@ -42,8 +49,8 @@ def test_check_explored_url_tool_uses_bound_project_and_storage_root(tmp_path: P
     ):
         result = check_explored_url_tool.invoke({"normalized_path": "/home"})
 
-    assert result["explored"] is True
-    assert result["has_state_tree"] is True
+    assert result["page_id"] == "page-home"
+    assert result["explored"] is False
 
 
 def test_page_exploration_tools_require_bound_runtime_identity() -> None:
