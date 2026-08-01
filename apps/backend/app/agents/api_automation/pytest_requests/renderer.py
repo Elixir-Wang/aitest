@@ -277,10 +277,18 @@ def _scenario_py() -> str:
             kind = source.get("type")
             if kind == "literal": return source.get("value")
             if kind == "object": return {key: _resolve_source(item, variables, outputs) for key, item in (source.get("properties") or {}).items()}
-            if kind == "environment": return os.getenv(str(source.get("key") or source.get("name") or ""), variables.get(source.get("key") or source.get("name")))
+            if kind == "environment":
+                key = str(source.get("key") or source.get("name") or "")
+                return os.getenv("API_VAR_" + key.upper(), os.getenv(key, variables.get(key)))
             if kind == "scenario": return variables.get(source.get("name"))
             if kind == "user_input": return os.getenv("API_SCENARIO_INPUT_" + str(source.get("name", "")).upper())
-            if kind == "secret": return os.getenv("API_SCENARIO_SECRET_" + str(source.get("key", "")).upper())
+            if kind == "secret":
+                key = str(source.get("key", ""))
+                normalized = key.upper().replace("-", "_")
+                fallback = os.getenv("API_HEADER_" + normalized, os.getenv(key, variables.get(key)))
+                if key.lower() == "authorization":
+                    fallback = fallback or os.getenv("API_AUTH_BEARER")
+                return os.getenv("API_SCENARIO_SECRET_" + normalized, fallback)
             if kind == "step_output": return (outputs.get(source.get("step_id")) or {}).get(source.get("variable"))
             if kind == "generated":
                 generator = source.get("generator")

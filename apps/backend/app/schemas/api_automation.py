@@ -418,6 +418,13 @@ class ApiScenarioStepsReplaceIn(_StrippedModel):
     steps: list[ApiScenarioStepIn] = Field(default_factory=list, max_length=100)
 
 
+class ApiScenarioVersionSaveIn(_StrippedModel):
+    name: str = Field(min_length=1, max_length=200)
+    description: str = ""
+    variables: dict[str, Any] = Field(default_factory=dict)
+    steps: list[ApiScenarioStepIn] = Field(default_factory=list, max_length=100)
+
+
 class ApiScenarioAiSourceScope(_StrippedModel):
     endpoint_ids: list[str] = Field(default_factory=list, max_length=100)
     tags: list[str] = Field(default_factory=list, max_length=30)
@@ -496,4 +503,3 @@ class ApiScenarioPublishIn(_StrippedModel):
 class ApiScenarioExecuteIn(_StrippedModel):
     api_environment_id: str
     source: Literal["published", "draft"] = "published"
-

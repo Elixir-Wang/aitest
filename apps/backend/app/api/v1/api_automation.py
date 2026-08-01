@@ -30,6 +30,7 @@ from app.schemas.api_automation import (
     ApiScenarioPublishIn,
     ApiScenarioStepIn,
     ApiScenarioStepsReplaceIn,
+    ApiScenarioVersionSaveIn,
     ApiScriptGenerateIn,
     ApiScriptUpdateIn,
     ApiTestCaseSetIn,
@@ -537,6 +538,16 @@ def get_api_scenario(project_id: str, scenario_id: str, actor=Depends(current_us
     return service.get_api_scenario(project_id, scenario_id, actor)
 
 
+@router.put("/api-scenarios/{scenario_id}/version")
+def save_api_scenario_version(
+    project_id: str,
+    scenario_id: str,
+    payload: ApiScenarioVersionSaveIn,
+    actor=Depends(require_admin),
+) -> dict:
+    return service.save_api_scenario_version(project_id, scenario_id, payload, actor)
+
+
 @router.patch("/api-scenarios/{scenario_id}")
 def update_api_scenario(
     project_id: str,
@@ -628,7 +639,6 @@ def create_api_scenario_step(
     actor=Depends(require_admin),
 ) -> dict:
     return service.create_api_scenario_step(project_id, scenario_id, payload, actor)
-
 
 
 
