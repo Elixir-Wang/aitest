@@ -74,6 +74,9 @@ __pycache__/
 
 # Backend SQLite database
 *.db
+*.db-wal
+*.db-shm
+*.db-journal
 !apps/backend/data/ai_testing.db
 
 # Generated local artifacts
