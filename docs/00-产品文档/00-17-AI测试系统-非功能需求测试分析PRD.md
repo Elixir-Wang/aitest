@@ -5,19 +5,18 @@
 > **基线日期**：2026-07-26
 >
 > **事实源**：当前工作区源码，以下列文件为准：
-> - 后端 API：`apps/backend/app/api/v1/performance_tests.py`、`apps/backend/app/api/v1/performance_runs.py`、`apps/backend/app/api/v1/performance_scenarios.py`
-> - 后端服务：`apps/backend/app/services/performance_testing/{service.py,script_service.py,analysis_service.py,headless_worker.py,scenario_service.py,repair_service.py,locust_runtime.py,metric_snapshot_service.py,run_repo.py}`
+> - 后端 API：`apps/backend/app/api/v1/performance_tests.py`、`apps/backend/app/api/v1/performance_runs.py`
+> - 后端服务：`apps/backend/app/services/performance_testing/{service.py,script_service.py,analysis_service.py,headless_worker.py,repair_service.py,locust_runtime.py,metric_snapshot_service.py,run_repo.py}`
 > - 后端仓储：`apps/backend/app/repositories/{performance_test_repo.py,performance_script_repo.py}`
 > - 后端 Agent：`apps/backend/app/agents/performance_testing/{script_generation/service.py,diagnosis/agent.py,diagnosis/service.py}`
-> - 数据库：`apps/backend/app/seed/schema.py`（含 11 张性能测试相关表）
+> - 数据库：`apps/backend/app/seed/schema.py`（含 8 张性能测试相关表）
 > - 前端：`apps/frontend/src/components/ai-testing/performance-testing/`（含 performance-test-form、script-review、locust-console、performance-ai-analysis-drawer、performance-analysis-report 等组件）
 > - 前端 API 客户端：`apps/frontend/src/lib/api-client.ts:1486-1735`
 >
 > **状态标签**：已实现 / 未实现 / 占位说明。
 >
 > **关键结论**：
-> - 性能测试已实现"托管 Locust 场景 + 脚本生成/审核 + 运行 + 实时监控 + 停止/重置/重跑 + AI 诊断（含证据/配置建议/应用并重跑）"完整闭环；
-> - 性能场景（Scenario）独立运行使用 `performance_runs` 与 `performance_run_gate_results`；
+> - 性能测试已实现"单接口任务 + Locust 脚本生成/审核 + 运行 + 实时监控 + 停止/重置/重跑 + AI 诊断（含证据/配置建议/应用并重跑）"完整闭环；
 > - 泛化的非功能测试（容量、可靠性、安全性、混沌等）当前 **未实现**。
 
 ---
@@ -29,25 +28,15 @@
 本 PRD 覆盖以下完整功能：
 
 - **性能任务（Performance Test）**：单接口性能任务，关联接口环境、目标端点、请求配置、负载配置、成功规则、质量目标。
-- **性能场景（Performance Scenario）**：多接口场景编排，含场景定义 JSON、负载画像、数据源、质量门禁（`quality_gate_json`）、安全策略（`safety_policy_json`）。
 - **脚本生命周期**：Locust 脚本 AI 生成 → 校验 → 审核（确认/驳回/重新生成）→ 确认。
-- **运行与监控**：`performance_test_runs` 独立运行 + `performance_runs` 场景级运行 + SSE 实时流 + 报告下载。
+- **运行与监控**：`performance_test_runs` 运行 + SSE 实时流 + 报告下载。
 - **性能 AI 分析**：`performance_analysis_sessions` 会话管理 + 诊断证据 + 配置建议 + 修复复测。
 - **性能指标快照服务**：`metric_snapshot_service.py` 提供 `build_metric_snapshot` / `build_report_snapshot`。
 - **修复复测**：`repair_service.apply_and_rerun` 包含预检（preflight）、配置更新、自动重跑。
 
-### 1.2 性能任务 vs 性能场景双轨
+### 1.2 当前架构
 
-| 维度 | 性能任务（Performance Test） | 性能场景（Performance Scenario） |
-| --- | --- | --- |
-| 定位 | 单接口性能验证 | 多接口场景编排 |
-| 运行记录表 | `performance_test_runs` | `performance_runs` |
-| 关联测试 | `performance_test`（关联 endpoint + environment） | `performance_scenario`（关联 environment） |
-| 负载配置 | `load_config_json`（fixed/gradient/stress/spike/endurance） | `load_profile_json`（fixed/stages + ramp/hold/steps） |
-| 质量门禁 | `success_rules_json`（成功规则，运行时判定） | `quality_gate_json`（`max_fail_ratio`/`max_p95_rt` 等，场景结束后判定） |
-| 脚本生成 | AI 生成 `performance_test_script`，需确认 | 场景内直接引用 endpoint |
-| 路由前缀 | `/projects/{project_id}/performance-tests` | `/projects/{project_id}/performance-scenarios` |
-| 运行路由 | `/projects/{project_id}/performance-test-runs` | `/projects/{project_id}/performance-runs` |
+性能测试采用单轨模型：`performance_tests` 保存单接口任务配置，`performance_test_scripts` 保存 Locust 脚本版本，`performance_test_runs` 及其统计、失败、异常和事件子表保存运行事实。多阶段负载由任务的 `load_config_json` 表达，不再维护独立的性能场景与场景运行模型。
 
 ### 1.3 本 PRD 不覆盖
 
@@ -113,49 +102,9 @@
 
 ---
 
-## 3. 性能场景（Performance Scenario）子模块
+## 3. 架构收敛说明
 
-### 3.1 概述
-
-性能场景用于编排多接口组合的复杂性能测试场景，支持阶段化负载、数据驱动和质量门禁判定。
-
-### 3.2 核心字段
-
-| 字段 | 类型 | 说明 |
-| --- | --- | --- |
-| `id` | TEXT | 主键，格式 `perfscenario-<hex8>` |
-| `project_id` | TEXT | 所属项目 |
-| `name` | TEXT | 场景名称，同项目内唯一 |
-| `description` | TEXT | 描述 |
-| `api_environment_id` | TEXT | 关联环境 ID |
-| `scenario_definition_json` | TEXT | 场景定义，含 personas/steps/权重等 |
-| `load_profile_json` | TEXT | 负载画像，含 mode/target_users/spawn_rate/warmup/measurement/stages |
-| `data_source_json` | TEXT | 数据源，含 source/dataset_id/rows |
-| `quality_gate_json` | TEXT | 质量门禁，含 max_fail_ratio/max_p95_rt/max_avg_rt/min_avg_rps/min_req_count |
-| `safety_policy_json` | TEXT | 安全策略，含 max_concurrent_users/stop_on_error 等 |
-| `created_by` | TEXT | 创建者 ID |
-
-### 3.3 场景运行（performance_runs）
-
-创建场景运行后，状态机如下：
-
-```
-created → validating → starting → warming_up → measuring → stopping → finished
-                                          ↓（质量态）      ↓
-                                     passed / failed / not_configured / not_evaluated
-```
-
-场景运行结束后，`scenario_service.save_quality_gate_result` 写入 `performance_run_gate_results`，记录每条门禁规则的 metric/operator/threshold/actual/status/reason。
-
-### 3.4 质量门禁规则（evaluate_quality_gate）
-
-| 规则字段 | 对应指标 | 操作符 |
-| --- | --- | --- |
-| `max_fail_ratio` | `failure_rate` | `<=` |
-| `max_average_response_time_ms` | `average_response_time_ms` | `<=` |
-| `max_p95_response_time_ms` | `p95_response_time_ms` | `<=` |
-| `min_average_rps` | `requests_per_second` | `>=` |
-| `min_request_count` | `request_count` | `>=` |
+性能测试当前仅保留单接口任务模型。多阶段、压力、峰值和耐久负载统一由 `PerformanceLoadConfig` 与 Locust 脚本表达，运行事实统一写入 `performance_test_runs` 及其统计子表。
 
 ---
 
@@ -484,7 +433,7 @@ success_rules
 
 ## 12. 数据模型
 
-### 12.1 概览（11 张表）
+### 12.1 概览（8 张表）
 
 | 序号 | 表名 | 用途 |
 | --- | --- | --- |
@@ -496,9 +445,6 @@ success_rules
 | 6 | `performance_test_run_exceptions` | 运行异常事件记录 |
 | 7 | `performance_test_run_events` | 运行事件日志 |
 | 8 | `performance_analysis_sessions` | AI 分析会话 |
-| 9 | `performance_scenarios` | 性能场景定义 |
-| 10 | `performance_runs` | 场景运行记录 |
-| 11 | `performance_run_gate_results` | 场景质量门禁结果 |
 
 ### 12.2 `performance_tests`
 
@@ -696,73 +642,6 @@ CREATE TABLE IF NOT EXISTS performance_analysis_sessions (
 -- 索引：project_id + run_id + status（查询活跃分析）
 ```
 
-### 12.10 `performance_scenarios`
-
-```sql
-CREATE TABLE IF NOT EXISTS performance_scenarios (
-  id TEXT PRIMARY KEY,
-  project_id TEXT NOT NULL,
-  name TEXT NOT NULL,
-  description TEXT NOT NULL DEFAULT '',
-  api_environment_id TEXT NOT NULL,
-  scenario_definition_json TEXT NOT NULL DEFAULT '{}',
-  load_profile_json TEXT NOT NULL DEFAULT '{}',
-  data_source_json TEXT NOT NULL DEFAULT '{}',
-  quality_gate_json TEXT NOT NULL DEFAULT '{}',
-  safety_policy_json TEXT NOT NULL DEFAULT '{}',
-  created_by TEXT NOT NULL,
-  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  UNIQUE(project_id, name)
-);
-```
-
-### 12.11 `performance_runs`（场景运行）
-
-```sql
-CREATE TABLE IF NOT EXISTS performance_runs (
-  id TEXT PRIMARY KEY,
-  project_id TEXT NOT NULL,
-  scenario_id TEXT NOT NULL,
-  process_status TEXT NOT NULL CHECK(process_status IN ('created', 'validating', 'starting', 'warming_up', 'measuring', 'stopping', 'finished')) DEFAULT 'created',
-  stop_reason TEXT NOT NULL DEFAULT '',
-  quality_status TEXT NOT NULL DEFAULT 'not_evaluated',
-  run_snapshot_json TEXT NOT NULL DEFAULT '{}',
-  latest_summary_json TEXT NOT NULL DEFAULT '{}',
-  script_hash TEXT,
-  locust_version TEXT,
-  exit_code INTEGER,
-  error_code TEXT,
-  error_message TEXT,
-  created_by TEXT NOT NULL,
-  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  started_at TEXT,
-  measurement_started_at TEXT,
-  finished_at TEXT,
-  FOREIGN KEY(scenario_id) REFERENCES performance_scenarios(id) ON DELETE CASCADE
-);
--- 索引：project_id + scenario_id + process_status
-```
-
-### 12.12 `performance_run_gate_results`
-
-```sql
-CREATE TABLE IF NOT EXISTS performance_run_gate_results (
-  id TEXT PRIMARY KEY,
-  run_id TEXT NOT NULL,
-  metric TEXT NOT NULL,
-  operator TEXT NOT NULL,
-  threshold REAL,
-  actual REAL,
-  status TEXT NOT NULL,
-  reason TEXT NOT NULL DEFAULT '',
-  evaluated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY(run_id) REFERENCES performance_runs(id) ON DELETE CASCADE
-);
-```
-
----
-
 ## 13. API 路由清单
 
 ### 13.1 performance_tests.py（test_router）
@@ -820,25 +699,6 @@ CREATE TABLE IF NOT EXISTS performance_run_gate_results (
 | POST | `/{analysis_id}/reject` | current_user | 驳回分析 |
 | POST | `/{analysis_id}/apply-and-rerun` | current_user | 应用并重跑 |
 
-### 13.3 performance_scenarios.py
-
-**router**：前缀 `/projects/{project_id}/performance-scenarios`
-
-| 方法 | 路径 | 认证 | 说明 |
-| --- | --- | --- | --- |
-| POST | `` | require_admin | 创建场景 |
-| GET | `` | current_user | 列表 |
-| GET | `/{scenario_id}` | current_user | 详情 |
-| PATCH | `/{scenario_id}` | require_admin | 更新 |
-| DELETE | `/{scenario_id}` | require_admin | 删除 |
-| POST | `/{scenario_id}/runs` | require_admin | 创建场景运行 |
-
-**run_router**：前缀 `/projects/{project_id}/performance-runs`
-
-| 方法 | 路径 | 认证 | 说明 |
-| --- | --- | --- | --- |
-| GET | `/{run_id}` | current_user | 场景运行详情 |
-
 ---
 
 ## 14. 前端页面清单
@@ -891,16 +751,6 @@ CREATE TABLE IF NOT EXISTS performance_run_gate_results (
 | apply-and-rerun 必须传入 change_ids | `repair_service.py:apply_and_rerun` 中 `selected_ids` 非空校验 |
 | platform_code 类型修改不可直接应用 | `repair_service.py:is_supported_change` 返回 False |
 | 预检失败不修改原配置 | `repair_service.py:apply_and_rerun` 中 `preflight_failed` 分支 |
-
-### 15.5 性能场景
-
-| 验收项 | 核对依据 |
-| --- | --- |
-| 场景 endpoint 属于同项目 | `scenario_service.py:_validate_payload` 中 `endpoint.project_id == project_id` |
-| 场景 environment 属于同项目 | `scenario_service.py:_validate_payload` 中 `environment.project_id == project_id` |
-| 场景运行结束写入 `performance_run_gate_results` | `scenario_service.py:save_quality_gate_result` |
-
----
 
 ## 16. 完整用户流程图
 

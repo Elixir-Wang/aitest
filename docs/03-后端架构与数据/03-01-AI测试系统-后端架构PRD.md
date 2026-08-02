@@ -54,7 +54,7 @@
 | exploration | `app/api/v1/page_exploration.py`、`app/services/page_exploration/`（`runner.py`、`event_bus.py`）、`app/agents/page_exploration/` | Playwright 站点探索、页面快照、模块覆盖、冲突项、抗卡死熔断 |
 | ui_automation | `app/api/v1/ui_automation.py`、`app/services/ui_automation/`、`app/agents/ui_automation/` | UI 自动化代码生成（pytest + Playwright）、套件管理、执行 |
 | api_automation | `app/api/v1/api_automation.py`、`app/services/api_automation/`、`app/agents/api_automation/`、`app/services/api_automation/self_healing.py` | 接口自动化：端点导入、测试用例生成（pytest + requests）、场景编排、自愈修复状态机 |
-| performance_testing | `app/api/v1/performance_tests.py`、`app/api/v1/performance_runs.py`（含 SSE）、`app/api/v1/performance_scenarios.py`、`app/services/performance_testing/`（`headless_worker.py`、`run_repo`）、`app/agents/performance_testing/` | 性能测试：Locust 脚本生成、子进程 headless 运行、SSE 状态流、质量门控、智能分析（deepagents） |
+| performance_testing | `app/api/v1/performance_tests.py`、`app/api/v1/performance_runs.py`（含 SSE）、`app/services/performance_testing/`（`headless_worker.py`、`run_repo`）、`app/agents/performance_testing/` | 性能测试：Locust 脚本生成、子进程 headless 运行、SSE 状态流、性能目标评估、智能分析（deepagents） |
 | reports | `app/api/v1/reports.py` | 报告中心 API |
 | diagnosis | `app/services/api_automation/self_healing.py` | 失败诊断、自愈修复（repair session + attempt 状态机） |
 | models | `app/api/v1/models.py` | 模型 Provider、模型分配（capability → model mapping） |
@@ -223,8 +223,6 @@ CORS 默认仅允许本机前端（`http://localhost:3000` / `http://127.0.0.1:3
 | `/projects/{project_id}/performance-tests/{test_id}/runs/*` | `performance_runs.test_router` | 性能测试运行 |
 | `/projects/{project_id}/performance-test-runs/*` | `performance_runs.run_router` | 性能测试运行（含 `/{run_id}/stream` SSE、`/{run_id}/ai-analysis/*` 智能分析） |
 | `/projects/{project_id}/performance-test-runs/{run_id}/analysis/*` | `performance_runs.analysis_router` | 智能分析 |
-| `/projects/{project_id}/performance-scenarios/*` | `api/v1/performance_scenarios.py` | 性能场景 |
-| `/projects/{project_id}/performance-scenarios/{id}/runs/*` | `performance_scenarios.run_router` | 性能场景运行 |
 | `/tasks/*` | `api/v1/tasks.py` | 任务中心 |
 | `/projects/{project_id}/documents/*` | `api/v1/documents.py` | 文档管理 |
 | `/agents/*` | `api/v1/agents.py` | Agent 运行时 |

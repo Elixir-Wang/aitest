@@ -153,9 +153,6 @@ SQLite 保存结构化元数据、状态、索引和引用关系；Markdown 正�
 | `performance_test_run_exceptions` | 异常记录 | run_id, request_name, exception_type, message, count |
 | `performance_test_run_events` | 运行事件 | run_id, event_type, level, message, payload_json |
 | `performance_analysis_sessions` | 智能分析会话 | run_id, status, analysis_status, analysis_stage, repair_status, analysis_version, category, summary, direct_cause, root_cause, evidence_json, proposal_json, metric_snapshot_json, report_snapshot_json, calculator_version, prompt_version, audience, application_status, selected_change_ids_json, preflight_json, applied_script_id, applied_run_id |
-| `performance_scenarios` | 性能测试场景 | project_id, api_environment_id, name, description, scenario_definition_json, load_profile_json, data_source_json, quality_gate_json, safety_policy_json |
-| `performance_runs` | 性能场景运行（独立运行） | scenario_id, process_status (created/validating/starting/warming_up/measuring/stopping/finished), quality_status, run_snapshot_json, latest_summary_json, report_directory, locust_version |
-| `performance_run_gate_results` | 质量门结果 | run_id, metric, operator, threshold, actual, status, reason |
 
 ### 2.13 任务中心域
 
@@ -448,9 +445,6 @@ erDiagram
 | `performance_test_run_failures` | run_id+request_name+method+reason unique |
 | `performance_test_run_exceptions` | run_id+request_name+exception_type+message unique |
 | `performance_test_run_events` | idx_performance_test_run_events_run_created |
-| `performance_scenarios` | idx_performance_scenarios_project_updated |
-| `performance_runs` | 无额外索引（主键、project_id/scenario_id 外键） |
-| `performance_run_gate_results` | 无额外索引（主键） |
 | `exploration_runs` | 无额外索引（主键、project_id 外键） |
 | `exploration_module_coverages` | exploration_run_id+module_key unique |
 | `exploration_pages` | 无额外索引（主键、exploration_run_id 外键） |
@@ -537,7 +531,7 @@ erDiagram
 | 初始化入口调用完整迁移链 | `apps/backend/app/seed/init_db.py` |
 | `__all_projects__` 虚拟项目在初始化时自动创建 | `seeds.py:_ensure_all_projects_conversation_scope()` (lines 907-916) |
 | `performance_analysis_runs` 已不存在 | `seeds.py:_drop_legacy_performance_run_tables()` (line 223) |
-| 性能测试相关表覆盖完整 | `performance_tests`、`performance_test_scripts`、`performance_test_runs`、`performance_analysis_sessions`、`performance_scenarios`、`performance_runs`、`performance_run_gate_results` |
+| 性能测试相关表覆盖完整 | `performance_tests`、`performance_test_scripts`、`performance_test_runs`、`performance_test_run_stats`、`performance_test_run_failures`、`performance_test_run_exceptions`、`performance_test_run_events`、`performance_analysis_sessions` |
 | 接口自动化场景相关表覆盖完整 | `api_scenarios`、`api_scenario_steps`、`api_scenario_revisions`、`api_scenario_ai_plans` |
 | UI 自动化套件/执行表与 `api/v1/ui_automation.py` 接口一致 | `apps/backend/app/api/v1/ui_automation.py` |
 | 全局知识库表覆盖完整 | `global_knowledge_bases`、`global_knowledge_folders`、`global_knowledge_vault_files` |

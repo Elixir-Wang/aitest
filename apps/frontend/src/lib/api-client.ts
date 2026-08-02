@@ -1827,31 +1827,6 @@ export type PerformanceRunStartPayload = {
   host?: string;
 };
 
-export type PerformanceScenario = {
-  id: string;
-  project_id: string;
-  name: string;
-  description: string;
-  api_environment_id: string;
-  definition_version: number;
-  scenario_definition: Record<string, unknown>;
-  load_profile: Record<string, unknown>;
-  data_source: Record<string, unknown>;
-  quality_gate: Record<string, unknown>;
-  safety_policy: Record<string, unknown>;
-};
-
-export type PerformanceScenarioCreatePayload = {
-  name: string;
-  description: string;
-  api_environment_id: string;
-  scenario_definition: Record<string, unknown>;
-  load_profile: Record<string, unknown>;
-  data_source: Record<string, unknown>;
-  quality_gate: Record<string, unknown>;
-  safety_policy: Record<string, unknown>;
-};
-
 export type ApiAutomationCaseSet = {
   id: string;
   project_id: string;
@@ -1889,13 +1864,6 @@ export function getPerformanceTest(projectId: string, testId: string) {
 
 export function createPerformanceTest(projectId: string, payload: PerformanceTestCreatePayload) {
   return apiRequest<PerformanceTest>(`/projects/${projectId}/performance-tests`, {
-    method: "POST",
-    body: JSON.stringify(payload),
-  });
-}
-
-export function createPerformanceScenario(projectId: string, payload: PerformanceScenarioCreatePayload) {
-  return apiRequest<PerformanceScenario>(`/projects/${projectId}/performance-scenarios`, {
     method: "POST",
     body: JSON.stringify(payload),
   });

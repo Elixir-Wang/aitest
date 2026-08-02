@@ -999,67 +999,6 @@ CREATE TABLE IF NOT EXISTS performance_test_run_events (
 CREATE INDEX IF NOT EXISTS idx_performance_test_run_events_run_created
   ON performance_test_run_events(run_id, created_at);
 
-CREATE TABLE IF NOT EXISTS performance_scenarios (
-  id TEXT PRIMARY KEY,
-  project_id TEXT NOT NULL,
-  name TEXT NOT NULL,
-  description TEXT NOT NULL DEFAULT '',
-  api_environment_id TEXT NOT NULL,
-  definition_version INTEGER NOT NULL DEFAULT 1,
-  scenario_definition_json TEXT NOT NULL,
-  load_profile_json TEXT NOT NULL,
-  data_source_json TEXT NOT NULL,
-  quality_gate_json TEXT NOT NULL,
-  safety_policy_json TEXT NOT NULL,
-  created_by TEXT NOT NULL,
-  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE,
-  FOREIGN KEY(api_environment_id) REFERENCES api_test_environments(id) ON DELETE RESTRICT,
-  UNIQUE(project_id, name)
-);
-
-CREATE INDEX IF NOT EXISTS idx_performance_scenarios_project_updated
-  ON performance_scenarios(project_id, updated_at);
-
-CREATE TABLE IF NOT EXISTS performance_runs (
-  id TEXT PRIMARY KEY,
-  project_id TEXT NOT NULL,
-  scenario_id TEXT NOT NULL,
-  process_status TEXT NOT NULL CHECK(process_status IN ('created', 'validating', 'starting', 'warming_up', 'measuring', 'stopping', 'finished')) DEFAULT 'created',
-  stop_reason TEXT NOT NULL DEFAULT '',
-  quality_status TEXT NOT NULL CHECK(quality_status IN ('passed', 'failed', 'not_configured', 'not_evaluated')) DEFAULT 'not_evaluated',
-  run_snapshot_json TEXT NOT NULL,
-  latest_summary_json TEXT NOT NULL DEFAULT '{}',
-  script_hash TEXT NOT NULL DEFAULT '',
-  locust_version TEXT NOT NULL DEFAULT '',
-  exit_code INTEGER,
-  error_code TEXT NOT NULL DEFAULT '',
-  error_message TEXT NOT NULL DEFAULT '',
-  report_directory TEXT NOT NULL DEFAULT '',
-  created_by TEXT NOT NULL,
-  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  started_at TEXT,
-  measurement_started_at TEXT,
-  finished_at TEXT,
-  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE,
-  FOREIGN KEY(scenario_id) REFERENCES performance_scenarios(id) ON DELETE CASCADE
-);
-
-CREATE TABLE IF NOT EXISTS performance_run_gate_results (
-  id TEXT PRIMARY KEY,
-  run_id TEXT NOT NULL,
-  metric TEXT NOT NULL,
-  operator TEXT NOT NULL,
-  threshold REAL,
-  actual REAL,
-  status TEXT NOT NULL CHECK(status IN ('passed', 'failed', 'not_evaluated')),
-  reason TEXT NOT NULL DEFAULT '',
-  evaluated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY(run_id) REFERENCES performance_runs(id) ON DELETE CASCADE
-);
-
 CREATE TABLE IF NOT EXISTS api_scenarios (
   id TEXT PRIMARY KEY,
   project_id TEXT NOT NULL,

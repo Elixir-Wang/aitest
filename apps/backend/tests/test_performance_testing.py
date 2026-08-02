@@ -21,31 +21,10 @@ from app.schemas.performance_test import (
 )
 from app.seed.init_db import init_db
 from app.seed import seeds
-from app.services.performance_testing import headless_worker, run_repo, runner, service
+from app.services.performance_testing import headless_worker, run_repo, service
 
 
 ADMIN = {"id": "u-admin", "role": "admin", "project_scope": "全部项目"}
-
-
-def test_allocate_loopback_port_avoids_backend_default_port(monkeypatch: pytest.MonkeyPatch) -> None:
-    ports = iter([18000, 19000])
-
-    class FakeSocket:
-        def __enter__(self):
-            return self
-
-        def __exit__(self, exc_type, exc_value, traceback):
-            return False
-
-        def bind(self, address) -> None:
-            return None
-
-        def getsockname(self):
-            return "127.0.0.1", next(ports)
-
-    monkeypatch.setattr(runner.socket, "socket", lambda *args, **kwargs: FakeSocket())
-
-    assert runner.allocate_loopback_port() == 19000
 
 
 def _use_temp_db(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
