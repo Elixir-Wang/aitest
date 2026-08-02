@@ -1,15 +1,12 @@
 ﻿"use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 import Link from "next/link";
 
 import {
   AlertTriangle,
-  ArrowDown,
   ArrowLeft,
-  Braces,
-  CheckCircle2,
   Clock3,
   GitBranch,
   Loader2,
@@ -28,24 +25,12 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Drawer, DrawerContent, DrawerHandle, DrawerHeader, DrawerTitle } from "@/components/ui/drawer";
 import { Input } from "@/components/ui/input";
-import { OneClipboard } from "@/components/ui/one-clipboard";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "./api-orchestration-select";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
-import type {
-  ApiAutomationEndpoint,
-  ApiScenarioAiPlan,
-  ApiScenarioAiPlanAccepted,
-} from "@/lib/api-client";
+import type { ApiAutomationEndpoint, ApiScenarioAiPlanAccepted } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
 
-import { buildAiPlanPresentation } from "./api-scenario-ai-plan-view.mjs";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./api-orchestration-select";
 import { ApiScenarioAiReviewDrawer } from "./api-scenario-ai-review-drawer";
 import { ApiScenarioAssetPicker } from "./api-scenario-asset-picker";
 import { ApiScenarioCanvas } from "./api-scenario-canvas";
@@ -56,6 +41,7 @@ import { useApiScenarioEditor } from "./use-api-scenario-editor";
 
 type ApiScenarioEditorProps = { projectId: string; scenarioId?: string };
 type EditorView = "orchestration" | "variables" | "versions";
+type AiDrawerMode = "closed" | "generation" | "review";
 
 const methodTone: Record<string, string> = {
   GET: "border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-500/35 dark:bg-blue-500/15 dark:text-blue-200",
@@ -71,16 +57,14 @@ export function ApiScenarioEditor({ projectId, scenarioId }: ApiScenarioEditorPr
   const [view, setView] = useState<EditorView>("orchestration");
   const [configPanelOpen, setConfigPanelOpen] = useState(false);
   const [assetPickerOpen, setAssetPickerOpen] = useState(false);
-  const [aiDrawerOpen, setAiDrawerOpen] = useState(false);
+  const [aiDrawerMode, setAiDrawerMode] = useState<AiDrawerMode>("closed");
   const [aiSourceEndpointIds, setAiSourceEndpointIds] = useState<string[]>([]);
+  const selectedEnvironment = editor.environments.find((item) => item.id === editor.selectedEnvironmentId);
 
-  useEffect(() => {
-    if (editor.aiPlan) setAiDrawerOpen(true);
-  }, [editor.aiPlan]);
   const activeIndex = editor.draft.steps.findIndex((step) => step.id === editor.activeStepId);
   const precedingSteps = activeIndex < 0 ? [] : editor.draft.steps.slice(0, activeIndex);
 
-  if (editor.loading)
+  if (editor.loading === true)
     return (
       <div className="grid min-h-[520px] place-items-center rounded-2xl border bg-card">
         <Loader2 className="size-6 animate-spin text-primary" />
@@ -124,7 +108,7 @@ export function ApiScenarioEditor({ projectId, scenarioId }: ApiScenarioEditorPr
                   <AlertTriangle className="size-3" />
                   {editor.scenario.asset_changes.length} 项接口资产变更待确认
                 </span>
-              ) : editor.dirty ? (
+              ) : editor.dirty === true ? (
                 <span className="shrink-0 whitespace-nowrap text-[11px] text-amber-700 dark:text-amber-300">
                   存在未保存修改
                 </span>
@@ -139,7 +123,7 @@ export function ApiScenarioEditor({ projectId, scenarioId }: ApiScenarioEditorPr
           <Button
             onClick={() => {
               setAiSourceEndpointIds([]);
-              setAiDrawerOpen(true);
+              setAiDrawerMode(editor.aiPlan ? "review" : "generation");
             }}
             size="sm"
             variant="outline"
@@ -159,22 +143,54 @@ export function ApiScenarioEditor({ projectId, scenarioId }: ApiScenarioEditorPr
               ))}
             </SelectContent>
           </Select>
-          <Button disabled={editor.busy} onClick={() => void editor.actions.saveScenario()} size="sm" variant="outline">
-            <Save />
-            保存
-          </Button>
+          {editor.latestRunId ? (
+            <Button
+              className={cn(
+                "gap-2",
+                isFailedRunStatus(editor.latestRunStatus) &&
+                  "border-red-200 bg-red-50 text-red-700 hover:bg-red-100 hover:text-red-800 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-200",
+                editor.latestRunStatus === "passed" &&
+                  "border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 hover:text-emerald-800 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-200",
+              )}
+              onClick={() => {
+                setConfigPanelOpen(false);
+                editor.actions.setRunDrawerOpen(true);
+              }}
+              size="sm"
+              title="查看最近一次运行结果"
+              variant="outline"
+            >
+              {isFailedRunStatus(editor.latestRunStatus) ? (
+                <AlertTriangle className="size-4" />
+              ) : editor.latestRunStatus === "passed" ? (
+                <ShieldCheck className="size-4" />
+              ) : (
+                <Loader2 className="size-4 animate-spin" />
+              )}
+              {runStatusLabel(editor.latestRunStatus)}
+              {editor.scenarioRunResult ? (
+                <span className="font-mono text-[10px] opacity-70">
+                  {editor.scenarioRunResult.steps.filter((step) => step.status === "passed").length}/
+                  {editor.scenarioRunResult.steps.length}
+                </span>
+              ) : null}
+            </Button>
+          ) : null}
           <Button
-            disabled={!editor.scenario || editor.busy}
-            onClick={() => void editor.actions.validateScenario()}
+            disabled={!editor.scenario || editor.busy || !editor.dirty}
+            onClick={() => void editor.actions.saveScenario()}
             size="sm"
             variant="outline"
           >
-            <ShieldCheck />
-            检查
+            <Save />
+            保存版本
           </Button>
           <Button
             disabled={!editor.scenario || editor.busy}
-            onClick={() => void editor.actions.executeScenario()}
+            onClick={() => {
+              setConfigPanelOpen(false);
+              void editor.actions.executeScenario();
+            }}
             size="sm"
           >
             <Play />
@@ -279,40 +295,11 @@ export function ApiScenarioEditor({ projectId, scenarioId }: ApiScenarioEditorPr
           revisions={editor.revisions}
         />
       ) : null}
-      {editor.validation ? (
-        <div className="grid gap-2 border-t bg-muted/20 p-3 md:grid-cols-2">
-          {editor.validation.errors.length ? (
-            <IssueBox items={editor.validation.errors} title="检查错误" tone="error" />
-          ) : (
-            <IssueBox items={["场景检查通过"]} title="检查结果" tone="success" />
-          )}
-          {editor.validation.warnings.length ? (
-            <IssueBox items={editor.validation.warnings} title="检查提醒" tone="warning" />
-          ) : null}
-        </div>
-      ) : null}
-      {editor.latestRunId ? (
-        <footer className="flex h-11 items-center justify-between bg-[linear-gradient(90deg,#172a3d,#244b66)] px-4 text-[11px] text-slate-200">
-          <div className="flex items-center gap-3">
-            <span className="size-2 rounded-full bg-emerald-400 shadow-[0_0_0_4px_rgba(52,211,153,.12)]" />
-            <span>{`运行 ${editor.latestRunId} · ${runStatusLabel(editor.latestRunStatus)}`}</span>
-          </div>
-          <button
-            className="text-sky-200 transition-colors hover:text-white"
-            onClick={() => editor.actions.setRunDrawerOpen(true)}
-            type="button"
-          >
-            {editor.scenarioRunResult
-              ? `${editor.scenarioRunResult.steps.filter((step) => step.status === "passed").length}/${editor.scenarioRunResult.steps.length} 步通过 · ${Math.round(editor.scenarioRunResult.duration_ms)} ms · 展开结果`
-              : "查看运行进度"}
-          </button>
-        </footer>
-      ) : null}
       <ApiScenarioAssetPicker
         endpoints={editor.endpoints}
         onAiOrchestration={(endpointIds) => {
           setAiSourceEndpointIds(endpointIds);
-          setAiDrawerOpen(true);
+          setAiDrawerMode(editor.aiPlan ? "review" : "generation");
         }}
         onConfirm={editor.actions.addEndpointSteps}
         onOpenChange={setAssetPickerOpen}
@@ -321,17 +308,24 @@ export function ApiScenarioEditor({ projectId, scenarioId }: ApiScenarioEditorPr
       {editor.aiPlan ? (
         <ApiScenarioAiReviewDrawer
           busy={editor.aiBusy}
-          onApply={() => void editor.actions.applyAiPlan()}
+          onApply={async () => {
+            const applied = await editor.actions.applyAiPlan();
+            if (applied) setAiDrawerMode("closed");
+          }}
           onChangeField={editor.actions.updateAiReviewField}
           onConfirmAll={editor.actions.confirmAllAiReviewFields}
           onConfirmField={editor.actions.confirmAiReviewField}
           onConfirmStep={editor.actions.confirmAiReviewStep}
-          onDiscard={editor.actions.discardAiPlan}
+          onDiscard={() => {
+            editor.actions.discardAiPlan();
+            setAiDrawerMode("closed");
+          }}
           onMoveStep={editor.actions.reorderAiReviewStep}
-          onOpenChange={setAiDrawerOpen}
-          onSave={() => editor.actions.saveAiPlanReview()}
-          open={aiDrawerOpen}
+          onOpenChange={(open) => setAiDrawerMode(open ? "review" : "closed")}
+          open={aiDrawerMode === "review"}
           plan={editor.aiPlan}
+          environmentVariableNames={Object.keys(selectedEnvironment?.variables ?? {})}
+          scenarioVariableNames={Object.keys(editor.draft.variables)}
         />
       ) : (
         <AiOrchestrationDrawer
@@ -339,24 +333,29 @@ export function ApiScenarioEditor({ projectId, scenarioId }: ApiScenarioEditorPr
           endpoints={editor.endpoints}
           lifecycleStatus={editor.aiLifecycleStatus}
           selectedEndpointIds={aiSourceEndpointIds}
-          onApply={() => void editor.actions.applyAiPlan()}
-          onDiscard={editor.actions.discardAiPlan}
-          onGenerate={(goal, options) => editor.actions.generateAiPlan(goal, aiSourceEndpointIds, options)}
-          onOpenChange={setAiDrawerOpen}
-          open={aiDrawerOpen}
-          plan={null}
+          onGenerate={async (goal, options) => {
+            const accepted = await editor.actions.generateAiPlan(goal, aiSourceEndpointIds, options);
+            if (accepted) setAiDrawerMode("closed");
+            return accepted;
+          }}
+          onOpenChange={(open) => setAiDrawerMode(open ? "generation" : "closed")}
+          open={aiDrawerMode === "generation"}
         />
       )}
       <ApiScenarioRunDrawer
+        busy={editor.busy}
         onJumpToStep={(stepId) => {
           setView("orchestration");
           editor.actions.setActiveStepId(stepId);
+          setConfigPanelOpen(true);
         }}
         onOpenChange={editor.actions.setRunDrawerOpen}
+        onRerun={() => void editor.actions.executeScenario()}
         open={editor.runDrawerOpen}
         result={editor.scenarioRunResult}
         runId={editor.latestRunId}
         status={editor.latestRunStatus}
+        stepConfigs={editor.draft.steps}
       />
     </section>
   );
@@ -366,23 +365,17 @@ function AiOrchestrationDrawer({
   busy,
   endpoints,
   lifecycleStatus,
-  onApply,
-  onDiscard,
   onGenerate,
   onOpenChange,
   open,
-  plan,
   selectedEndpointIds,
 }: {
   busy: boolean;
   endpoints: ApiAutomationEndpoint[];
   lifecycleStatus: "generating" | "completed" | "failed" | "expired" | null;
-  onApply: () => void;
-  onDiscard: () => void;
   onGenerate: (goal: string, options: { requireCleanup: boolean }) => Promise<ApiScenarioAiPlanAccepted | null>;
   onOpenChange: (open: boolean) => void;
   open: boolean;
-  plan: ApiScenarioAiPlan | null;
   selectedEndpointIds: string[];
 }) {
   const [goal, setGoal] = useState("");
@@ -390,7 +383,6 @@ function AiOrchestrationDrawer({
   const selectedEndpoints = selectedEndpointIds
     .map((endpointId) => endpoints.find((endpoint) => endpoint.id === endpointId))
     .filter((endpoint): endpoint is ApiAutomationEndpoint => Boolean(endpoint));
-  const presentation = plan ? buildAiPlanPresentation(plan, endpoints, goal) : null;
 
   return (
     <Drawer direction="right" handleOnly open={open} onOpenChange={onOpenChange}>
@@ -408,44 +400,29 @@ function AiOrchestrationDrawer({
                   className="h-5 border-primary/20 bg-primary/8 px-2 font-medium text-[10px] text-primary"
                   variant="outline"
                 >
-                  生成草稿
+                  生成方案
                 </Badge>
               </div>
-              {!plan ? (
-                <div className="mt-1 hidden items-center gap-2 text-[11px] text-muted-foreground sm:flex">
-                  <ShieldCheck className="size-3.5 text-primary" />
-                  应用前可预览并校验全部步骤
-                </div>
-              ) : null}
+              <div className="mt-1 hidden items-center gap-2 text-[11px] text-muted-foreground sm:flex">
+                <ShieldCheck className="size-3.5 text-primary" />
+                应用前可预览并校验全部步骤
+              </div>
             </div>
-            {plan ? (
-              <div className="ml-auto flex w-full items-center justify-end gap-2 sm:w-auto sm:pl-2">
-                <OneClipboard copiedLabel="计划已复制" label="复制计划" text={formatAiPlanForClipboard(plan)} />
-                <Button className="h-7 px-2 text-xs" disabled={busy} onClick={onDiscard} variant="outline">
-                  放弃计划
-                </Button>
-                <Button className="h-7 px-2.5 text-xs" disabled={busy || !plan.validation.valid} onClick={onApply}>
-                  {busy ? <Loader2 className="animate-spin" /> : <CheckCircle2 />}
-                  覆盖当前草稿
-                </Button>
-              </div>
-            ) : (
-              <div className="ml-auto flex w-full items-center justify-end gap-2 sm:w-auto sm:pl-2">
-                <Button className="h-8 px-3 text-xs" onClick={() => onOpenChange(false)} variant="outline">
-                  {busy ? "关闭" : "取消"}
-                </Button>
-                <Button
-                  className="h-8 px-3 text-xs shadow-sm"
-                  disabled={busy || !goal.trim()}
-                  onClick={async () => {
-                    await onGenerate(goal.trim(), { requireCleanup });
-                  }}
-                >
-                  {busy ? <Loader2 className="animate-spin" /> : <Sparkles />}
-                  {busy ? "正在生成" : "生成编排草稿"}
-                </Button>
-              </div>
-            )}
+            <div className="ml-auto flex w-full items-center justify-end gap-2 sm:w-auto sm:pl-2">
+              <Button className="h-8 px-3 text-xs" onClick={() => onOpenChange(false)} variant="outline">
+                {busy ? "关闭" : "取消"}
+              </Button>
+              <Button
+                className="h-8 px-3 text-xs shadow-sm"
+                disabled={busy || !goal.trim()}
+                onClick={async () => {
+                  await onGenerate(goal.trim(), { requireCleanup });
+                }}
+              >
+                {busy ? <Loader2 className="animate-spin" /> : <Sparkles />}
+                {busy ? "正在生成" : "生成编排方案"}
+              </Button>
+            </div>
           </div>
           <div className="absolute inset-y-0 left-0 z-10 flex w-3 items-center justify-center">
             <DrawerHandle
@@ -454,339 +431,73 @@ function AiOrchestrationDrawer({
             />
           </div>
         </DrawerHeader>
-        {!plan ? (
-          <div className="select-text! min-h-0 space-y-5 overflow-y-auto px-5 py-5 sm:px-6 sm:py-6">
-            <div className="rounded-lg border border-primary/15 bg-primary/5 px-3.5 py-3 text-muted-foreground text-xs">
-              AI 只会在已选接口范围内推测执行路径，并为前后步骤补充参数依赖；应用前不会修改当前场景。
-            </div>
-            <div className="space-y-2.5">
-              <div className="flex items-center justify-between">
-                <div>
-                  <div className="font-semibold text-sm">已选接口</div>
-                  <div className="mt-1 text-muted-foreground text-xs">
-                    {selectedEndpoints.length} 个接口作为分析范围
-                  </div>
-                </div>
-                <Badge variant="secondary">范围锁定</Badge>
-              </div>
-              <div className="space-y-1.5 rounded-lg border bg-card p-2.5">
-                {selectedEndpoints.length ? (
-                  selectedEndpoints.map((endpoint) => (
-                    <div className="flex items-center gap-2 rounded-md px-2 py-1.5 text-xs" key={endpoint.id}>
-                      <Badge
-                        className={cn("h-5 w-12 justify-center font-mono text-[10px]", methodTone[endpoint.method])}
-                        variant="outline"
-                      >
-                        {endpoint.method}
-                      </Badge>
-                      <span className="min-w-0 flex-1 truncate font-medium">{endpoint.summary || endpoint.path}</span>
-                      <span className="max-w-[45%] truncate font-mono text-[10px] text-muted-foreground">
-                        {endpoint.path}
-                      </span>
-                    </div>
-                  ))
-                ) : (
-                  <div className="px-2 py-3 text-muted-foreground text-xs">
-                    未选择接口时，将按业务目标选择最多 12 个候选接口。
-                  </div>
-                )}
-              </div>
-            </div>
-            <div className="space-y-2.5">
-              <div className="flex items-center justify-between gap-3">
-                <label className="font-semibold text-sm" htmlFor="ai-scenario-goal">
-                  业务目标
-                </label>
-                <span className="text-[11px] text-muted-foreground">AI 仅使用已导入的接口资产</span>
-              </div>
-              <Textarea
-                className="min-h-36 resize-none bg-card px-3.5 py-3 leading-6 shadow-xs placeholder:leading-6 sm:min-h-40"
-                id="ai-scenario-goal"
-                onChange={(event) => setGoal(event.target.value)}
-                placeholder="例如：用户登录后创建订单，提取订单 ID，再查询并验证订单状态为待支付"
-                rows={5}
-                value={goal}
-              />
-            </div>
-            <div className="flex items-center justify-between rounded-lg border bg-card px-3.5 py-3">
+        <div className="select-text! min-h-0 space-y-5 overflow-y-auto px-5 py-5 sm:px-6 sm:py-6">
+          <div className="rounded-lg border border-primary/15 bg-primary/5 px-3.5 py-3 text-muted-foreground text-xs">
+            AI 只会在已选接口范围内推测执行路径，并为前后步骤补充参数依赖；应用前不会修改当前场景。
+          </div>
+          <div className="space-y-2.5">
+            <div className="flex items-center justify-between">
               <div>
-                <div className="font-medium text-sm">生成清理步骤</div>
-                <div className="mt-1 text-muted-foreground text-xs">若存在创建/写入操作，优先补充可逆的 cleanup</div>
+                <div className="font-semibold text-sm">已选接口</div>
+                <div className="mt-1 text-muted-foreground text-xs">{selectedEndpoints.length} 个接口作为分析范围</div>
               </div>
-              <Switch checked={requireCleanup} onCheckedChange={setRequireCleanup} />
+              <Badge variant="secondary">范围锁定</Badge>
             </div>
-            {lifecycleStatus === "generating" ? (
-              <div className="flex items-center gap-2 rounded-lg border border-sky-200 bg-sky-50 px-3.5 py-3 text-sky-800 text-xs dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-200">
-                <Loader2 className="size-3.5 animate-spin" /> 正在分析接口依赖并编译方案…
-              </div>
-            ) : null}
-          </div>
-        ) : (
-          <div className="select-text! min-h-0 space-y-4 overflow-y-auto bg-muted/10 px-5 py-5 sm:px-6">
-            <div className="flex gap-2 rounded-lg border border-amber-300/60 bg-amber-50/60 p-3.5 text-amber-900 text-xs dark:bg-amber-500/10 dark:text-amber-200">
-              <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
-              <span>应用后将使用 AI 编排结果完整替换当前草稿步骤，当前草稿中的步骤修改不会保留。</span>
-            </div>
-            <div data-testid="ai-plan-readable-preview">
-              <section className="border-b bg-card px-5 py-5 sm:px-6">
-                <div className="flex flex-wrap items-start justify-between gap-4">
-                  <div className="min-w-0 flex-1">
-                    <div className="mb-2 flex items-center gap-2 font-medium text-[11px] text-muted-foreground uppercase">
-                      <GitBranch className="size-3.5 text-primary" />
-                      调用目标
-                    </div>
-                    <h3 className="font-semibold text-base leading-6">{presentation?.goal}</h3>
-                    <p className="mt-1.5 text-muted-foreground text-xs leading-5">
-                      将按下面的顺序执行 {plan.nodes.length} 个步骤。前一步的输出会在运行时自动传给依赖它的步骤。
-                    </p>
+            <div className="space-y-1.5 rounded-lg border bg-card p-2.5">
+              {selectedEndpoints.length ? (
+                selectedEndpoints.map((endpoint) => (
+                  <div className="flex items-center gap-2 rounded-md px-2 py-1.5 text-xs" key={endpoint.id}>
+                    <Badge
+                      className={cn("h-5 w-12 justify-center font-mono text-[10px]", methodTone[endpoint.method])}
+                      variant="outline"
+                    >
+                      {endpoint.method}
+                    </Badge>
+                    <span className="min-w-0 flex-1 truncate font-medium">{endpoint.summary || endpoint.path}</span>
+                    <span className="max-w-[45%] truncate font-mono text-[10px] text-muted-foreground">
+                      {endpoint.path}
+                    </span>
                   </div>
-                  <Badge
-                    className={cn(
-                      "h-6 shrink-0",
-                      plan.validation.valid &&
-                        "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/35 dark:bg-emerald-500/15 dark:text-emerald-200",
-                    )}
-                    variant={plan.validation.valid ? "outline" : "destructive"}
-                  >
-                    {plan.validation.valid ? (
-                      <CheckCircle2 className="size-3.5" />
-                    ) : (
-                      <AlertTriangle className="size-3.5" />
-                    )}
-                    {plan.validation.valid ? "可以保存" : `${plan.validation.errors.length} 个问题待处理`}
-                  </Badge>
+                ))
+              ) : (
+                <div className="px-2 py-3 text-muted-foreground text-xs">
+                  未选择接口时，将按业务目标选择最多 12 个候选接口。
                 </div>
-              </section>
-
-              <section className="border-b px-5 py-5 sm:px-6">
-                <div className="mb-3 flex items-end justify-between gap-3">
-                  <div>
-                    <h3 className="font-semibold text-sm">执行步骤</h3>
-                    <p className="mt-1 text-muted-foreground text-xs">方法、路径和参数按实际请求归到对应步骤。</p>
-                  </div>
-                  <span className="shrink-0 text-[11px] text-muted-foreground">
-                    置信度 {Math.round(plan.confidence * 100)}%
-                  </span>
-                </div>
-                <div className="overflow-hidden rounded-lg border bg-card">
-                  {presentation?.steps.map((step) => (
-                    <details className="group border-b last:border-b-0" key={step.id}>
-                      <summary className="flex cursor-pointer list-none items-start gap-3 px-4 py-3.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset">
-                        <span className="grid size-7 shrink-0 place-items-center rounded-full border bg-background font-semibold text-[11px] text-primary">
-                          {step.index}
-                        </span>
-                        <div className="min-w-0 flex-1">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <h4 className="font-semibold text-sm">{step.name}</h4>
-                            <Badge
-                              className={cn("h-5 font-mono text-[10px]", methodTone[step.method])}
-                              variant="outline"
-                            >
-                              {step.method}
-                            </Badge>
-                          </div>
-                          <code className="mt-1.5 block break-all font-mono text-[11px] text-muted-foreground">
-                            {step.path}
-                          </code>
-                          {step.purpose !== step.name ? (
-                            <p className="mt-2 text-muted-foreground text-xs leading-5">作用：{step.purpose}</p>
-                          ) : null}
-                          {step.dependencies.map((dependency) => (
-                            <div
-                              className="mt-2 flex items-start gap-2 rounded-md border border-sky-200 bg-sky-50 px-2.5 py-2 text-sky-800 text-xs dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-200"
-                              key={`${dependency.stepId}-${dependency.target}`}
-                            >
-                              <ArrowDown className="mt-0.5 size-3.5 shrink-0" />
-                              <span>
-                                接收步骤「{dependency.stepName}」输出的 {dependency.variable}，填入 {dependency.target}
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-                        <span className="shrink-0 pt-1 text-[11px] text-muted-foreground group-open:hidden">配置</span>
-                        <span className="hidden shrink-0 pt-1 text-[11px] text-muted-foreground group-open:inline">
-                          收起
-                        </span>
-                      </summary>
-                      {step.parameters.length ? (
-                        <div className="border-t bg-muted/10 px-4 py-3">
-                          <div className="mb-2 font-medium text-[11px] text-muted-foreground">本步骤请求参数</div>
-                          <div className="divide-y">
-                            {step.parameters.map((parameter) => (
-                              <div
-                                className="grid gap-1.5 py-2 first:pt-0 last:pb-0 sm:grid-cols-[minmax(120px,0.7fr)_minmax(0,1.3fr)] sm:gap-4"
-                                key={parameter.key}
-                              >
-                                <div className="min-w-0">
-                                  <code className="break-all font-mono text-xs">{parameter.name}</code>
-                                  <div className="mt-0.5 text-[10px] text-muted-foreground">{parameter.location}</div>
-                                </div>
-                                <div className="min-w-0">
-                                  <code className="block whitespace-pre-wrap break-all font-mono text-xs leading-5">
-                                    {parameter.value}
-                                  </code>
-                                  <div className="mt-0.5 text-[10px] text-muted-foreground">{parameter.source}</div>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      ) : null}
-                      <div className="border-t bg-muted/20 px-4 py-3">
-                        <div className="mb-2 font-medium text-[11px] text-muted-foreground">AI 完整步骤配置</div>
-                        <pre className="max-h-72 overflow-auto rounded-md border bg-background p-3 font-mono text-[11px] leading-5">
-                          {JSON.stringify(step.rawNode, null, 2)}
-                        </pre>
-                      </div>
-                    </details>
-                  ))}
-                </div>
-              </section>
-
-              {presentation?.commonParameters.length ? (
-                <section className="border-b bg-card px-5 py-5 sm:px-6">
-                  <div className="mb-3 flex items-center gap-2">
-                    <Braces className="size-4 text-primary" />
-                    <div>
-                      <h3 className="font-semibold text-sm">公共请求配置</h3>
-                      <p className="mt-1 text-muted-foreground text-xs">以下配置被多个步骤复用，只展示一次。</p>
-                    </div>
-                  </div>
-                  <div className="divide-y border-y">
-                    {presentation.commonParameters.map((parameter) => (
-                      <div
-                        className="grid gap-1.5 py-2.5 sm:grid-cols-[minmax(120px,0.7fr)_minmax(0,1.3fr)] sm:gap-4"
-                        key={parameter.key}
-                      >
-                        <div>
-                          <code className="break-all font-mono text-xs">{parameter.name}</code>
-                          <div className="mt-0.5 text-[10px] text-muted-foreground">{parameter.location}</div>
-                        </div>
-                        <div className="min-w-0">
-                          <code className="block whitespace-pre-wrap break-all font-mono text-xs leading-5">
-                            {parameter.value}
-                          </code>
-                          <div className="mt-0.5 text-[10px] text-muted-foreground">
-                            {parameter.source} · 用于 {parameter.usedBy.join("、")}
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </section>
-              ) : null}
-
-              {presentation?.actionItems.length ? (
-                <section className="border-b px-5 py-5 sm:px-6">
-                  <div className="mb-3 flex items-center gap-2">
-                    <Variable className="size-4 text-amber-700 dark:text-amber-300" />
-                    <div>
-                      <h3 className="font-semibold text-sm">运行时输入</h3>
-                      <p className="mt-1 text-muted-foreground text-xs">
-                        这里直接说明要填什么，以及这个值会被用在哪里。
-                      </p>
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    {presentation.actionItems.map((item) => (
-                      <div
-                        className="rounded-lg border border-amber-300/60 bg-amber-50/60 px-3.5 py-3 dark:bg-amber-500/10"
-                        key={item.name}
-                      >
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                          <div className="font-medium text-sm">{item.label}</div>
-                          <Badge variant={item.value === "尚未填写" ? "outline" : "secondary"}>
-                            {item.value === "尚未填写" ? "运行前填写" : "已有默认值"}
-                          </Badge>
-                        </div>
-                        <code className="mt-2 block whitespace-pre-wrap break-all font-mono text-xs leading-5">
-                          {item.value}
-                        </code>
-                        <p className="mt-1.5 text-muted-foreground text-xs leading-5">{item.description}</p>
-                        <p className="mt-1 text-[10px] text-muted-foreground">填写位置：{item.targets.join("；")}</p>
-                      </div>
-                    ))}
-                  </div>
-                </section>
-              ) : null}
-
-              <details className="group bg-card px-5 py-4 sm:px-6">
-                <summary className="flex cursor-pointer list-none items-center justify-between gap-3 font-medium text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                  <span>技术详情：参数来源与编译诊断</span>
-                  <span className="text-[11px] text-muted-foreground group-open:hidden">展开</span>
-                  <span className="hidden text-[11px] text-muted-foreground group-open:inline">收起</span>
-                </summary>
-                <div className="mt-4 space-y-4 border-t pt-4">
-                  <div className="space-y-2">
-                    {plan.nodes.flatMap((node) =>
-                      (node.bindings ?? []).map((binding) => (
-                        <div
-                          className="flex items-start gap-2 text-xs"
-                          key={`${node.id}-${binding.target.location}-${binding.target.path}`}
-                        >
-                          <span className="rounded bg-muted px-1.5 py-0.5 font-mono text-[10px]">
-                            {node.name || node.id} · {formatBindingTarget(binding.target)}
-                          </span>
-                          <span className="text-muted-foreground">←</span>
-                          <span className="min-w-0 flex-1 text-muted-foreground">
-                            {formatBindingSource(binding.source)}
-                          </span>
-                        </div>
-                      )),
-                    )}
-                  </div>
-                  {presentation?.diagnostics.length ? (
-                    <div className="space-y-1.5 border-t pt-3 text-amber-800 text-xs dark:text-amber-200">
-                      {presentation.diagnostics.map((item) => (
-                        <div className="flex gap-2" key={item}>
-                          <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
-                          <span>{item}</span>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="border-t pt-3 text-muted-foreground text-xs">没有额外编译诊断。</div>
-                  )}
-                </div>
-              </details>
+              )}
             </div>
           </div>
-        )}
+          <div className="space-y-2.5">
+            <div className="flex items-center justify-between gap-3">
+              <label className="font-semibold text-sm" htmlFor="ai-scenario-goal">
+                业务目标
+              </label>
+              <span className="text-[11px] text-muted-foreground">AI 仅使用已导入的接口资产</span>
+            </div>
+            <Textarea
+              className="min-h-36 resize-none bg-card px-3.5 py-3 leading-6 shadow-xs placeholder:leading-6 sm:min-h-40"
+              id="ai-scenario-goal"
+              onChange={(event) => setGoal(event.target.value)}
+              placeholder="例如：用户登录后创建订单，提取订单 ID，再查询并验证订单状态为待支付"
+              rows={5}
+              value={goal}
+            />
+          </div>
+          <div className="flex items-center justify-between rounded-lg border bg-card px-3.5 py-3">
+            <div>
+              <div className="font-medium text-sm">生成清理步骤</div>
+              <div className="mt-1 text-muted-foreground text-xs">若存在创建/写入操作，优先补充可逆的 cleanup</div>
+            </div>
+            <Switch checked={requireCleanup} onCheckedChange={setRequireCleanup} />
+          </div>
+          {lifecycleStatus === "generating" ? (
+            <div className="flex items-center gap-2 rounded-lg border border-sky-200 bg-sky-50 px-3.5 py-3 text-sky-800 text-xs dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-200">
+              <Loader2 className="size-3.5 animate-spin" /> 正在分析接口依赖并编译方案…
+            </div>
+          ) : null}
+        </div>
       </DrawerContent>
     </Drawer>
   );
-}
-
-function formatAiPlanForClipboard(plan: ApiScenarioAiPlan) {
-  return JSON.stringify(plan, null, 2);
-}
-
-function formatBindingSource(source: unknown) {
-  if (!source || typeof source !== "object") return "未确定来源";
-  const value = source as {
-    type?: string;
-    key?: string;
-    name?: string;
-    step_id?: string;
-    variable?: string;
-    generator?: string;
-    value?: unknown;
-  };
-  if (value.type === "step_output") return `前序步骤 ${value.step_id ?? ""} 的输出`;
-  if (value.type === "environment" || value.type === "secret") {
-    return `${value.type === "secret" ? "密钥" : "运行环境"} · ${value.key ?? value.name ?? "变量"}`;
-  }
-  if (value.type === "scenario" || value.type === "user_input") {
-    return `${value.type === "user_input" ? "用户输入" : "场景变量"} · ${value.name ?? value.variable ?? "变量"}`;
-  }
-  if (value.type === "literal") return `固定值 · ${String(value.value ?? "")}`;
-  if (value.type === "generated") return `自动生成 · ${value.generator ?? "值"}`;
-  return value.type ?? "未确定来源";
-}
-
-function formatBindingTarget(target: { location?: string; path?: string } | string) {
-  if (typeof target === "string") return target;
-  return `${target.location ?? "请求"}${target.path ?? ""}`;
 }
 
 function runStatusLabel(status: string) {
@@ -801,6 +512,10 @@ function runStatusLabel(status: string) {
       interrupted: "已中断",
     }[status] ?? "已启动"
   );
+}
+
+function isFailedRunStatus(status: string) {
+  return ["failed", "cancelled", "interrupted"].includes(status);
 }
 
 function NavButton({
@@ -896,27 +611,6 @@ function VariablesPanel({
   );
 }
 
-function IssueBox({ title, items, tone }: { title: string; items: string[]; tone: "error" | "warning" | "success" }) {
-  return (
-    <div
-      className={cn(
-        "rounded-lg border p-3 text-xs",
-        tone === "error" && "border-destructive/30 bg-destructive/5 text-destructive",
-        tone === "warning" &&
-          "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-500/35 dark:bg-amber-500/15 dark:text-amber-200",
-        tone === "success" &&
-          "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-500/35 dark:bg-emerald-500/15 dark:text-emerald-200",
-      )}
-    >
-      <div className="font-semibold">{title}</div>
-      <ul className="mt-2 space-y-1">
-        {[...new Set(items)].map((item) => (
-          <li key={`${tone}-${item}`}>• {item}</li>
-        ))}
-      </ul>
-    </div>
-  );
-}
 function parseVariable(value: string) {
   if (/^-?\d+(\.\d+)?$/.test(value)) return Number(value);
   if (value === "true") return true;

@@ -21,6 +21,9 @@ def test_ui_automation_routes_are_registered():
     assert "/projects/{project_id}/ui-automation/runs/{run_id}" in paths
     assert "/projects/{project_id}/ui-automation/runs/{run_id}/stop" in paths
     assert "/projects/{project_id}/ui-automation/runs/{run_id}/logs" in paths
+    assert "/projects/{project_id}/ui-automation/runs/{run_id}/result-detail" in paths
+    assert "/projects/{project_id}/ui-automation/runs/{run_id}/events" in paths
+    assert "/projects/{project_id}/ui-automation/runs/{run_id}/step-artifacts/{artifact_id}" in paths
     assert "/projects/{project_id}/ui-automation/runs/{run_id}/live-view" in paths
     assert "/projects/{project_id}/ui-automation/runs/{run_id}/live-view/stream" in paths
     assert "/projects/{project_id}/ui-automation/runs/{run_id}/artifacts/{artifact_kind}" in paths
@@ -30,6 +33,29 @@ def test_ui_automation_routes_are_registered():
         if route.path == "/projects/{project_id}/ui-automation/runs/{run_id}" and "DELETE" in route.methods
     )
     assert delete_route.status_code == 204
+    delete_asset_route = next(
+        route
+        for route in v1_router.routes
+        if route.path == "/projects/{project_id}/ui-automation/assets/{asset_id}" and "DELETE" in route.methods
+    )
+    assert delete_asset_route.status_code == 204
+
+
+def test_delete_asset_route_delegates_to_service(monkeypatch):
+    captured = {}
+    monkeypatch.setattr(
+        ui_automation.service,
+        "delete_asset",
+        lambda project_id, asset_id, actor: captured.update(
+            project_id=project_id,
+            asset_id=asset_id,
+            actor=actor,
+        ),
+    )
+
+    ui_automation.delete_asset("project-1", "uiasset-1", actor={"id": "user-1"})
+
+    assert captured == {"project_id": "project-1", "asset_id": "uiasset-1", "actor": {"id": "user-1"}}
 
 
 def test_generation_route_schedules_managed_execution(monkeypatch):

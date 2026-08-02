@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import statistics
 from datetime import datetime
 from typing import Any
@@ -10,15 +11,20 @@ from app.services.performance_testing.analysis_metrics import build_analysis_met
 from app.services.performance_testing.diagnosis_validation import require_valid_diagnosis_references
 
 
-CALCULATOR_VERSION = "performance-metrics-v2"
+CALCULATOR_VERSION = "performance-metrics-v4"
 
 
 def build_metric_snapshot(evidence: dict[str, Any]) -> dict[str, Any]:
     run = dict(evidence.get("run") or {})
     performance_test = dict(evidence.get("performance_test") or {})
+    script = dict(evidence.get("script") or {})
+    endpoint = dict(evidence.get("endpoint") or {})
+    artifacts = dict(evidence.get("artifacts") or {})
     stats = [dict(item) for item in evidence.get("stats") or [] if isinstance(item, dict)]
     summary = _summary(evidence.get("summary"), stats)
     quality = _quality(run, summary, stats, evidence.get("missing_evidence") or [])
+    test_scope = _test_scope(run, performance_test, endpoint, script, quality)
+    endpoint_metrics = _endpoint_metrics(artifacts.get("result_stats"))
     objectives = _objectives(performance_test.get("performance_goal") or {}, summary, quality["status"])
     verdict = _verdict(objectives, quality["status"])
     series = [_series_sample(item) for item in stats]
@@ -29,6 +35,8 @@ def build_metric_snapshot(evidence: dict[str, Any]) -> dict[str, Any]:
         "summary": summary,
         "stats": series,
         "performance_goal": performance_test.get("performance_goal") or {},
+        "test_scope": test_scope,
+        "endpoint_metrics": endpoint_metrics,
     }
     source_fingerprint = "sha256:" + hashlib.sha256(
         json.dumps(snapshot_source, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
@@ -36,12 +44,14 @@ def build_metric_snapshot(evidence: dict[str, Any]) -> dict[str, Any]:
     analysis_metrics = build_analysis_metrics(evidence)
     evidence_index = _evidence_index(summary, objectives, quality) + _analysis_evidence_index(analysis_metrics)
     return {
-        "schema_version": 2,
+        "schema_version": 4,
         "calculator_version": CALCULATOR_VERSION,
         "run_id": str(run.get("id") or ""),
         "source_fingerprint": source_fingerprint,
         "quality": quality,
+        "test_scope": test_scope,
         "aggregate": summary,
+        "endpoint_metrics": endpoint_metrics,
         "capacity": {
             "observed_peak_throughput": round(peak_rps, 4),
             "stable_throughput": stable_rps,
@@ -75,6 +85,7 @@ def build_report_snapshot(metric_snapshot: dict[str, Any], diagnosis: Any) -> di
                 "missing_evidence": list(diagnosis.missing_evidence),
             }
         ]
+    findings = _supported_findings(metric_snapshot, findings)
     recommendations = [item.model_dump(mode="json") for item in diagnosis.recommendations]
     if not recommendations:
         recommendations = [
@@ -85,11 +96,12 @@ def build_report_snapshot(metric_snapshot: dict[str, Any], diagnosis: Any) -> di
                 "expected_effect": f"调整 {change.target} 后复测并比较同口径指标。",
                 "cost": change.risk_level,
                 "verification": "应用前执行单请求预检，复测后比较目标判定和关键延迟指标。",
-                "finding_refs": ["finding-1"] if findings else [],
+                "finding_refs": [str(findings[0]["id"])] if findings else [],
                 "proposed_change_id": change.id,
             }
             for index, change in enumerate(diagnosis.proposed_changes)
         ]
+    recommendations = _supported_recommendations(metric_snapshot, findings, recommendations)
     return {
         "schema_version": 1,
         "verdict": metric_snapshot.get("verdict", "indeterminate"),
@@ -131,12 +143,15 @@ def _optional_percentile(payload: dict[str, Any], key: str) -> float | None:
 
 def _quality(run: dict[str, Any], summary: dict[str, Any], stats: list[dict[str, Any]], missing: list[Any]) -> dict[str, Any]:
     issues: list[str] = []
+    warnings: list[str] = []
     if summary["request_count"] <= 0:
         issues.append("measurement_window_contains_no_requests")
     if not stats:
         issues.append("time_series_missing")
     if summary["p95_response_time_ms"] is None:
         issues.append("p95_response_time_missing")
+    if summary["p99_response_time_ms"] is not None and summary["request_count"] < 1000:
+        warnings.append("p99_sample_size_limited")
     if run.get("status") == "stopped":
         issues.append("run_manually_stopped")
     elif run.get("status") not in {"completed", ""}:
@@ -153,7 +168,10 @@ def _quality(run: dict[str, Any], summary: dict[str, Any], stats: list[dict[str,
         "status": status,
         "coverage": round(max(0.0, 1.0 - min(len(issues), 10) * 0.08), 2),
         "issues": issues,
+        "warnings": warnings,
         "diagnostic_missing_evidence": [str(item) for item in missing],
+        "request_sample_count": summary["request_count"],
+        "timeseries_sample_count": len(stats),
         "sample_count": len(stats),
         "termination_reason": run.get("termination_reason") or (
             "manual_stop" if run.get("status") == "stopped" else run.get("status") or "unknown"
@@ -187,6 +205,143 @@ def _configured_duration_seconds(run: dict[str, Any]) -> int | None:
     value = load_config.get("measurement_duration_seconds")
     try:
         return int(value) if value is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _test_scope(
+    run: dict[str, Any],
+    performance_test: dict[str, Any],
+    endpoint: dict[str, Any],
+    script: dict[str, Any],
+    quality: dict[str, Any],
+) -> dict[str, Any]:
+    run_load = run.get("load_config") if isinstance(run.get("load_config"), dict) else {}
+    test_load = performance_test.get("load_config") if isinstance(performance_test.get("load_config"), dict) else {}
+    load = {**test_load, **run_load}
+    stages = load.get("stages") if isinstance(load.get("stages"), list) else []
+    method, path = _request_identity(performance_test, endpoint, script)
+    return {
+        "test_name": str(performance_test.get("name") or ""),
+        "environment_name": str(performance_test.get("environment_name") or ""),
+        "load_mode": str(load.get("mode") or ""),
+        "users": _optional_int(load.get("users")),
+        "spawn_rate": _optional_float(load.get("spawn_rate")),
+        "duration_seconds": _optional_int(load.get("measurement_duration_seconds")),
+        "actual_duration_seconds": quality.get("actual_duration_seconds"),
+        "warmup_seconds": None,
+        "wait_time_min_seconds": _optional_float(load.get("wait_time_min_seconds")),
+        "wait_time_max_seconds": _optional_float(load.get("wait_time_max_seconds")),
+        "stage_count": len(stages),
+        "endpoint_method": method,
+        "endpoint_path": path,
+    }
+
+
+def _request_identity(
+    performance_test: dict[str, Any], endpoint: dict[str, Any], script: dict[str, Any]
+) -> tuple[str, str]:
+    plan = script.get("plan") if isinstance(script.get("plan"), dict) else {}
+    request = plan.get("request") if isinstance(plan.get("request"), dict) else {}
+    method = str(
+        endpoint.get("method")
+        or performance_test.get("endpoint_method")
+        or request.get("method")
+        or ""
+    ).upper()
+    path = str(
+        endpoint.get("path")
+        or performance_test.get("endpoint_path")
+        or request.get("path")
+        or ""
+    )
+    return method, path
+
+
+def _endpoint_metrics(raw_rows: Any) -> list[dict[str, Any]]:
+    rows = [dict(item) for item in raw_rows or [] if isinstance(item, dict)]
+    endpoint_rows = [
+        row
+        for row in rows
+        if str(row.get("Name") or "").strip()
+        and str(row.get("Name") or "").strip().lower() != "aggregated"
+    ]
+    total_requests = sum(_csv_int(row, "Request Count") for row in endpoint_rows)
+    if not endpoint_rows or total_requests <= 0:
+        return []
+
+    result = []
+    for row in endpoint_rows:
+        request_count = _csv_int(row, "Request Count")
+        failure_count = _csv_int(row, "Failure Count")
+        method = str(row.get("Type") or "").upper()
+        name = _normalized_endpoint_name(method, row.get("Name"))
+        result.append(
+            {
+                "method": method,
+                "name": name,
+                "request_share": round(request_count / total_requests, 6),
+                "request_count": request_count,
+                "failure_count": failure_count,
+                "failure_rate": failure_count / request_count if request_count else 0.0,
+                "requests_per_second": _csv_float(row, "Requests/s"),
+                "average_response_time_ms": _csv_float(row, "Average Response Time"),
+                "p50_response_time_ms": _csv_optional_float(row, "50%"),
+                "p95_response_time_ms": _csv_optional_float(row, "95%"),
+                "p99_response_time_ms": _csv_optional_float(row, "99%"),
+            }
+        )
+    return sorted(
+        result,
+        key=lambda item: (
+            item["failure_count"] == 0,
+            -(item["p95_response_time_ms"] or 0),
+            item["name"],
+        ),
+    )
+
+
+def _normalized_endpoint_name(method: str, raw_name: Any) -> str:
+    name = str(raw_name or "").strip()
+    if method and name.upper().startswith(f"{method} "):
+        return name[len(method) :].strip()
+    return name
+
+
+def _csv_int(row: dict[str, Any], key: str) -> int:
+    try:
+        return int(float(row.get(key) or 0))
+    except (TypeError, ValueError):
+        return 0
+
+
+def _csv_float(row: dict[str, Any], key: str) -> float:
+    try:
+        return float(row.get(key) or 0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _csv_optional_float(row: dict[str, Any], key: str) -> float | None:
+    value = row.get(key)
+    if value in (None, ""):
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _optional_int(value: Any) -> int | None:
+    try:
+        return int(value) if value not in (None, "") else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _optional_float(value: Any) -> float | None:
+    try:
+        return float(value) if value not in (None, "") else None
     except (TypeError, ValueError):
         return None
 
@@ -246,6 +401,7 @@ def _series_sample(item: dict[str, Any]) -> dict[str, Any]:
         "requests_per_second": float(item.get("requests_per_second") or 0),
         "failure_rate": float(item.get("failure_rate") or 0),
         "average_response_time_ms": float(item.get("average_response_time_ms") or 0),
+        "p50_response_time_ms": _optional_percentile(item, "p50_response_time_ms"),
         "p95_response_time_ms": _optional_percentile(item, "p95_response_time_ms"),
         "p99_response_time_ms": _optional_percentile(item, "p99_response_time_ms"),
     }
@@ -344,6 +500,122 @@ def _severity(verdict: Any) -> str:
     if verdict in {"conditional_pass", "indeterminate"}:
         return "medium"
     return "low"
+
+
+def _supported_findings(metric_snapshot: dict[str, Any], findings: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    verdict = str(metric_snapshot.get("verdict") or "")
+    latency_analysis = metric_snapshot.get("latency_analysis") or {}
+    direction_limited = (
+        latency_analysis.get("can_claim_direction") is False
+        or latency_analysis.get("sampling_semantics") == "cumulative_locust_snapshot"
+    )
+    result = []
+    for finding in findings:
+        text = f"{finding.get('title', '')} {finding.get('statement', '')}"
+        if verdict in {"pass", "conditional_pass"} and _is_redundant_pass_finding(text):
+            continue
+        if direction_limited and re.search(r"P(?:50|95|99)|延迟|响应时间", text, re.IGNORECASE) and re.search(
+            r"下降|上升|改善|恶化|收敛|稳定趋势|持续变好|持续变差",
+            text,
+        ):
+            continue
+        normalized = {
+            **finding,
+            "missing_evidence": [
+                item
+                for item in finding.get("missing_evidence", [])
+                if not _is_server_resource_evidence(str(item))
+            ],
+        }
+        if _should_demote_capacity_boundary(metric_snapshot, normalized):
+            normalized["severity"] = "low"
+        normalized = _humanize_capacity_boundary_finding(metric_snapshot, normalized)
+        result.append(normalized)
+    return result
+
+
+def _supported_recommendations(
+    metric_snapshot: dict[str, Any], findings: list[dict[str, Any]], recommendations: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    finding_ids = {str(item.get("id") or "") for item in findings}
+    result = []
+    for recommendation in recommendations:
+        text = " ".join(
+            str(recommendation.get(key) or "")
+            for key in ("action", "expected_effect", "verification")
+        )
+        refs = [str(item) for item in recommendation.get("finding_refs", [])]
+        if _is_server_resource_evidence(text):
+            continue
+        if not refs or any(ref not in finding_ids for ref in refs):
+            continue
+        normalized = dict(recommendation)
+        referenced_findings = [item for item in findings if str(item.get("id") or "") in refs]
+        if referenced_findings and all(
+            _should_demote_capacity_boundary(metric_snapshot, finding) for finding in referenced_findings
+        ):
+            normalized["priority"] = "P2"
+        result.append(normalized)
+    return result
+
+
+def _is_redundant_pass_finding(text: str) -> bool:
+    pass_summary = re.search(
+        r"(?:目标|指标|验收|测试有效性|performance).*?(?:通过|满足|达成|合格|passed)"
+        r"|(?:全部|均).*?(?:通过|满足|达成|合格|passed)",
+        text,
+        re.IGNORECASE,
+    )
+    material_concern = re.search(
+        r"无法|不足|限制|风险|异常|缺少|不能|未评估|未配置|仅(?:验证|覆盖)|不代表",
+        text,
+        re.IGNORECASE,
+    )
+    return bool(pass_summary and not material_concern)
+
+
+def _should_demote_capacity_boundary(metric_snapshot: dict[str, Any], finding: dict[str, Any]) -> bool:
+    if str(metric_snapshot.get("verdict") or "") not in {"pass", "conditional_pass"}:
+        return False
+    if any(item.get("metric") == "requests_per_second" for item in metric_snapshot.get("objectives", [])):
+        return False
+    evidence_refs = {str(item) for item in finding.get("evidence_refs", [])}
+    text = f"{finding.get('title', '')} {finding.get('statement', '')}"
+    capacity_boundary = "capacity:summary" in evidence_refs or bool(
+        re.search(r"容量上限|容量拐点|性能拐点|固定(?:单阶段)?负载|阶梯加压", text, re.IGNORECASE)
+    )
+    return capacity_boundary and not re.search(r"失败|退化|恶化|超时|错误|目标未通过", text, re.IGNORECASE)
+
+
+def _humanize_capacity_boundary_finding(
+    metric_snapshot: dict[str, Any], finding: dict[str, Any]
+) -> dict[str, Any]:
+    statement = str(finding.get("statement") or "")
+    if not _should_demote_capacity_boundary(metric_snapshot, finding) or not re.search(
+        r"load\.mode|stages|capacity_analysis|can_claim_stable_capacity|knee_point|\b(?:false|null)\b",
+        statement,
+        re.IGNORECASE,
+    ):
+        return finding
+    users = (metric_snapshot.get("test_scope") or {}).get("users")
+    load_scope = f"{int(users)} 用户固定负载" if isinstance(users, (int, float)) and users > 0 else "当前固定负载"
+    return {
+        **finding,
+        "statement": (
+            f"本次仅验证了 {load_scope}下的表现。由于未进行分阶段加压，当前结果不能用于判断"
+            "系统容量上限或性能拐点，也不能据此宣称已获得稳定容量。"
+        ),
+    }
+
+
+def _is_server_resource_evidence(value: str) -> bool:
+    return bool(
+        re.search(
+            r"服务端资源|server.resource|CPU|内存|数据库连接|连接池|调用链|resource_correlation",
+            value,
+            re.IGNORECASE,
+        )
+    )
 
 
 __all__ = ["CALCULATOR_VERSION", "build_metric_snapshot", "build_report_snapshot"]

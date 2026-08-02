@@ -1,10 +1,26 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { type CSSProperties, type UIEvent, useCallback, useEffect, useMemo, useState } from "react";
 
 import Link from "next/link";
 
-import { ArrowLeft, ImageIcon, Loader2, MonitorPlay, Play, Radio, RefreshCw, Square } from "lucide-react";
+import {
+  ArrowLeft,
+  CheckCircle2,
+  ChevronDown,
+  ChevronRight,
+  Circle,
+  Clock3,
+  ImageIcon,
+  Loader2,
+  MonitorPlay,
+  Play,
+  Radio,
+  RefreshCw,
+  Search,
+  Square,
+  XCircle,
+} from "lucide-react";
 
 import { PageShell, ShellSection } from "@/components/ai-testing/page-shell";
 import { Button } from "@/components/ui/button";
@@ -16,6 +32,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { chineseCompletionTone, StatusBadge } from "@/components/ui/status-badge";
 import {
   API_BASE_URL,
@@ -24,10 +42,14 @@ import {
   formatDateTime,
   getUiAutomationExecutionRun,
   getUiAutomationLiveView,
+  getUiAutomationRunDetail,
   getUiAutomationRunLogs,
   stopUiAutomationExecutionRun,
   type UiAutomationExecutionRun,
+  type UiAutomationIterationResult,
   type UiAutomationLiveView,
+  type UiAutomationRunDetail as UiAutomationRunDetailData,
+  type UiAutomationStepResult,
 } from "@/lib/api-client";
 import { toast } from "@/lib/toast";
 import { moduleBreadcrumbs } from "@/navigation/breadcrumbs";
@@ -45,6 +67,7 @@ export function UiAutomationRunDetail({
   runId: string;
 }) {
   const [run, setRun] = useState<UiAutomationExecutionRun | null>(null);
+  const [detail, setDetail] = useState<UiAutomationRunDetailData | null>(null);
   const [logs, setLogs] = useState({ stdout: "", stderr: "" });
   const [screenshotUrls, setScreenshotUrls] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
@@ -54,13 +77,22 @@ export function UiAutomationRunDetail({
   const [liveViewOpen, setLiveViewOpen] = useState(false);
   const [liveView, setLiveView] = useState<UiAutomationLiveView | null>(null);
   const [liveViewLoading, setLiveViewLoading] = useState(false);
+  const [selectedIterationId, setSelectedIterationId] = useState("");
+  const [parameterQuery, setParameterQuery] = useState("");
+  const [iterationStatus, setIterationStatus] = useState("all");
+  const [expandedSteps, setExpandedSteps] = useState<Set<string>>(new Set());
+  const [stepArtifactUrls, setStepArtifactUrls] = useState<Record<string, string>>({});
 
   const loadDetail = useCallback(
     async (showLoading = true) => {
       if (showLoading) setLoading(true);
       try {
-        const nextRun = await getUiAutomationExecutionRun(projectId, runId);
+        const [nextRun, nextDetail] = await Promise.all([
+          getUiAutomationExecutionRun(projectId, runId),
+          getUiAutomationRunDetail(projectId, runId),
+        ]);
         setRun(nextRun);
+        setDetail(nextDetail);
         if (!activeStatuses.has(nextRun.status)) {
           setLogs(await getUiAutomationRunLogs(projectId, runId));
         }
@@ -142,6 +174,71 @@ export function UiAutomationRunDetail({
       window.clearInterval(timer);
     };
   }, [liveViewOpen, projectId, runId]);
+
+  const filteredIterations = useMemo(() => {
+    const query = parameterQuery.trim().toLowerCase();
+    return (detail?.iterations ?? []).filter((iteration) => {
+      if (iterationStatus !== "all" && iteration.status !== iterationStatus) return false;
+      if (!query) return true;
+      return parameterSummary(iteration).toLowerCase().includes(query);
+    });
+  }, [detail?.iterations, iterationStatus, parameterQuery]);
+
+  const selectedIteration = useMemo(
+    () => detail?.iterations.find((iteration) => iteration.iteration_id === selectedIterationId) ?? null,
+    [detail?.iterations, selectedIterationId],
+  );
+
+  useEffect(() => {
+    const iterations = detail?.iterations ?? [];
+    if (iterations.length === 0 || iterations.some((item) => item.iteration_id === selectedIterationId)) return;
+    const preferred =
+      iterations.find((item) => item.status === "running") ??
+      iterations.find((item) => item.status === "failed" || item.status === "infrastructure_error") ??
+      iterations[0];
+    setSelectedIterationId(preferred.iteration_id);
+  }, [detail?.iterations, selectedIterationId]);
+
+  useEffect(() => {
+    const artifacts = (selectedIteration?.steps ?? []).flatMap((step) => step.artifacts);
+    if (artifacts.length === 0) {
+      setStepArtifactUrls({});
+      return;
+    }
+    let disposed = false;
+    const urls: string[] = [];
+    void Promise.all(
+      artifacts.map(async (artifact) => {
+        const blob = await apiBlobRequest(
+          `/projects/${projectId}/ui-automation/runs/${runId}/step-artifacts/${artifact.artifact_id}`,
+        );
+        const url = URL.createObjectURL(blob);
+        urls.push(url);
+        return [artifact.artifact_id, url] as const;
+      }),
+    )
+      .then((entries) => {
+        if (!disposed) setStepArtifactUrls(Object.fromEntries(entries));
+      })
+      .catch(() => {
+        if (!disposed) setStepArtifactUrls({});
+      });
+    return () => {
+      disposed = true;
+      urls.forEach((url) => {
+        URL.revokeObjectURL(url);
+      });
+    };
+  }, [projectId, runId, selectedIteration]);
+
+  useEffect(() => {
+    const failedStepId = selectedIteration?.failed_step_id;
+    if (!failedStepId) return;
+    setExpandedSteps((current) => {
+      if (current.has(failedStepId)) return current;
+      return new Set([...current, failedStepId]);
+    });
+  }, [selectedIteration?.failed_step_id]);
 
   async function rerun() {
     if (!run || activeStatuses.has(run.status)) return;
@@ -262,8 +359,29 @@ export function UiAutomationRunDetail({
               </section>
             ) : null}
 
+            <ExecutionResultPanel
+              artifactUrls={stepArtifactUrls}
+              detail={detail}
+              expandedSteps={expandedSteps}
+              filteredIterations={filteredIterations}
+              iterationStatus={iterationStatus}
+              onIterationStatusChange={setIterationStatus}
+              onParameterQueryChange={setParameterQuery}
+              onSelectIteration={setSelectedIterationId}
+              onToggleStep={(stepId) =>
+                setExpandedSteps((current) => {
+                  const next = new Set(current);
+                  if (next.has(stepId)) next.delete(stepId);
+                  else next.add(stepId);
+                  return next;
+                })
+              }
+              parameterQuery={parameterQuery}
+              selectedIteration={selectedIteration}
+            />
+
             <section>
-              <SectionTitle title="运行日志" />
+              <SectionTitle title="原始运行日志" />
               <pre className="max-h-[32rem] overflow-auto whitespace-pre-wrap rounded-md bg-zinc-950 p-4 font-mono text-xs text-zinc-100 leading-5">
                 {logs.stdout ||
                   logs.stderr ||
@@ -376,6 +494,409 @@ export function UiAutomationRunDetail({
         </DialogContent>
       </Dialog>
     </PageShell>
+  );
+}
+
+function ExecutionResultPanel({
+  detail,
+  filteredIterations,
+  selectedIteration,
+  parameterQuery,
+  iterationStatus,
+  expandedSteps,
+  artifactUrls,
+  onParameterQueryChange,
+  onIterationStatusChange,
+  onSelectIteration,
+  onToggleStep,
+}: {
+  detail: UiAutomationRunDetailData | null;
+  filteredIterations: UiAutomationIterationResult[];
+  selectedIteration: UiAutomationIterationResult | null;
+  parameterQuery: string;
+  iterationStatus: string;
+  expandedSteps: Set<string>;
+  artifactUrls: Record<string, string>;
+  onParameterQueryChange: (value: string) => void;
+  onIterationStatusChange: (value: string) => void;
+  onSelectIteration: (value: string) => void;
+  onToggleStep: (value: string) => void;
+}) {
+  if (!detail?.detail_available) {
+    return (
+      <section className="border-y py-5">
+        <SectionTitle title="参数与步骤结果" />
+        <div className="flex min-h-24 items-center justify-center border bg-muted/20 px-4 text-center text-muted-foreground text-sm">
+          当前运行尚未产生结构化步骤结果，仍可查看原始日志、截图和浏览器画面。
+        </div>
+      </section>
+    );
+  }
+
+  const summary = detail.summary;
+  const multipleIterations = Number(summary.total ?? 0) > 1;
+
+  return (
+    <section className="space-y-4">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <SectionTitle title="参数与步骤结果" />
+          <p className="text-muted-foreground text-xs">
+            {detail.incomplete ? "运行被中断，以下结果来自已保存事件。" : "按参数实例查看每个业务步骤的执行结果。"}
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-x-4 gap-y-1 font-mono text-xs tabular-nums">
+          <SummaryValue label="总计" value={summary.total ?? 0} />
+          <SummaryValue label="通过" tone="text-emerald-600 dark:text-emerald-400" value={summary.passed ?? 0} />
+          <SummaryValue label="失败" tone="text-red-600 dark:text-red-400" value={summary.failed ?? 0} />
+          <SummaryValue label="运行中" tone="text-amber-600 dark:text-amber-400" value={summary.running ?? 0} />
+          <SummaryValue label="已停止" value={summary.cancelled ?? 0} />
+        </div>
+      </div>
+
+      <div className={multipleIterations ? "grid min-h-[34rem] border lg:grid-cols-[20rem_minmax(0,1fr)]" : "border"}>
+        {multipleIterations ? (
+          <aside className="flex min-h-0 flex-col border-b bg-muted/10 lg:border-r lg:border-b-0">
+            <div className="grid grid-cols-[minmax(0,1fr)_7.5rem] gap-2 border-b p-3">
+              <div className="relative">
+                <Search className="absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  aria-label="筛选参数实例"
+                  className="pl-8"
+                  onChange={(event) => onParameterQueryChange(event.target.value)}
+                  placeholder="筛选参数"
+                  value={parameterQuery}
+                />
+              </div>
+              <Select onValueChange={onIterationStatusChange} value={iterationStatus}>
+                <SelectTrigger aria-label="按状态筛选参数实例" className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">全部状态</SelectItem>
+                  <SelectItem value="running">执行中</SelectItem>
+                  <SelectItem value="passed">通过</SelectItem>
+                  <SelectItem value="failed">失败</SelectItem>
+                  <SelectItem value="infrastructure_error">环境错误</SelectItem>
+                  <SelectItem value="cancelled">已停止</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="max-h-[42rem] min-h-0 overflow-y-auto p-1.5">
+              {filteredIterations.length ? (
+                <IterationList
+                  iterations={filteredIterations}
+                  onSelect={onSelectIteration}
+                  selectedIterationId={selectedIteration?.iteration_id ?? ""}
+                />
+              ) : (
+                <div className="flex min-h-32 items-center justify-center px-4 text-center text-muted-foreground text-xs">
+                  没有符合筛选条件的参数实例
+                </div>
+              )}
+            </div>
+          </aside>
+        ) : null}
+
+        <div className="min-w-0">
+          {selectedIteration ? (
+            <IterationSteps
+              artifactUrls={artifactUrls}
+              expandedSteps={expandedSteps}
+              iteration={selectedIteration}
+              onToggleStep={onToggleStep}
+            />
+          ) : (
+            <div className="flex min-h-72 items-center justify-center text-muted-foreground text-sm">
+              请选择参数实例
+            </div>
+          )}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+const ITERATION_ROW_HEIGHT = 64;
+const VIRTUALIZATION_THRESHOLD = 100;
+const VIRTUALIZATION_OVERSCAN = 6;
+
+function IterationList({
+  iterations,
+  selectedIterationId,
+  onSelect,
+}: {
+  iterations: UiAutomationIterationResult[];
+  selectedIterationId: string;
+  onSelect: (value: string) => void;
+}) {
+  const [scrollTop, setScrollTop] = useState(0);
+  const shouldVirtualize = iterations.length > VIRTUALIZATION_THRESHOLD;
+  const viewportHeight = 42 * 16 - 12;
+  const start = shouldVirtualize
+    ? Math.max(0, Math.floor(scrollTop / ITERATION_ROW_HEIGHT) - VIRTUALIZATION_OVERSCAN)
+    : 0;
+  const end = shouldVirtualize
+    ? Math.min(
+        iterations.length,
+        Math.ceil((scrollTop + viewportHeight) / ITERATION_ROW_HEIGHT) + VIRTUALIZATION_OVERSCAN,
+      )
+    : iterations.length;
+  const visibleIterations = iterations.slice(start, end);
+
+  const items = visibleIterations.map((iteration, visibleIndex) => (
+    <IterationButton
+      iteration={iteration}
+      key={iteration.iteration_id}
+      onSelect={onSelect}
+      selected={selectedIterationId === iteration.iteration_id}
+      style={
+        shouldVirtualize
+          ? {
+              height: ITERATION_ROW_HEIGHT,
+              position: "absolute",
+              top: (start + visibleIndex) * ITERATION_ROW_HEIGHT,
+            }
+          : undefined
+      }
+    />
+  ));
+
+  if (!shouldVirtualize) return items;
+
+  return (
+    <div
+      className="relative -m-1.5 max-h-[42rem] overflow-y-auto p-1.5"
+      onScroll={(event: UIEvent<HTMLDivElement>) => setScrollTop(event.currentTarget.scrollTop)}
+      style={{ height: viewportHeight }}
+    >
+      <div className="relative" style={{ height: iterations.length * ITERATION_ROW_HEIGHT }}>
+        {items}
+      </div>
+    </div>
+  );
+}
+
+function IterationButton({
+  iteration,
+  selected,
+  onSelect,
+  style,
+}: {
+  iteration: UiAutomationIterationResult;
+  selected: boolean;
+  onSelect: (value: string) => void;
+  style?: CSSProperties;
+}) {
+  return (
+    <button
+      className={`grid w-full grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-2 px-2.5 py-2.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+        selected ? "bg-accent text-accent-foreground" : "hover:bg-muted/70"
+      }`}
+      onClick={() => onSelect(iteration.iteration_id)}
+      style={style}
+      type="button"
+    >
+      <IterationStatusIcon status={iteration.status} />
+      <span className="min-w-0">
+        <span className="line-clamp-2 block break-all font-medium text-xs leading-5">
+          {parameterSummary(iteration)}
+        </span>
+        <span className="mt-0.5 block truncate font-mono text-[10px] text-muted-foreground">
+          {iteration.failed_step_id ? `失败于 ${iteration.failed_step_id}` : iteration.iteration_id}
+        </span>
+      </span>
+      <span className="pt-0.5 font-mono text-[10px] text-muted-foreground tabular-nums">
+        {formatDuration(iteration.duration_ms)}
+      </span>
+    </button>
+  );
+}
+
+function IterationSteps({
+  iteration,
+  expandedSteps,
+  artifactUrls,
+  onToggleStep,
+}: {
+  iteration: UiAutomationIterationResult;
+  expandedSteps: Set<string>;
+  artifactUrls: Record<string, string>;
+  onToggleStep: (value: string) => void;
+}) {
+  const visibleSteps = iteration.steps.filter((step) => step.visible);
+  return (
+    <div>
+      <header className="border-b px-4 py-3.5 sm:px-5">
+        <div className="flex flex-wrap items-center gap-2">
+          <h3 className="font-semibold text-sm">{parameterSummary(iteration)}</h3>
+          <StatusBadge tone={chineseCompletionTone(iteration.status)}>
+            {iterationStatusLabel(iteration.status)}
+          </StatusBadge>
+          <span className="font-mono text-muted-foreground text-xs tabular-nums">
+            {formatDuration(iteration.duration_ms)}
+          </span>
+        </div>
+        <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-muted-foreground text-xs">
+          {Object.entries(iteration.parameters).map(([key, value]) => (
+            <span key={key}>
+              <span className="font-mono">{key}</span> = <span className="break-all">{String(value)}</span>
+            </span>
+          ))}
+        </div>
+      </header>
+
+      {visibleSteps.length ? (
+        <div className="divide-y">
+          {visibleSteps.map((step, index) => {
+            const expanded = expandedSteps.has(step.step_id);
+            const hasDetails = Boolean(step.error || step.artifacts.length || step.operation_ids.length);
+            return (
+              <article key={`${iteration.iteration_id}-${step.step_id}`}>
+                <button
+                  className="grid w-full grid-cols-[1.25rem_minmax(0,1fr)_auto_auto] items-start gap-3 px-4 py-3.5 text-left transition-colors hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset sm:px-5"
+                  disabled={!hasDetails}
+                  onClick={() => onToggleStep(step.step_id)}
+                  type="button"
+                >
+                  <StepStatusIcon status={step.status} />
+                  <span className="min-w-0">
+                    <span className="block font-medium text-sm leading-5">
+                      {index + 1}. {step.title || step.step_id}
+                    </span>
+                    <span className="mt-0.5 block font-mono text-[10px] text-muted-foreground">{step.step_id}</span>
+                  </span>
+                  <span className="pt-0.5 font-mono text-muted-foreground text-xs tabular-nums">
+                    {formatDuration(step.duration_ms)}
+                  </span>
+                  {hasDetails ? (
+                    expanded ? (
+                      <ChevronDown className="mt-0.5 size-4" />
+                    ) : (
+                      <ChevronRight className="mt-0.5 size-4" />
+                    )
+                  ) : (
+                    <span className="size-4" />
+                  )}
+                </button>
+                {expanded && hasDetails ? <StepDetails artifactUrls={artifactUrls} step={step} /> : null}
+              </article>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="flex min-h-64 items-center justify-center p-5">
+          {iteration.error ? (
+            <div className="w-full max-w-3xl border-red-500 border-l-2 px-4 py-3">
+              <div className="font-medium text-red-700 text-sm dark:text-red-300">
+                {iteration.error.type ?? "步骤开始前执行失败"}
+              </div>
+              <pre className="mt-2 overflow-auto whitespace-pre-wrap font-mono text-red-700 text-xs leading-5 dark:text-red-200">
+                {iteration.error.message ?? "参数实例在进入业务步骤前失败。"}
+              </pre>
+              <p className="mt-2 text-muted-foreground text-xs">该错误发生在首个业务步骤开始前。</p>
+            </div>
+          ) : (
+            <span className="text-muted-foreground text-sm">该实例暂无步骤事件</span>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function StepDetails({ step, artifactUrls }: { step: UiAutomationStepResult; artifactUrls: Record<string, string> }) {
+  return (
+    <div className="space-y-3 bg-muted/20 px-4 pt-1 pb-4 sm:pl-12">
+      {step.error ? (
+        <div className="border-red-500 border-l-2 px-3 py-2">
+          <div className="font-medium text-red-700 text-xs dark:text-red-300">{step.error.type ?? "执行失败"}</div>
+          <pre className="mt-1 overflow-auto whitespace-pre-wrap font-mono text-red-700 text-xs leading-5 dark:text-red-200">
+            {step.error.message ?? "步骤执行失败"}
+          </pre>
+        </div>
+      ) : null}
+      {step.operation_ids.length ? (
+        <div>
+          <div className="mb-1.5 text-muted-foreground text-xs">技术动作</div>
+          <div className="flex flex-wrap gap-1.5">
+            {step.operation_ids.map((operationId) => (
+              <code className="border bg-background px-1.5 py-1 text-[10px]" key={operationId}>
+                {operationId}
+              </code>
+            ))}
+          </div>
+        </div>
+      ) : null}
+      {step.artifacts.map((artifact) =>
+        artifactUrls[artifact.artifact_id] ? (
+          <figure className="max-w-3xl overflow-hidden border bg-background" key={artifact.artifact_id}>
+            {/* biome-ignore lint/performance/noImgElement: authenticated evidence is loaded as a blob URL. */}
+            <img
+              alt={`${step.title || step.step_id}失败截图`}
+              className="aspect-video w-full object-contain"
+              src={artifactUrls[artifact.artifact_id]}
+            />
+            <figcaption className="border-t px-3 py-2 font-mono text-[10px] text-muted-foreground">
+              {artifact.artifact_id}
+            </figcaption>
+          </figure>
+        ) : null,
+      )}
+    </div>
+  );
+}
+
+function SummaryValue({ label, value, tone = "" }: { label: string; value: number; tone?: string }) {
+  return (
+    <span className={tone}>
+      <span className="text-muted-foreground">{label}</span> {value}
+    </span>
+  );
+}
+
+function IterationStatusIcon({ status }: { status: string }) {
+  if (status === "running") return <Loader2 className="mt-0.5 size-4 animate-spin text-amber-500" />;
+  if (status === "passed") return <CheckCircle2 className="mt-0.5 size-4 text-emerald-500" />;
+  if (status === "failed" || status === "infrastructure_error") {
+    return <XCircle className="mt-0.5 size-4 text-red-500" />;
+  }
+  if (status === "cancelled") return <Square className="mt-0.5 size-3.5 text-muted-foreground" />;
+  return <Circle className="mt-0.5 size-4 text-muted-foreground" />;
+}
+
+function StepStatusIcon({ status }: { status: string }) {
+  if (status === "running") return <Loader2 className="mt-0.5 size-4 animate-spin text-amber-500" />;
+  if (status === "passed") return <CheckCircle2 className="mt-0.5 size-4 text-emerald-500" />;
+  if (status === "failed") return <XCircle className="mt-0.5 size-4 text-red-500" />;
+  if (status === "cancelled") return <Square className="mt-0.5 size-3.5 text-muted-foreground" />;
+  return <Clock3 className="mt-0.5 size-4 text-muted-foreground" />;
+}
+
+function parameterSummary(iteration: UiAutomationIterationResult) {
+  const entries = Object.entries(iteration.parameters);
+  if (entries.length === 0) return "默认参数实例";
+  return entries.map(([key, value]) => `${key}=${String(value)}`).join(" · ");
+}
+
+function formatDuration(value: number | null) {
+  if (value === null || !Number.isFinite(value)) return "-";
+  if (value < 1000) return `${Math.round(value)}ms`;
+  if (value < 60_000) return `${(value / 1000).toFixed(value < 10_000 ? 1 : 0)}s`;
+  return `${Math.floor(value / 60_000)}m ${Math.round((value % 60_000) / 1000)}s`;
+}
+
+function iterationStatusLabel(status: string) {
+  return (
+    {
+      pending: "等待中",
+      running: "执行中",
+      passed: "通过",
+      failed: "失败",
+      skipped: "已跳过",
+      cancelled: "已停止",
+      infrastructure_error: "环境错误",
+    }[status] ?? status
   );
 }
 

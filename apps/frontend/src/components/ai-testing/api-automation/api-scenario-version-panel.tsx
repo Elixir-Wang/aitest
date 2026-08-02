@@ -28,7 +28,7 @@ export function ApiScenarioVersionPanel({ busy, currentRevision, revisions, onRe
             </div>
             <h2 className="mt-2 font-semibold text-xl">版本记录</h2>
             <p className="mt-1 max-w-2xl text-muted-foreground text-sm">
-              每次保存都会生成可运行版本，最多保留最近 5 个。可展开查看完整编排，恢复历史版本会生成新版本。
+              当前版本单独保存，最多保留最近 5 个历史版本。可展开查看完整编排，恢复历史版本会生成新版本。
             </p>
           </div>
           <Badge className="border-primary/20 bg-primary/8 text-primary" variant="outline">

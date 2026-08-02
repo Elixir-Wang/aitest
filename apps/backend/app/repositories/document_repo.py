@@ -6,6 +6,10 @@ from app.repositories.project_repo import SYSTEM_RESERVED_PROJECT_IDS
 _DOCUMENT_LIST_SELECT = """
         SELECT d.*,
                p.name AS project_name,
+               pv.id AS project_version_id_joined,
+               pv.version AS project_version,
+               pv.name AS project_version_name,
+               CASE WHEN p.default_version_id = pv.id THEN 1 ELSE 0 END AS project_version_is_default,
                COUNT(m.id) AS file_count,
                v.id AS version_id,
                v.version_no AS version_no,
@@ -23,6 +27,7 @@ _DOCUMENT_LIST_SELECT = """
                latest_run.updated_at AS requirement_analysis_run_updated_at
         FROM source_documents d
         JOIN projects p ON p.id = d.project_id
+        LEFT JOIN project_versions pv ON pv.id = d.project_version_id
         LEFT JOIN source_document_versions v ON v.id = d.current_version_id
         LEFT JOIN source_document_file_mappings m ON m.document_id = d.id
         LEFT JOIN requirement_analysis_runs latest_run ON latest_run.id = (
@@ -59,15 +64,17 @@ def find_by_project_and_name(db: Connection, project_id: str, name: str, exclude
     ).fetchone()
 
 
-def list_by_project(db: Connection, project_id: str) -> list[Row]:
+def list_by_project(db: Connection, project_id: str, project_version_id: str = "") -> list[Row]:
+    version_filter = " AND d.project_version_id = ?" if project_version_id else ""
+    params = (project_id, project_version_id) if project_version_id else (project_id,)
     return db.execute(
         f"""
         {_DOCUMENT_LIST_SELECT}
-        WHERE d.project_id = ?
+        WHERE d.project_id = ?{version_filter}
         GROUP BY d.id
         ORDER BY d.created_at DESC
         """,
-        (project_id,),
+        params,
     ).fetchall()
 
 
@@ -110,6 +117,7 @@ def create_document(
     *,
     document_id: str,
     project_id: str,
+    project_version_id: str,
     name: str,
     document_type: str,
     status: str,
@@ -117,10 +125,17 @@ def create_document(
 ) -> None:
     db.execute(
         """
-        INSERT INTO source_documents (id, project_id, name, document_type, status, created_by)
-        VALUES (?, ?, ?, ?, ?, ?)
+        INSERT INTO source_documents (id, project_id, project_version_id, name, document_type, status, created_by)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
         """,
-        (document_id, project_id, name, document_type, status, created_by),
+        (document_id, project_id, project_version_id, name, document_type, status, created_by),
+    )
+
+
+def update_project_version(db: Connection, document_id: str, project_version_id: str) -> None:
+    db.execute(
+        "UPDATE source_documents SET project_version_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+        (project_version_id, document_id),
     )
 
 

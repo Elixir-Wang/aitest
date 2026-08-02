@@ -8,7 +8,6 @@ from app.agents.api_automation.orchestration.schemas import (
     ScenarioAssertion,
     ScenarioBinding,
     ScenarioExtractor,
-    ScenarioPlanInput,
     ValueSource,
     ValueType,
     normalize_legacy_assertion,
@@ -445,10 +444,17 @@ class ApiScenarioAiPlanIn(_StrippedModel):
     scenario_id: str | None = None
 
 
+class ApiScenarioAiPlanError(_StrippedModel):
+    stage: str = Field(min_length=1, max_length=100)
+    code: str = Field(min_length=1, max_length=100)
+    message: str = Field(min_length=1)
+
+
 class ApiScenarioAiPlanAcceptedOut(_StrippedModel):
     plan_id: str
     scenario_id: str | None = None
     lifecycle_status: Literal["generating", "completed", "failed", "expired"] = "generating"
+    error: ApiScenarioAiPlanError | None = None
 
 
 class ApiScenarioAiReviewField(_StrippedModel):
@@ -543,53 +549,9 @@ class ApiScenarioAiReviewSaveIn(_StrippedModel):
     steps: list[ApiScenarioAiReviewStepSaveIn] = Field(min_length=1, max_length=100)
 
 
-class ApiScenarioAiPlanNode(_StrippedModel):
-    id: str = Field(min_length=1, max_length=100)
-    type: Literal["api_request", "condition", "wait", "assign"]
-    endpoint_id: str | None = None
-    phase: Literal["setup", "main", "verify", "cleanup"] = "main"
-    name: str = ""
-    request_overrides: dict[str, Any] = Field(default_factory=dict)
-    bindings: list[ScenarioBinding] = Field(default_factory=list)
-    extractors: list[ScenarioExtractor] = Field(default_factory=list)
-    assertions: list[ScenarioAssertion] = Field(default_factory=list)
-    control_config: dict[str, Any] = Field(default_factory=dict)
-    on_failure: Literal["stop", "continue", "always_run"] = "stop"
-    enabled: bool = True
-
-
-class ApiScenarioAiPlanEdge(_StrippedModel):
-    source: str = Field(min_length=1, max_length=100)
-    target: str = Field(min_length=1, max_length=100)
-    condition: str = "success"
-
-
-class ApiScenarioAiPlanOut(_StrippedModel):
-    plan_id: str
-    plan_version: int = 2
-    status: Literal["preview", "applied", "discarded", "expired"] = "preview"
-    compiler_version: int = 1
-    asset_fingerprint: str = ""
-    environment_schema: dict[str, Any] = Field(default_factory=dict)
-    schema_version: int = 2
-    graph_version: int = 1
-    scenario_name: str
-    description: str = ""
-    inputs: list[ScenarioPlanInput] = Field(default_factory=list)
-    nodes: list[ApiScenarioAiPlanNode] = Field(default_factory=list)
-    edges: list[ApiScenarioAiPlanEdge] = Field(default_factory=list)
-    assumptions: list[str] = Field(default_factory=list)
-    warnings: list[str] = Field(default_factory=list)
-    unresolved_items: list[str] = Field(default_factory=list)
-    confidence: float = Field(ge=0, le=1)
-    validation: dict[str, Any] = Field(default_factory=dict)
-    expected_revision: int | None = None
-    expires_at: str
-
-
 class ApiScenarioAiPlanApplyIn(_StrippedModel):
     scenario_id: str = Field(min_length=1)
-    confirmation: Literal["overwrite_draft"]
+    confirmation: Literal["create_version"]
     expected_review_revision: int = Field(ge=0)
 
 
@@ -599,4 +561,3 @@ class ApiScenarioPublishIn(_StrippedModel):
 
 class ApiScenarioExecuteIn(_StrippedModel):
     api_environment_id: str
-    source: Literal["published", "draft"] = "published"

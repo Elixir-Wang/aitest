@@ -24,7 +24,6 @@ from app.schemas.api_automation import (
     ApiScenarioAiPlanAcceptedOut,
     ApiScenarioAiPlanApplyIn,
     ApiScenarioAiPlanIn,
-    ApiScenarioAiPlanOut,
     ApiScenarioAiReviewPlan,
     ApiScenarioAiReviewSaveIn,
     ApiScenarioExecuteIn,
@@ -515,7 +514,7 @@ def create_api_scenario_ai_plan(
 
 @router.get(
     "/api-scenarios/ai-plans/{plan_id}",
-    response_model=ApiScenarioAiReviewPlan | ApiScenarioAiPlanOut | ApiScenarioAiPlanAcceptedOut,
+    response_model=ApiScenarioAiReviewPlan | ApiScenarioAiPlanAcceptedOut,
 )
 def get_api_scenario_ai_plan(project_id: str, plan_id: str, actor=Depends(current_user)) -> dict:
     return service.get_api_scenario_ai_plan(project_id, plan_id, actor)
@@ -638,7 +637,6 @@ def execute_api_scenario(
         scenario_id,
         payload.api_environment_id,
         actor,
-        source=payload.source,
     )
     background_tasks.add_task(service.execute_api_run, created["id"])
     return created
@@ -652,6 +650,4 @@ def create_api_scenario_step(
     actor=Depends(require_admin),
 ) -> dict:
     return service.create_api_scenario_step(project_id, scenario_id, payload, actor)
-
-
 

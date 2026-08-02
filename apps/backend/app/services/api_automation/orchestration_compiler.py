@@ -8,9 +8,9 @@ from typing import Any
 
 from app.agents.api_automation.orchestration.schemas import (
     GeneratedValueSource,
+    LiteralValueSource,
     ScenarioBinding,
     ScenarioExtractor,
-    ScenarioPlanInput,
     ScenarioPlanResult,
     SecretValueSource,
     StatusCodeAssertion,
@@ -19,7 +19,6 @@ from app.schemas.api_automation import ApiScenarioAiReviewPlan
 from app.services.api_automation.orchestration_asset_analysis import dependency_candidates, request_slots, response_slots
 
 
-COMPILER_VERSION = 2
 _SUCCESS_METHODS = {"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD"}
 
 
@@ -38,7 +37,6 @@ def compile_plan(
     # metadata it was not given and must not become executable-plan truth.
     unresolved: list[str] = []
     warnings: list[str] = []
-    inputs = {item.name: item for item in compiled.inputs}
     edges = {(edge.source, edge.target, edge.condition) for edge in compiled.edges}
 
     environment_keys = {str(item.get("key")): item for item in environment.get("variables", [])}
@@ -56,19 +54,25 @@ def compile_plan(
                 warnings.append(f"步骤 {node.id} 已由编译器补充 {status} 状态码断言。")
         node.bindings = _normalize_and_dedupe_bindings(node.bindings, endpoint)
         node.bindings = _apply_asset_values(node.bindings, endpoint)
+        node.bindings = _collapse_encoded_json_bindings(node.bindings, endpoint)
         node.extractors = _calibrate_extractors(node.extractors, endpoint)
         slot_by_target = {(slot.location, slot.path): slot for slot in request_slots(endpoint)}
-        bound_targets = {(binding.target.location, binding.target.path) for binding in node.bindings}
         for target in request_slots(endpoint):
             key = (target.location, target.path)
             if target.sensitive or target.name not in environment_keys:
+                continue
+            exact_binding = any(
+                binding.target.location == target.location and binding.target.path == target.path
+                for binding in node.bindings
+            )
+            if not exact_binding and _target_is_covered(node.bindings, target.location, target.path):
                 continue
             environment_binding = ScenarioBinding.model_validate(
                 {"target": {"location": target.location, "path": target.path}, "source": {"type": "environment", "key": target.name}}
             )
             node.bindings = [binding for binding in node.bindings if (binding.target.location, binding.target.path) != key]
             node.bindings.append(environment_binding)
-            bound_targets.add(key)
+        bound_targets = _covered_request_targets(node.bindings, endpoint)
         for binding in node.bindings:
             if binding.source.type != "user_input":
                 continue
@@ -130,6 +134,8 @@ def compile_plan(
                 warnings.append(f"步骤 {node.id} 的必填参数 {target.path} 已填充 mock 数据。")
                 bound_targets.add(key)
 
+        node.bindings = _normalize_and_dedupe_bindings(node.bindings, endpoint)
+
     if require_cleanup and any(
         node.type == "api_request"
         and str((endpoint_by_id.get(str(node.endpoint_id)) or {}).get("method", "")).upper() in {"POST", "PUT", "PATCH", "DELETE"}
@@ -143,13 +149,10 @@ def compile_plan(
             "graph_version": 1,
             "scenario_name": compiled.scenario_name,
             "description": compiled.description,
-            "inputs": [item.model_dump(exclude_none=True) for item in sorted(inputs.values(), key=lambda item: item.name)],
             "nodes": [node.model_dump(exclude_none=True) for node in nodes],
             "edges": [{"source": source, "target": target, "condition": condition} for source, target, condition in sorted(edges)],
-            "assumptions": compiled.assumptions,
             "warnings": _unique(warnings),
             "unresolved_items": _unique(unresolved),
-            "confidence": compiled.confidence,
         }
     )
 
@@ -248,7 +251,131 @@ def _normalize_and_dedupe_bindings(bindings: list[ScenarioBinding], endpoint: di
         previous = normalized.get(key)
         if previous is None or _binding_priority(candidate) > _binding_priority(previous):
             normalized[key] = candidate
-    return list(normalized.values())
+    candidates = list(normalized.values())
+    kept: list[ScenarioBinding] = []
+    for candidate in candidates:
+        replaced = False
+        next_kept: list[ScenarioBinding] = []
+        for previous in kept:
+            same_location = previous.target.location == candidate.target.location
+            previous_owns_candidate = (
+                same_location
+                and previous.target.path != candidate.target.path
+                and previous.source.type == "object"
+                and candidate.target.path.startswith(f"{previous.target.path}/")
+            )
+            candidate_owns_previous = (
+                same_location
+                and previous.target.path != candidate.target.path
+                and candidate.source.type == "object"
+                and previous.target.path.startswith(f"{candidate.target.path}/")
+            )
+            if previous_owns_candidate:
+                replaced = True
+                next_kept.append(previous)
+            elif candidate_owns_previous:
+                continue
+            else:
+                next_kept.append(previous)
+        if not replaced:
+            next_kept.append(candidate)
+        kept = next_kept
+    return kept
+
+
+def _collapse_encoded_json_bindings(
+    bindings: list[ScenarioBinding],
+    endpoint: dict[str, Any],
+) -> list[ScenarioBinding]:
+    collapsed = list(bindings)
+    encoded_slots = sorted(
+        (slot for slot in request_slots(endpoint) if slot.nested_schema),
+        key=lambda slot: len(slot.path),
+    )
+    for slot in encoded_slots:
+        exact = next(
+            (
+                binding
+                for binding in collapsed
+                if binding.target.location == slot.location and binding.target.path == slot.path
+            ),
+            None,
+        )
+        descendants = [
+            binding
+            for binding in collapsed
+            if binding.target.location == slot.location
+            and binding.target.path.startswith(f"{slot.path}/")
+        ]
+        if exact is not None:
+            collapsed = [binding for binding in collapsed if binding not in descendants]
+            if exact.source.type == "object" and exact.transform != "json_encode":
+                collapsed = [
+                    binding.model_copy(update={"transform": "json_encode"}) if binding is exact else binding
+                    for binding in collapsed
+                ]
+            continue
+        if not descendants:
+            continue
+        properties: dict[str, Any] = {}
+        for binding in sorted(descendants, key=lambda item: len(item.target.path)):
+            relative_path = binding.target.path.removeprefix(slot.path)
+            _set_object_source(properties, relative_path, binding.source.model_dump(exclude_none=True))
+        collapsed = [binding for binding in collapsed if binding not in descendants]
+        collapsed.append(
+            ScenarioBinding.model_validate(
+                {
+                    "target": {"location": slot.location, "path": slot.path},
+                    "source": {"type": "object", "properties": properties},
+                    "required": slot.required,
+                    "transform": "json_encode",
+                }
+            )
+        )
+    return _normalize_and_dedupe_bindings(collapsed, endpoint)
+
+
+def _set_object_source(properties: dict[str, Any], relative_path: str, source: dict[str, Any]) -> None:
+    parts = [
+        part.replace("~1", "/").replace("~0", "~")
+        for part in relative_path.split("/")
+        if part
+    ]
+    if not parts:
+        return
+    current = properties
+    for part in parts[:-1]:
+        child = current.get(part)
+        if not isinstance(child, dict) or child.get("type") != "object":
+            child = {"type": "object", "properties": {}}
+            current[part] = child
+        current = child["properties"]
+    current[parts[-1]] = source
+
+
+def _target_is_covered(bindings: list[ScenarioBinding], location: str, path: str) -> bool:
+    return any(
+        binding.target.location == location
+        and (
+            binding.target.path == path
+            or (
+                binding.source.type == "object"
+                and path.startswith(f"{binding.target.path}/")
+            )
+        )
+        for binding in bindings
+    )
+
+
+def _covered_request_targets(
+    bindings: list[ScenarioBinding],
+    endpoint: dict[str, Any],
+) -> set[tuple[str, str]]:
+    return {
+        (slot.location, slot.path)
+        for slot in request_slots(endpoint)
+        if _target_is_covered(bindings, slot.location, slot.path)
+    }
 
 
 def _normalize_binding_transform(binding: ScenarioBinding) -> ScenarioBinding:

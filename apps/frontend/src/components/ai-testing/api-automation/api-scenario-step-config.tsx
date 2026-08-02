@@ -10,13 +10,6 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "./api-orchestration-select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import type {
@@ -29,10 +22,12 @@ import type {
 } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
 
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./api-orchestration-select";
 import {
   buildEndpointRequestFields,
   buildVariableOptions,
   normalizeRequestLifecycleConfig,
+  resolveRequestFieldValue,
 } from "./api-scenario-model.mjs";
 
 type ApiScenarioStepConfigProps = {
@@ -526,6 +521,7 @@ function RequestEditor({
           bindings={bindings}
           emptyText="该接口没有声明 Path 或 Query 参数。"
           fields={parameterFields}
+          requestOverrides={requestOverrides}
           variableOptions={variableOptions}
           onBindingChange={updateBinding}
         />
@@ -536,6 +532,7 @@ function RequestEditor({
           bindings={bindings}
           emptyText="该接口没有声明 Header。"
           fields={headerFields}
+          requestOverrides={requestOverrides}
           variableOptions={variableOptions}
           onBindingChange={updateBinding}
         />
@@ -568,6 +565,7 @@ function RequestEditor({
             className="mt-3"
             emptyText="该请求体没有声明字段。"
             fields={bodyFields}
+            requestOverrides={requestOverrides}
             variableOptions={variableOptions}
             onBindingChange={updateBinding}
           />
@@ -586,6 +584,7 @@ function RequestEditor({
           bindings={bindings}
           emptyText="该接口没有声明 Cookie。"
           fields={cookieFields}
+          requestOverrides={requestOverrides}
           variableOptions={variableOptions}
           onBindingChange={updateBinding}
         />
@@ -606,6 +605,7 @@ function defaultValueSource(type: string): Record<string, unknown> {
 function RequestFieldsEditor({
   fields,
   bindings,
+  requestOverrides,
   variableOptions,
   emptyText,
   className,
@@ -613,6 +613,7 @@ function RequestFieldsEditor({
 }: {
   fields: ReturnType<typeof buildEndpointRequestFields>["fields"];
   bindings: ApiAutomationScenarioBinding[];
+  requestOverrides: Record<string, unknown>;
   variableOptions: ReturnType<typeof buildVariableOptions>;
   emptyText: string;
   className?: string;
@@ -625,6 +626,7 @@ function RequestFieldsEditor({
       ) : (
         fields.map((field) => {
           const persistedBinding = bindings.find((item) => item.target === field.target);
+          const literalValue = resolveRequestFieldValue(requestOverrides, field.target, field.defaultValue);
           return (
             <div
               className="grid min-h-16 min-w-0 grid-cols-[minmax(140px,0.9fr)_minmax(0,1.1fr)] items-center gap-3 border-b px-3 py-2 last:border-b-0"
@@ -637,9 +639,9 @@ function RequestFieldsEditor({
               </div>
               <BindingSourceSelect
                 binding={persistedBinding}
-                literalValue={field.defaultValue}
+                literalValue={literalValue}
                 variableOptions={variableOptions}
-                onChange={(value) => onBindingChange(field.target, value, field.defaultValue)}
+                onChange={(value) => onBindingChange(field.target, value, literalValue)}
               />
             </div>
           );

@@ -17,7 +17,11 @@ from app.core.exceptions import api_error
 from app.core import storage
 from app.repositories import api_automation_repo
 from app.services.api_automation import service as api_service
-from app.services.api_automation.artifact_storage import project_suite_path, project_workspace_lock
+from app.services.api_automation.artifact_storage import (
+    materialize_scenario_entrypoint,
+    project_suite_path,
+    project_workspace_lock,
+)
 from app.services.api_automation.runner import collect_script_suite, run_script_suite
 from app.services.api_automation.self_healing_artifacts import (
     build_manifest,
@@ -435,6 +439,22 @@ def execute_candidate_repair(attempt_id: str) -> None:
         collect_result = collect_script_suite(suite_path=workspace, timeout=120)
         with connect() as db:
             environment = api_service._build_runtime_environment(db, run["api_environment_id"])
+        scenario_file = None
+        test_paths = None
+        target_type = run["target_type"] if "target_type" in run.keys() else "scripts"
+        if target_type == "scenario":
+            snapshot = api_automation_repo.loads_json(run["execution_snapshot_json"], {})
+            stored_suite_path = api_service._resolve_generated_path(
+                session["project_id"], snapshot.get("suite_path", "")
+            )
+            scenario_test_path = materialize_scenario_entrypoint(workspace)
+            test_paths = [str(scenario_test_path.relative_to(workspace))]
+            stored_data_file = snapshot.get("data_file_path", "")
+            if stored_data_file:
+                stored_data_path = api_service._resolve_generated_path(
+                    session["project_id"], stored_data_file
+                )
+                scenario_file = str(stored_data_path.relative_to(stored_suite_path))
         run_result = run_script_suite(
             run_id=f"repair-validation-{attempt_id}",
             project_id=session["project_id"],
@@ -442,6 +462,8 @@ def execute_candidate_repair(attempt_id: str) -> None:
             run_dir=attempt_dir / "validation",
             environment=environment,
             timeout=environment.get("timeout_seconds", 30),
+            test_paths=test_paths,
+            scenario_file=scenario_file,
         )
         base_revision = (
             storage.PROJECT_FILE_STORAGE_ROOT / session["project_id"] / "api_automation" / "repairs"

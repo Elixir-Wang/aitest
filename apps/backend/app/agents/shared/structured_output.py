@@ -21,15 +21,23 @@ class StructuredOutputRunnable(Generic[SchemaT]):
         self.model = model
         self.schema = schema
         self.correction_retries = correction_retries
+        self.model_call_count = 0
 
     async def ainvoke(self, messages: Any, config: Any = None, **kwargs: Any) -> SchemaT:
+        self.model_call_count = 0
+        validation_error = ""
         tool_response = await self._invoke_with_tool(messages, config=config, **kwargs)
         if tool_response is not None:
             try:
                 return _validate_response(tool_response, self.schema)
-            except (StructuredOutputError, ValidationError):
-                pass
-        return await self._invoke_json_fallback(messages, config=config, **kwargs)
+            except (StructuredOutputError, ValidationError) as exc:
+                validation_error = str(exc)[:1000]
+        return await self._invoke_json_fallback(
+            messages,
+            config=config,
+            validation_error=validation_error,
+            **kwargs,
+        )
 
     async def _invoke_with_tool(self, messages: Any, *, config: Any, **kwargs: Any) -> Any | None:
         try:
@@ -37,17 +45,24 @@ class StructuredOutputRunnable(Generic[SchemaT]):
         except (AttributeError, NotImplementedError):
             return None
         try:
-            return await _ainvoke(tool_model, messages, config=config, **kwargs)
+            return await self._call_model(tool_model, messages, config=config, **kwargs)
         except Exception as exc:
             if _is_unsupported_tool_error(exc):
                 return None
             raise
 
-    async def _invoke_json_fallback(self, messages: Any, *, config: Any, **kwargs: Any) -> SchemaT:
-        validation_error = ""
-        for attempt in range(self.correction_retries + 1):
+    async def _invoke_json_fallback(
+        self,
+        messages: Any,
+        *,
+        config: Any,
+        validation_error: str,
+        **kwargs: Any,
+    ) -> SchemaT:
+        max_attempts = max(1, self.correction_retries if validation_error else self.correction_retries + 1)
+        for attempt in range(max_attempts):
             prompt = _json_instruction(self.schema, validation_error=validation_error)
-            response = await _ainvoke(
+            response = await self._call_model(
                 self.model,
                 [*messages, {"role": "user", "content": prompt}],
                 config=config,
@@ -57,11 +72,15 @@ class StructuredOutputRunnable(Generic[SchemaT]):
                 return _validate_response(response, self.schema)
             except (StructuredOutputError, ValidationError) as exc:
                 validation_error = str(exc)[:1000]
-                if attempt >= self.correction_retries:
+                if attempt + 1 >= max_attempts:
                     raise StructuredOutputError(
                         f"{self.schema.__name__} 输出经过纠错后仍无法通过结构校验: {exc}"
                     ) from exc
         raise StructuredOutputError(f"{self.schema.__name__} 未返回结构化结果")
+
+    async def _call_model(self, target: Any, messages: Any, *, config: Any, **kwargs: Any) -> Any:
+        self.model_call_count += 1
+        return await _ainvoke(target, messages, config=config, **kwargs)
 
 
 def structured_output_runnable(

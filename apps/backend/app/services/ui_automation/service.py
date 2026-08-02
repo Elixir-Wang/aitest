@@ -15,7 +15,11 @@ from fastapi.responses import FileResponse, StreamingResponse
 from app.agents.model_selection import build_agent_model, resolve_model_selection
 from app.agents.ui_automation.pytest_playwright.agent import generate_pytest_playwright_case
 from app.agents.ui_automation.pytest_playwright.collection import collect_suite
-from app.agents.ui_automation.pytest_playwright.renderer import initialize_suite
+from app.agents.ui_automation.pytest_playwright.renderer import (
+    INSTRUMENTATION_VERSION,
+    initialize_suite,
+    render_automation_plan,
+)
 from app.agents.ui_automation.pytest_playwright.schemas import AutomationPlan
 from app.agents.ui_automation.pytest_playwright.suite import (
     case_artifact_paths,
@@ -29,7 +33,7 @@ from app.core.exceptions import api_error
 from app.core.storage import resolve_stored_path, store_path
 from app.repositories import environment_repo, exploration_artifact_repo, exploration_run_repo, project_repo, test_case_repo, ui_automation_repo
 
-from . import artifact_storage, context, live_view, migration, runner
+from . import artifact_storage, context, execution_events, live_view, migration, runner
 
 
 CAPABILITY_ID = "ui_test_generation"
@@ -279,6 +283,41 @@ def get_asset(project_id: str, asset_id: str, actor) -> dict:
         }
 
 
+def delete_asset(project_id: str, asset_id: str, actor) -> None:
+    _require_admin(actor)
+    _ensure_project_suite_migrated(project_id)
+    with artifact_storage.project_workspace_lock(project_id):
+        with connect() as db:
+            _require_visible_project(db, project_id, actor)
+            asset = ui_automation_repo.find_asset(db, asset_id)
+            if not asset or asset["project_id"] != project_id:
+                raise api_error(404, "UI_ASSET_NOT_FOUND", "UI 自动化资产不存在。")
+
+            execution_runs = ui_automation_repo.list_execution_runs(db, project_id, asset_id)
+            if any(run["status"] in {"queued", "running", "stopping"} for run in execution_runs):
+                raise api_error(409, "UI_ASSET_ACTIVE_RUN", "存在排队中或执行中的任务，不能删除该自动化资产。")
+
+            suite_path = project_suite_path(project_id).resolve()
+            runs_root = (suite_path / "runs").resolve()
+            try:
+                artifact_paths = [
+                    resolve_suite_file(suite_path, asset["test_file_path"]),
+                    resolve_suite_file(suite_path, asset["data_file_path"]),
+                    resolve_suite_file(suite_path, asset["plan_file_path"]),
+                ]
+                run_dirs = [_validated_run_dir(runs_root, run) for run in execution_runs]
+            except ValueError as exc:
+                raise api_error(409, "UI_ASSET_PATH_INVALID", "自动化资产包含不安全的文件路径，无法删除。") from exc
+
+            for run_dir in run_dirs:
+                if run_dir.exists():
+                    shutil.rmtree(run_dir)
+            for path in artifact_paths:
+                if path.exists() and path.is_file():
+                    path.unlink()
+            ui_automation_repo.delete_asset(db, asset_id)
+
+
 def list_asset_generation_runs(project_id: str, asset_id: str, actor) -> list[dict]:
     with connect() as db:
         _require_visible_project(db, project_id, actor)
@@ -320,13 +359,10 @@ def delete_execution_run(project_id: str, run_id: str, actor) -> None:
         if not asset or asset["project_id"] != project_id:
             raise api_error(404, "UI_ASSET_NOT_FOUND", "UI 自动化资产不存在。")
         runs_root = ((resolve_stored_path(asset["suite_path"]) or Path(asset["suite_path"])) / "runs").resolve()
-        run_dir = (resolve_stored_path(row["run_dir"]) or (runs_root / run_id)).resolve()
         try:
-            run_dir.relative_to(runs_root)
+            run_dir = _validated_run_dir(runs_root, row)
         except ValueError as exc:
-            raise api_error(409, "UI_EXECUTION_RUN_DIR_INVALID", "运行产物目录不属于当前自动化资产。") from exc
-        if run_dir.name != run_id:
-            raise api_error(409, "UI_EXECUTION_RUN_DIR_INVALID", "运行产物目录与运行记录不匹配。")
+            raise api_error(409, "UI_EXECUTION_RUN_DIR_INVALID", "运行产物目录与运行记录不匹配。") from exc
         if run_dir.exists():
             shutil.rmtree(run_dir)
         ui_automation_repo.delete_execution_run(db, run_id)
@@ -421,6 +457,7 @@ def execute_execution_run(run_id: str) -> dict:
             runner.clear_stop_request(run_id)
             return _serialize_execution_run(ui_automation_repo.find_execution_run(db, run_id))
     try:
+        plan = _ensure_instrumented_asset(suite_path, asset)
         result = runner.run_case(
             run_id=run_id,
             suite_path=suite_path,
@@ -430,6 +467,7 @@ def execute_execution_run(run_id: str) -> dict:
                 "site_url": environment["site_url"],
                 "storage_state_path": str(auth_state_path(environment["id"])) if environment["reuse_auth_state"] else "",
             },
+            parameter_names=plan.parameters,
         )
         with connect() as db:
             update = {
@@ -481,6 +519,18 @@ def execute_execution_run(run_id: str) -> dict:
 
 def _artifact_rows(db, exploration_run_id: str) -> list:
     return exploration_artifact_repo.list_by_run(db, exploration_run_id) if exploration_run_id else []
+
+
+def _ensure_instrumented_asset(suite_path: Path, asset) -> AutomationPlan:
+    test_path = resolve_suite_file(suite_path, asset["test_file_path"])
+    plan_path = resolve_suite_file(suite_path, asset["plan_file_path"])
+    if not plan_path.is_file():
+        raise ValueError("UI 自动化计划文件不存在，无法补齐步骤采集。")
+    plan = AutomationPlan.model_validate_json(plan_path.read_text(encoding="utf-8"))
+    version_marker = f"UI_AUTOMATION_INSTRUMENTATION_VERSION = {INSTRUMENTATION_VERSION}"
+    if not test_path.is_file() or version_marker not in test_path.read_text(encoding="utf-8"):
+        render_automation_plan(suite_path, plan)
+    return plan
 
 
 def _resolve_exploration_run_id(db, *, project_id: str, environment_id: str, requested_run_id: str) -> str:
@@ -535,6 +585,63 @@ def get_execution_logs(project_id: str, run_id: str, actor) -> dict:
         "stdout": _read_stored_text(row["stdout_path"]),
         "stderr": _read_stored_text(row["stderr_path"]),
     }
+
+
+def get_execution_result_detail(project_id: str, run_id: str, actor) -> dict:
+    row = _require_execution_run(project_id, run_id, actor)
+    run_dir = _execution_run_dir(row)
+    if run_dir is None:
+        return execution_events.reduce_events([], run_id=run_id, run_status=row["status"])
+    detail_path = run_dir / "result-detail.json"
+    if detail_path.is_file() and row["status"] not in {"queued", "running", "stopping"}:
+        try:
+            payload = json.loads(detail_path.read_text(encoding="utf-8"))
+            if isinstance(payload, dict):
+                return payload
+        except (OSError, ValueError):
+            pass
+    return execution_events.build_detail(run_dir / "events.jsonl", run_id=run_id, run_status=row["status"])
+
+
+def get_execution_events(project_id: str, run_id: str, actor, *, after: int, limit: int) -> dict:
+    row = _require_execution_run(project_id, run_id, actor)
+    run_dir = _execution_run_dir(row)
+    if run_dir is None:
+        return {"items": [], "next_cursor": after, "has_more": False}
+    events, _ = execution_events.read_events(run_dir / "events.jsonl", after=after, limit=limit + 1)
+    has_more = len(events) > limit
+    items = events[:limit]
+    next_cursor = int(items[-1]["sequence"]) if items else after
+    return {"items": items, "next_cursor": next_cursor, "has_more": has_more}
+
+
+def get_execution_step_artifact(project_id: str, run_id: str, artifact_id: str, actor):
+    row = _require_execution_run(project_id, run_id, actor)
+    run_dir = _execution_run_dir(row)
+    if run_dir is None:
+        raise api_error(404, "UI_ARTIFACT_NOT_FOUND", "步骤证据文件不存在。")
+    detail = get_execution_result_detail(project_id, run_id, actor)
+    artifact = next(
+        (
+            artifact
+            for iteration in detail.get("iterations", [])
+            for step in iteration.get("steps", [])
+            for artifact in step.get("artifacts", [])
+            if artifact.get("artifact_id") == artifact_id
+        ),
+        None,
+    )
+    if not artifact:
+        raise api_error(404, "UI_ARTIFACT_NOT_FOUND", "步骤证据文件不存在。")
+    relative_path = str(artifact.get("relative_path", ""))
+    path = (run_dir / relative_path).resolve()
+    try:
+        path.relative_to(run_dir.resolve())
+    except ValueError as exc:
+        raise api_error(404, "UI_ARTIFACT_NOT_FOUND", "步骤证据文件不存在。") from exc
+    if not path.is_file() or artifact.get("mime_type") != "image/png":
+        raise api_error(404, "UI_ARTIFACT_NOT_FOUND", "步骤证据文件不存在。")
+    return FileResponse(path, media_type="image/png", filename=f"{artifact_id}.png")
 
 
 def get_execution_live_view(project_id: str, run_id: str, actor) -> dict:
@@ -604,6 +711,22 @@ def get_execution_artifact(project_id: str, run_id: str, artifact_kind: str, ind
     if not path or not path.is_file():
         raise api_error(404, "UI_ARTIFACT_NOT_FOUND", "运行证据文件不存在。")
     return FileResponse(path)
+
+
+def _require_execution_run(project_id: str, run_id: str, actor):
+    with connect() as db:
+        _require_visible_project(db, project_id, actor)
+        row = ui_automation_repo.find_execution_run(db, run_id)
+        if not row or row["project_id"] != project_id:
+            raise api_error(404, "UI_EXECUTION_RUN_NOT_FOUND", "UI 自动化执行任务不存在。")
+        return row
+
+
+def _execution_run_dir(row) -> Path | None:
+    value = str(row["run_dir"] or "").strip()
+    if not value:
+        return None
+    return (resolve_stored_path(value) or Path(value)).resolve()
 
 
 def _require_visible_project(db, project_id: str, actor):
@@ -738,6 +861,15 @@ def _restore_snapshots(snapshots):
         path.write_bytes(content)
 
 
+def _validated_run_dir(runs_root: Path, run) -> Path:
+    run_id = str(run["id"])
+    run_dir = (resolve_stored_path(run["run_dir"]) or (runs_root / run_id)).resolve()
+    run_dir.relative_to(runs_root)
+    if run_dir.name != run_id:
+        raise ValueError("运行目录与运行记录不匹配。")
+    return run_dir
+
+
 def _identifier(value: str) -> str:
     return "".join(char if char.isalnum() or char == "_" else "_" for char in value).lower().strip("_") or "generated_case"
 
@@ -749,6 +881,7 @@ def _now() -> str:
 __all__ = [
     "create_execution_run",
     "create_generation_run",
+    "delete_asset",
     "delete_execution_run",
     "execute_execution_run",
     "execute_generation_run",

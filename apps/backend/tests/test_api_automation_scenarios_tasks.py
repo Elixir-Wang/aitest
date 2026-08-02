@@ -245,7 +245,10 @@ def test_scenario_revisions_include_orchestration_and_restore_as_new_version(
     assert [item["revision"] for item in service.list_api_scenario_revisions("project-1", scenario["id"], ACTOR)] == [3, 2, 1]
 
 
-def test_saving_versions_keeps_only_the_latest_five(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_saving_versions_keeps_current_and_only_five_history_entries(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
     _use_temp_db(monkeypatch, tmp_path)
     _seed_project_endpoint_and_runs()
     scenario = service.create_api_scenario("project-1", ApiScenarioIn(name="资料查询"), ACTOR)
@@ -270,8 +273,57 @@ def test_saving_versions_keeps_only_the_latest_five(monkeypatch: pytest.MonkeyPa
 
     revisions = service.list_api_scenario_revisions("project-1", scenario["id"], ACTOR)
 
-    assert [item["revision"] for item in revisions] == [6, 5, 4, 3, 2]
+    assert [item["revision"] for item in revisions] == [6, 5, 4, 3, 2, 1]
     assert revisions[0]["snapshot"]["steps"][0]["name"] == "查询资料 6"
+    with connect() as db:
+        stored_history = db.execute(
+            "SELECT revision FROM api_scenario_revisions WHERE scenario_id = ? ORDER BY revision DESC",
+            (scenario["id"],),
+        ).fetchall()
+    assert [row["revision"] for row in stored_history] == [5, 4, 3, 2, 1]
+
+
+def test_saving_unchanged_scenario_does_not_create_duplicate_version(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    _seed_project_endpoint_and_runs()
+    scenario = service.create_api_scenario("project-1", ApiScenarioIn(name="资料查询"), ACTOR)
+    payload = ApiScenarioVersionSaveIn(
+        name="资料查询",
+        steps=[
+            ApiScenarioStepIn(
+                endpoint_id="apiend-1",
+                name="查询资料",
+                assertions=[{"type": "status_code", "expected": 200}],
+            )
+        ],
+    )
+
+    first = service.save_api_scenario_version("project-1", scenario["id"], payload, ACTOR)
+    unchanged_payload = ApiScenarioVersionSaveIn(
+        name="资料查询",
+        steps=[
+            ApiScenarioStepIn(
+                id=first["steps"][0]["id"],
+                endpoint_id="apiend-1",
+                name="查询资料",
+                assertions=[{"type": "status_code", "expected": 200}],
+            )
+        ],
+    )
+    second = service.save_api_scenario_version("project-1", scenario["id"], unchanged_payload, ACTOR)
+
+    assert first["revision"] == 1
+    assert second["revision"] == 1
+    assert [item["revision"] for item in service.list_api_scenario_revisions("project-1", scenario["id"], ACTOR)] == [1]
+    with connect() as db:
+        history_count = db.execute(
+            "SELECT COUNT(*) AS value FROM api_scenario_revisions WHERE scenario_id = ?",
+            (scenario["id"],),
+        ).fetchone()["value"]
+    assert history_count == 0
 
 
 def test_scenario_utility_steps_validate_with_supported_control_config(
@@ -546,13 +598,25 @@ def test_published_scenario_creates_collectable_run_artifact(monkeypatch: pytest
     assert run["target_type"] == "scenario"
     assert run["target_ids"] == [scenario["id"]]
     assert test_file and test_file.exists()
+    assert test_file.relative_to(suite_path).as_posix() == "testcases/scenarios/test_scenario.py"
     assert suite_path and (suite_path / "support" / "scenario.py").exists()
     assert collection_calls[0]["test_paths"] == [str(test_file.relative_to(suite_path))]
 
+    legacy_snapshot = dict(run["execution_snapshot"])
+    legacy_snapshot["test_file_path"] = storage.store_path(
+        suite_path / "scenarios" / "legacy" / "test_scenario.py"
+    )
+    with connect() as db:
+        db.execute(
+            "UPDATE api_automation_runs SET execution_snapshot_json = ? WHERE id = ?",
+            (api_automation_repo.dumps_json(legacy_snapshot), run["id"]),
+        )
+
+    execution_calls = []
     monkeypatch.setattr(
         service,
         "run_script_suite",
-        lambda **kwargs: {
+        lambda **kwargs: execution_calls.append(kwargs) or {
             "status": "passed",
             "summary": {"total": 1, "passed": 1, "failed": 0},
             "error_message": "",
@@ -566,9 +630,12 @@ def test_published_scenario_creates_collectable_run_artifact(monkeypatch: pytest
 
     assert completed["status"] == "passed"
     assert completed["summary"]["passed"] == 1
+    assert execution_calls[0]["test_paths"] == ["testcases/scenarios/test_scenario.py"]
+    assert execution_calls[0]["scenario_file"].startswith("scenarios/")
+    assert execution_calls[0]["scenario_file"].endswith("/scenario.json")
 
 
-def test_draft_scenario_creates_one_time_run_snapshot(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_scenario_run_requires_and_uses_current_saved_version(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     _use_temp_db(monkeypatch, tmp_path)
     _seed_project_endpoint_and_runs()
     with connect() as db:
@@ -597,17 +664,16 @@ def test_draft_scenario_creates_one_time_run_snapshot(monkeypatch: pytest.Monkey
     )
     monkeypatch.setattr(service, "collect_script_suite", lambda **kwargs: {"ok": True, "exitcode": 0, "stdout": "", "stderr": ""})
 
-    run = service.create_api_scenario_run(
-        "project-1",
-        scenario["id"],
-        "apienv-draft",
-        ACTOR,
-        source="draft",
-    )
+    with pytest.raises(Exception) as error:
+        service.create_api_scenario_run("project-1", scenario["id"], "apienv-draft", ACTOR)
+    assert error.value.detail["code"] == "API_SCENARIO_NOT_READY"
 
-    assert run["execution_snapshot"]["scenario"]["source"] == "draft"
+    current = service.publish_api_scenario("project-1", scenario["id"], ACTOR)
+    run = service.create_api_scenario_run("project-1", scenario["id"], "apienv-draft", ACTOR)
+
+    assert run["execution_snapshot"]["scenario"]["source"] == "current"
     assert run["execution_snapshot"]["scenario"]["revision"] == 1
-    assert service.get_api_scenario("project-1", scenario["id"], ACTOR)["status"] == "draft"
+    assert current["status"] == "ready"
 
 
 def test_task_service_includes_api_automation_tasks(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

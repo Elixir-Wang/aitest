@@ -3,7 +3,11 @@ import re
 from contextlib import contextmanager
 from pathlib import Path
 
-from app.agents.api_automation.pytest_requests.renderer import render_scenario_files
+from app.agents.api_automation.pytest_requests.renderer import (
+    SCENARIO_TEST_FILE,
+    render_scenario_entrypoint_files,
+    render_scenario_files,
+)
 from app.core import storage
 
 
@@ -31,10 +35,19 @@ def materialize_scenario_snapshot(project_id: str, snapshot: dict) -> dict:
     scenario_dir = f"scenarios/{scenario_key}"
     return {
         "suite_path": suite_path,
-        "test_file_path": written[f"{scenario_dir}/test_scenario.py"],
+        "test_file_path": written[SCENARIO_TEST_FILE],
         "data_file_path": written[f"{scenario_dir}/scenario.json"],
         "scenario_key": scenario_key,
     }
+
+
+def materialize_scenario_entrypoint(suite_path: Path) -> Path:
+    written = {}
+    for file_key, content in render_scenario_entrypoint_files().items():
+        target = resolve_suite_file(suite_path, file_key)
+        write_atomic(target, content)
+        written[file_key] = target
+    return written[SCENARIO_TEST_FILE]
 
 
 def write_atomic(path: Path, content: str) -> None:

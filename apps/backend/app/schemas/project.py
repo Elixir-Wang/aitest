@@ -1,5 +1,7 @@
 from pydantic import BaseModel, Field
 
+from app.schemas.project_version import ProjectVersionSummaryOut
+
 ProjectStatus = str
 
 
@@ -10,6 +12,7 @@ class ProjectOut(BaseModel):
     status: ProjectStatus
     created_at: str
     updated_at: str
+    current_version: ProjectVersionSummaryOut | None = None
     available_actions: list[str]
 
 

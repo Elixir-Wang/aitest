@@ -192,14 +192,24 @@
 | --- | --- | --- |
 | pytest stdout | `runs/<run_id>/stdout.txt`（脱敏后） | `GET /runs/{run_id}/logs` |
 | pytest stderr | `runs/<run_id>/stderr.txt`（脱敏后） | `GET /runs/{run_id}/logs` |
-| Playwright trace | `runs/<run_id>/browser/trace.zip` | `GET /runs/{run_id}/artifacts/trace?index=0` |
-| 浏览器录屏 | `runs/<run_id>/browser/*.webm` / `*.mp4` | `GET /runs/{run_id}/artifacts/video?index=0` |
-| 失败截图 | `runs/<run_id>/browser/*.png` | `GET /runs/{run_id}/artifacts/screenshot?index=<n>` |
+| 结构化增量事件 | `runs/<run_id>/events.jsonl` | `GET /runs/{run_id}/events?after=<cursor>&limit=<n>` |
+| 终态参数/步骤详情 | `runs/<run_id>/result-detail.json` | `GET /runs/{run_id}/result-detail` |
+| 步骤失败截图 | `runs/<run_id>/step-artifacts/<iteration_id>/*.png` | `GET /runs/{run_id}/step-artifacts/{artifact_id}` |
+| 兼容失败截图 | `runs/<run_id>/browser/*.png` | `GET /runs/{run_id}/artifacts/screenshot?index=<n>` |
 
-### 6.3 浏览器录像回放
+### 6.3 参数实例与步骤结果
 
-- 运行详情页在执行完成后加载录屏视频（`videoUrl`）。
-- Playwright trace 可通过 trace viewer 回放交互步骤。
+- 参数实例以 pytest 实际 collection 结果为事实源；多个 `parametrize` 的组合由 pytest 决定，平台不重复计算。
+- 每个参数实例保存脱敏参数、状态、耗时、当前/失败步骤，以及业务步骤的状态、错误摘要、技术动作 ID 和失败截图。
+- `events.jsonl` 用于运行中增量读取，`result-detail.json` 用于完成后的稳定读取；SQLite 仅保存运行汇总，不复制完整步骤数组。
+- setup 或浏览器启动失败记为 `infrastructure_error`；业务步骤失败记为 `failed`；停止运行时当前和尚未执行项收敛为 `cancelled`。
+- 成功步骤默认不截图，也不保存 DOM、Cookie、Storage State 或输入框完整内容。
+
+### 6.4 兼容策略
+
+- 历史运行没有结构化事件时返回 `detail_available=false`，原始日志、兼容截图和实时浏览器画面仍可查看。
+- 历史 v1 自动化计划没有业务步骤映射时，每个来源动作独立展示，不根据字符串或顺序猜测父步骤。
+- 当前执行链路不采集 trace 和录屏，避免产生高体积、包含潜在敏感信息的运行产物。
 
 ---
 
@@ -367,9 +377,12 @@ CREATE INDEX IF NOT EXISTS idx_ui_execution_project_created ON ui_automation_exe
 | POST | `/runs/{run_id}/stop` | 停止执行 | admin |
 | DELETE | `/runs/{run_id}` | 删除执行运行（仅非活跃） | admin |
 | GET | `/runs/{run_id}/logs` | stdout / stderr（含脱敏） | user |
+| GET | `/runs/{run_id}/result-detail` | 参数实例与步骤结果快照 | user |
+| GET | `/runs/{run_id}/events?after={cursor}&limit={n}` | 增量运行事件 | user |
+| GET | `/runs/{run_id}/step-artifacts/{artifact_id}` | 经清单和目录校验的步骤失败截图 | user |
 | GET | `/runs/{run_id}/live-view` | live-view 状态 + stream 路径 | user |
 | GET | `/runs/{run_id}/live-view/stream?token=...` | MJPEG 视频流 | token 鉴权 |
-| GET | `/runs/{run_id}/artifacts/{trace\|video\|screenshot}?index={n}` | 证据文件下载 | user |
+| GET | `/runs/{run_id}/artifacts/screenshot?index={n}` | 兼容失败截图下载 | user |
 
 **错误码**：`UI_AUTOMATION_INPUT_REQUIRED`、`UI_TEST_CASE_NOT_FOUND`、`UI_TEST_CASE_NOT_APPROVED`、`UI_ENVIRONMENT_NOT_FOUND`、`UI_EXPLORATION_RUN_NOT_FOUND`、`UI_EXPLORATION_ENVIRONMENT_MISMATCH`、`UI_GENERATION_RUN_NOT_FOUND`、`UI_ASSET_NOT_FOUND`、`UI_EXECUTION_RUN_NOT_FOUND`、`UI_EXECUTION_RUN_ACTIVE`、`UI_EXECUTION_RUN_DIR_INVALID`、`UI_LIVE_VIEW_NOT_FOUND`、`UI_ARTIFACT_KIND_INVALID`、`UI_ARTIFACT_NOT_FOUND`、`PERMISSION_DENIED`。
 
@@ -398,6 +411,7 @@ CREATE INDEX IF NOT EXISTS idx_ui_execution_project_created ON ui_automation_exe
 | 7 | Live-view token 校验失败或会话已结束 | `404 UI_LIVE_VIEW_NOT_FOUND` |
 | 8 | `/runs/{id}/logs` 返回的文本中 | `authorization:bearer` / `token=` / `password=` / `cookie:` 被脱敏 |
 | 9 | 服务重启后 | 所有 `queued/running` 生成与执行任务被收敛为 `failed`/`cancelled` |
-| 10 | 执行完成后 | 运行详情页展示录屏视频、失败截图列表、trace 下载入口 |
-| 11 | 浏览器录像回放 | 运行详情页可播放 `runs/<run_id>/browser/*.webm` 或 `*.mp4` |
-| 12 | UI 自动化**不接入 Allure** | `pyproject.toml` 无 allure 依赖，前端无跳转 Allure 入口 |
+| 10 | 参数化执行 | 按 pytest 实际收集顺序展示每个参数实例及其独立步骤结果 |
+| 11 | 业务步骤失败 | 展示失败步骤、脱敏错误、技术动作 ID 和经鉴权加载的步骤截图 |
+| 12 | 历史运行无结构化产物 | 返回 `detail_available=false`，日志、兼容截图和实时画面仍可用 |
+| 13 | UI 自动化**不接入 Allure** | `pyproject.toml` 无 allure 依赖，前端无跳转 Allure 入口 |

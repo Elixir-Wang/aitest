@@ -66,6 +66,139 @@ def test_metric_snapshot_does_not_invent_missing_percentile() -> None:
     assert snapshot["quality"]["status"] == "partial"
 
 
+def test_metric_snapshot_exposes_test_scope_and_single_endpoint_metrics() -> None:
+    snapshot = build_metric_snapshot(
+        {
+            "run": {
+                "id": "perfrun-1",
+                "status": "completed",
+                "load_config": {
+                    "mode": "fixed",
+                    "users": 10,
+                    "spawn_rate": 2,
+                    "measurement_duration_seconds": 60,
+                    "wait_time_min_seconds": 1,
+                    "wait_time_max_seconds": 3,
+                },
+            },
+            "summary": {
+                "request_count": 250,
+                "failure_count": 0,
+                "failure_rate": 0,
+                "requests_per_second": 4.27,
+                "average_response_time_ms": 211.75,
+                "p50_response_time_ms": 160,
+                "p95_response_time_ms": 490,
+                "p99_response_time_ms": 920,
+            },
+            "stats": [
+                {
+                    "sampled_at": "1",
+                    "request_count": 250,
+                    "requests_per_second": 4.27,
+                    "p50_response_time_ms": 160,
+                    "p95_response_time_ms": 490,
+                    "p99_response_time_ms": 920,
+                }
+            ],
+            "performance_test": {
+                "name": "订单查询性能测试",
+                "target_type": "endpoint",
+                "environment_name": "staging",
+                "endpoint_method": "GET",
+                "endpoint_path": "/api/orders/{id}",
+                "performance_goal": {"max_fail_ratio": 0.01},
+            },
+            "endpoint": {"method": "GET", "path": "/api/orders/{id}"},
+            "artifacts": {
+                "result_stats": [
+                    {
+                        "Type": "GET",
+                        "Name": "GET /api/orders/{id}",
+                        "Request Count": "250",
+                        "Failure Count": "0",
+                        "Average Response Time": "211.75",
+                        "Requests/s": "4.27",
+                        "50%": "160",
+                        "95%": "490",
+                        "99%": "920",
+                    },
+                    {"Type": "", "Name": "Aggregated", "Request Count": "250"},
+                ]
+            },
+            "missing_evidence": [],
+        }
+    )
+
+    assert snapshot["calculator_version"] == "performance-metrics-v4"
+    assert snapshot["test_scope"] == {
+        "test_name": "订单查询性能测试",
+        "environment_name": "staging",
+        "load_mode": "fixed",
+        "users": 10,
+        "spawn_rate": 2.0,
+        "duration_seconds": 60,
+        "actual_duration_seconds": None,
+        "warmup_seconds": None,
+        "wait_time_min_seconds": 1.0,
+        "wait_time_max_seconds": 3.0,
+        "stage_count": 0,
+        "endpoint_method": "GET",
+        "endpoint_path": "/api/orders/{id}",
+    }
+    assert snapshot["endpoint_metrics"] == [
+        {
+            "method": "GET",
+            "name": "/api/orders/{id}",
+            "request_share": 1.0,
+            "request_count": 250,
+            "failure_count": 0,
+            "failure_rate": 0.0,
+            "requests_per_second": 4.27,
+            "average_response_time_ms": 211.75,
+            "p50_response_time_ms": 160.0,
+            "p95_response_time_ms": 490.0,
+            "p99_response_time_ms": 920.0,
+        }
+    ]
+    assert snapshot["series"][0]["p50_response_time_ms"] == 160.0
+    assert snapshot["quality"]["status"] == "complete"
+    assert snapshot["quality"]["request_sample_count"] == 250
+    assert snapshot["quality"]["timeseries_sample_count"] == 1
+    assert "p99_sample_size_limited" in snapshot["quality"]["warnings"]
+    assert snapshot["verdict"] == "pass"
+    assert snapshot["latency_analysis"] == {
+        "sample_count": 1,
+        "sampling_semantics": "cumulative_locust_snapshot",
+        "can_claim_direction": False,
+        "tail_amplification": 5.75,
+    }
+
+
+def test_metric_snapshot_uses_script_plan_for_scope_but_not_endpoint_metrics() -> None:
+    snapshot = build_metric_snapshot(
+        {
+            "run": {"id": "perfrun-1", "status": "completed"},
+            "summary": {"request_count": 20, "p95_response_time_ms": 200},
+            "stats": [{"sampled_at": "1", "request_count": 20, "p95_response_time_ms": 200}],
+            "performance_test": {"target_type": "endpoint"},
+            "script": {
+                "plan": {
+                    "request": {
+                        "method": "POST",
+                        "path": "/openapi/v1/agent/analysis/",
+                    }
+                }
+            },
+            "missing_evidence": ["result_stats.csv"],
+        }
+    )
+
+    assert snapshot["test_scope"]["endpoint_method"] == "POST"
+    assert snapshot["test_scope"]["endpoint_path"] == "/openapi/v1/agent/analysis/"
+    assert snapshot["endpoint_metrics"] == []
+
+
 def test_manual_stop_is_a_known_run_limit_not_an_unknown_failure() -> None:
     snapshot = build_metric_snapshot(
         {
@@ -155,6 +288,141 @@ def test_report_snapshot_reuses_structured_diagnosis() -> None:
     assert report["verdict"] == "fail"
     assert report["findings"][0]["evidence_refs"] == ["diagnosis:1"]
     assert report["diagnosis_evidence"][0]["evidence_id"] == "diagnosis:1"
+
+
+def test_report_snapshot_filters_cumulative_trend_and_resource_recommendations() -> None:
+    metric_snapshot = {
+        "verdict": "pass",
+        "test_scope": {"users": 10},
+        "latency_analysis": {
+            "sampling_semantics": "cumulative_locust_snapshot",
+            "can_claim_direction": False,
+        },
+        "evidence_index": [
+            {"evidence_id": "latency:summary"},
+            {"evidence_id": "capacity:summary"},
+        ],
+        "objectives": [],
+    }
+    diagnosis = PerformanceDiagnosis.model_validate(
+        {
+            "category": "external_service",
+            "confidence": 0.8,
+            "direct_cause": "当前证据不足",
+            "root_cause": "需要保持同口径复测",
+            "evidence": [],
+            "proposed_changes": [],
+            "missing_evidence": ["service_metrics"],
+            "findings": [
+                {
+                    "id": "trend",
+                    "severity": "low",
+                    "level": "observed",
+                    "title": "延迟下降",
+                    "statement": "P95 从 800ms 下降到 400ms，呈稳定下降趋势",
+                    "confidence": 0.8,
+                    "evidence_refs": ["latency:summary"],
+                    "missing_evidence": ["服务端资源指标"],
+                },
+                {
+                    "id": "capacity",
+                    "severity": "low",
+                    "level": "observed",
+                    "title": "容量未评估",
+                    "statement": (
+                        "测试采用固定单阶段负载（load.mode=fixed，stages 为空），capacity_analysis 判定 "
+                        "can_claim_stable_capacity=false、knee_point=null。"
+                    ),
+                    "confidence": 0.9,
+                    "evidence_refs": ["capacity:summary"],
+                },
+            ],
+            "recommendations": [
+                {
+                    "id": "resource",
+                    "priority": "P3",
+                    "action": "采集服务端 CPU 和数据库连接池",
+                    "expected_effect": "定位瓶颈",
+                    "cost": "medium",
+                    "verification": "比较资源利用率",
+                    "finding_refs": ["capacity"],
+                },
+                {
+                    "id": "load",
+                    "priority": "P1",
+                    "action": "补充阶梯负载复测",
+                    "expected_effect": "确认已验证负载上界",
+                    "cost": "medium",
+                    "verification": "报告给出拐点或已验证上界",
+                    "finding_refs": ["capacity"],
+                },
+            ],
+        }
+    )
+
+    report = build_report_snapshot(metric_snapshot, diagnosis)
+
+    assert [item["id"] for item in report["findings"]] == ["capacity"]
+    assert [item["id"] for item in report["recommendations"]] == ["load"]
+    assert report["findings"][0]["severity"] == "low"
+    assert report["findings"][0]["statement"] == (
+        "本次仅验证了 10 用户固定负载下的表现。由于未进行分阶段加压，当前结果不能用于判断"
+        "系统容量上限或性能拐点，也不能据此宣称已获得稳定容量。"
+    )
+    assert "can_claim_stable_capacity" not in report["findings"][0]["statement"]
+    assert report["recommendations"][0]["priority"] == "P2"
+
+
+def test_report_snapshot_filters_redundant_all_objectives_achieved_finding() -> None:
+    metric_snapshot = {
+        "verdict": "pass",
+        "aggregate": {"request_count": 254, "failure_rate": 0, "requests_per_second": 4.31},
+        "objectives": [
+            {"evidence_id": "objective:failure_rate", "metric": "failure_rate", "status": "passed"},
+            {
+                "evidence_id": "objective:average_response_time_ms",
+                "metric": "average_response_time_ms",
+                "status": "passed",
+            },
+        ],
+        "evidence_index": [
+            {"evidence_id": "metric:request_count"},
+            {"evidence_id": "metric:failure_rate"},
+            {"evidence_id": "objective:failure_rate"},
+            {"evidence_id": "objective:average_response_time_ms"},
+        ],
+    }
+    diagnosis = PerformanceDiagnosis.model_validate(
+        {
+            "category": "performance_config",
+            "confidence": 0.95,
+            "direct_cause": "目标已满足",
+            "root_cause": "当前负载范围内没有异常",
+            "evidence": [],
+            "proposed_changes": [],
+            "missing_evidence": [],
+            "findings": [
+                {
+                    "id": "all-objectives-passed",
+                    "severity": "low",
+                    "level": "observed",
+                    "title": "10 用户固定负载下性能目标全部达成",
+                    "statement": "两项性能目标（平均响应、失败率）均 passed。",
+                    "confidence": 0.99,
+                    "evidence_refs": [
+                        "metric:request_count",
+                        "metric:failure_rate",
+                        "objective:failure_rate",
+                        "objective:average_response_time_ms",
+                    ],
+                }
+            ],
+        }
+    )
+
+    report = build_report_snapshot(metric_snapshot, diagnosis)
+
+    assert report["findings"] == []
 
 
 def test_report_snapshot_rejects_unknown_metric_evidence_reference() -> None:

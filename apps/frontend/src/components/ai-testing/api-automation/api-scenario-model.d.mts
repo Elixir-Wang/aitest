@@ -53,6 +53,12 @@ export function buildEndpointRequestFields(endpoint: ApiAutomationEndpoint): {
   fields: ApiScenarioRequestField[];
 };
 
+export function resolveRequestFieldValue(
+  requestOverrides: Record<string, unknown>,
+  target: string,
+  defaultValue?: unknown,
+): unknown;
+
 export function moveScenarioStep(
   steps: ApiAutomationScenarioStep[],
   activeId: string,

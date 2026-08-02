@@ -62,6 +62,9 @@ class PageObjectPlan(StrictModel):
 
 class StepPlan(StrictModel):
     source_step_id: str = Field(min_length=1)
+    business_step_id: str = ""
+    title: str = ""
+    visible: bool = True
     kind: StepKind
     page_key: str = Field(min_length=1)
     element_key: str = ""
@@ -141,6 +144,11 @@ class AutomationPlan(StrictModel):
             if self.steps[index - 1].page_key != step.page_key:
                 raise ValueError("wait_for_response 必须与前一个发送步骤属于同一页面。")
         step_ids = {step.source_step_id for step in self.steps}
+        business_step_ids = {step.business_step_id for step in self.steps if step.business_step_id}
+        if any(step.business_step_id and not step.title for step in self.steps):
+            raise ValueError("显式业务步骤映射必须包含 title。")
+        if any(not re.fullmatch(r"[A-Za-z0-9_.:-]+", step_id) for step_id in business_step_ids):
+            raise ValueError("business_step_id 包含非法字符。")
         invalid_checkpoints = [
             assertion.after_step_id
             for assertion in self.assertions

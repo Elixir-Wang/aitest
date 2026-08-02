@@ -38,3 +38,11 @@ The suite must contain the shared files listed by the backend suite contract, in
 - `utils/data_loader.py`
 - `utils/assertions.py`
 - `utils/assert_utils.py`
+
+## Scenario Layout
+
+- Store scenario definitions only under `scenarios/<scenario_key>/scenario.json`.
+- Keep the single pytest scenario entry point at `testcases/scenarios/test_scenario.py`.
+- Keep the shared scenario runtime at `support/scenario.py`.
+- Select the scenario at runtime through `API_SCENARIO_FILE`, using a path relative to the suite root.
+- Never generate `scenario.py` or `test_scenario.py` inside an individual scenario directory.

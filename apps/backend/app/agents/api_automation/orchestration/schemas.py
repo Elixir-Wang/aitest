@@ -198,17 +198,6 @@ class AssignControlConfig(StrictModel):
     source: ValueSource
 
 
-class ScenarioPlanInput(StrictModel):
-    name: str = Field(min_length=1, max_length=100)
-    label: str = Field(default="", max_length=200)
-    value_type: ValueType = "string"
-    required: bool = True
-    default_value: Any = None
-    sensitive: bool = False
-    description: str = Field(default="", max_length=1000)
-    enum: list[Any] = Field(default_factory=list, max_length=100)
-
-
 class ScenarioPlanNode(StrictModel):
     id: str = Field(min_length=1, max_length=100)
     type: Literal["api_request", "condition", "wait", "assign"]
@@ -253,13 +242,10 @@ class ScenarioPlanResult(StrictModel):
     graph_version: Literal[1] = 1
     scenario_name: str = Field(default="", max_length=200)
     description: str = Field(default="", max_length=2000)
-    inputs: list[ScenarioPlanInput] = Field(default_factory=list, max_length=100)
     nodes: list[ScenarioPlanNode] = Field(default_factory=list, max_length=100)
     edges: list[ScenarioPlanEdge] = Field(default_factory=list, max_length=200)
-    assumptions: list[str] = Field(default_factory=list, max_length=30)
     warnings: list[str] = Field(default_factory=list, max_length=30)
     unresolved_items: list[str] = Field(default_factory=list, max_length=30)
-    confidence: float = Field(default=0.5, ge=0, le=1)
 
 
 class PlannerFieldProposal(StrictModel):
@@ -271,6 +257,23 @@ class PlannerFieldProposal(StrictModel):
     proposal: ValueSource
 
 
+class PlannerExtractorProposal(StrictModel):
+    name: str = Field(min_length=1, max_length=100)
+    source: Literal["json_body", "header", "cookie", "text_regex", "sse_event_json", "status_code"] = "json_body"
+    path: str = ""
+    event: str = ""
+    occurrence: Literal["first", "last", "all"] = "first"
+    value_type: ValueType = "any"
+    required: bool = True
+    sensitive: bool = False
+
+    @model_validator(mode="after")
+    def validate_source_fields(self) -> PlannerExtractorProposal:
+        if self.source in {"json_body", "sse_event_json", "header", "cookie", "text_regex"} and not self.path:
+            raise ValueError(f"{self.source} 提取器必须指定 path。")
+        return self
+
+
 class PlannerStepProposal(StrictModel):
     client_step_id: str = Field(min_length=1, max_length=100)
     endpoint_id: str = Field(min_length=1, max_length=100)
@@ -278,7 +281,7 @@ class PlannerStepProposal(StrictModel):
     phase: StepPhase = "main"
     name: str = Field(default="", max_length=200)
     fields: list[PlannerFieldProposal] = Field(default_factory=list, max_length=500)
-    extractors: list[ScenarioExtractor] = Field(default_factory=list, max_length=100)
+    extractors: list[PlannerExtractorProposal] = Field(default_factory=list, max_length=100)
     assertions: list[ScenarioAssertion] = Field(default_factory=list, max_length=100)
     depends_on: list[str] = Field(default_factory=list, max_length=100)
     on_failure: Literal["stop", "continue", "always_run"] = "stop"

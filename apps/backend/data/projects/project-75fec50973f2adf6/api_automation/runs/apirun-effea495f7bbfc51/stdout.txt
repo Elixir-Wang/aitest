@@ -1,0 +1,83 @@
+============================= test session starts ==============================
+platform darwin -- Python 3.14.6, pytest-9.0.1, pluggy-1.6.0
+rootdir: /Users/wanghongbao/project/test_project/apps/backend/data/projects/project-75fec50973f2adf6/api_automation/pytest_requests
+configfile: pytest.ini
+plugins: json-report-1.5.0, metadata-3.1.1, locust-2.45.0, base-url-2.1.0, langsmith-0.8.5, playwright-0.8.0, anyio-4.13.0
+collected 1 item
+
+testcases/scenarios/test_scenario.py F                                   [100%]
+
+=================================== FAILURES ===================================
+________________________________ test_scenario _________________________________
+
+api_client = <support.client.ApiClient object at 0x10ba58050>
+
+    def test_scenario(api_client):
+        suite_root = Path(__file__).resolve().parents[2]
+        scenario_file = os.environ.get("API_SCENARIO_FILE", "").strip()
+        scenario_path = (suite_root / scenario_file).resolve()
+        try:
+            scenario_path.relative_to(suite_root)
+        except ValueError as exc:
+            raise RuntimeError("API_SCENARIO_FILE must be inside the pytest suite") from exc
+        scenario = json.loads(scenario_path.read_text(encoding="utf-8"))
+>       run_scenario(api_client, scenario)
+
+testcases/scenarios/test_scenario.py:25: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+support/scenario.py:45: in run_scenario
+    raise failure
+support/scenario.py:37: in run_scenario
+    outputs[step.get("id", "")] = _run_step(api_client, step, variables, outputs)
+                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+support/scenario.py:64: in _run_step
+    return _request_with_lifecycle(api_client, step, variables, outputs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+support/scenario.py:76: in _request_with_lifecycle
+    result = _request(api_client, step, variables, outputs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+support/scenario.py:115: in _request
+    assert_response_assertions(response, step.get("assertions") or case.get("assertions") or [])
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+response = <Response [200]>
+assertions = [{'expected': 200, 'type': 'status_code'}, {'expected': '000000', 'path': '/code', 'type': 'jsonpath_equals'}]
+
+    def assert_response_assertions(response, assertions: list[dict]) -> None:
+        for idx, assertion in enumerate(assertions):
+            assertion_type = assertion.get("type")
+            path = assertion.get("path", "")
+            expected = assertion.get("expected")
+            location = f"[断言{idx + 1}] {assertion_type}" + (f" path={path}" if path else "")
+    
+            if assertion_type == "status_code":
+                assert response.status_code == expected, (
+                    f"{location} 失败\n"
+                    f"  期望状态码: {expected}\n"
+                    f"  实际状态码: {response.status_code}\n"
+                    f"  响应体: {response.text[:200]}"
+                )
+            elif assertion_type == "jsonpath_exists":
+                body = response.json()
+                actual = _read_path(body, path)
+                assert actual is not None, (
+                    f"{location} 失败\n"
+                    f"  路径: {path}\n"
+                    f"  实际值: {actual}\n"
+                    f"  说明: 期望该路径存在且值不为 None"
+                )
+            elif assertion_type == "jsonpath_equals":
+                body = response.json()
+                actual = _read_path(body, path)
+                # 确保错误消息在一行内包含关键对比信息
+>               assert actual == expected, (
+                       ^^^^^^^^^^^^^^^^^^
+                    f"路径 {path}: 期望 {expected!r}, 实际 {actual!r}"
+E                   AssertionError: 路径 /code: 期望 '000000', 实际 None
+
+support/assertions.py:31: AssertionError
+--------------------------------- JSON report ----------------------------------
+report saved to: /Users/wanghongbao/project/test_project/apps/backend/data/projects/project-75fec50973f2adf6/api_automation/runs/apirun-effea495f7bbfc51/report.json
+=========================== short test summary info ============================
+FAILED testcases/scenarios/test_scenario.py::test_scenario - AssertionError: ...
+============================== 1 failed in 0.17s ===============================

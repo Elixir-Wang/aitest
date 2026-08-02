@@ -90,3 +90,56 @@ class UiAutomationLiveViewOut(BaseModel):
     stream_path: str = ""
     width: int = 1440
     height: int = 900
+
+
+class UiAutomationStepArtifactOut(BaseModel):
+    artifact_id: str
+    kind: str = "screenshot"
+    mime_type: str = "application/octet-stream"
+    step_id: str = ""
+
+
+class UiAutomationStepResultOut(BaseModel):
+    step_id: str
+    title: str = ""
+    visible: bool = True
+    operation_ids: list[str] = Field(default_factory=list)
+    status: str
+    started_at: str | None = None
+    finished_at: str | None = None
+    duration_ms: float | None = None
+    error: dict | None = None
+    artifacts: list[UiAutomationStepArtifactOut] = Field(default_factory=list)
+
+
+class UiAutomationIterationResultOut(BaseModel):
+    iteration_id: str
+    pytest_node_id: str = ""
+    index: int = 0
+    parameters: dict = Field(default_factory=dict)
+    attempt: int = 1
+    status: str
+    started_at: str | None = None
+    finished_at: str | None = None
+    duration_ms: float | None = None
+    current_step_id: str = ""
+    failed_step_id: str = ""
+    error: dict | None = None
+    steps: list[UiAutomationStepResultOut] = Field(default_factory=list)
+
+
+class UiAutomationRunDetailOut(BaseModel):
+    schema_version: str = "ui-run-detail/v1"
+    detail_available: bool = False
+    run_id: str
+    run_status: str = ""
+    incomplete: bool = False
+    last_sequence: int = 0
+    summary: dict = Field(default_factory=dict)
+    iterations: list[UiAutomationIterationResultOut] = Field(default_factory=list)
+
+
+class UiAutomationRunEventsOut(BaseModel):
+    items: list[dict] = Field(default_factory=list)
+    next_cursor: int = 0
+    has_more: bool = False

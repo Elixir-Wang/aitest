@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 import pytest
@@ -78,6 +79,34 @@ def test_create_generation_run_uses_latest_compatible_exploration_evidence(monke
     assert created["exploration_run_id"] == "explore-1"
 
 
+def test_ensure_instrumented_asset_rerenders_outdated_source(monkeypatch, tmp_path: Path):
+    suite_path = tmp_path / "suite"
+    test_path = suite_path / "tests/test_case.py"
+    plan_path = suite_path / "data/case.plan.json"
+    test_path.parent.mkdir(parents=True)
+    plan_path.parent.mkdir(parents=True)
+    test_path.write_text("def test_case(page, ui_case):\n    pass\n", encoding="utf-8")
+    plan_path.write_text("{}", encoding="utf-8")
+    plan = object()
+    rendered = []
+
+    class FakeAutomationPlan:
+        @classmethod
+        def model_validate_json(cls, _source):
+            return plan
+
+    monkeypatch.setattr(service, "AutomationPlan", FakeAutomationPlan)
+    monkeypatch.setattr(service, "render_automation_plan", lambda root, value: rendered.append((root, value)))
+
+    result = service._ensure_instrumented_asset(
+        suite_path,
+        {"test_file_path": "tests/test_case.py", "plan_file_path": "data/case.plan.json"},
+    )
+
+    assert result is plan
+    assert rendered == [(suite_path, plan)]
+
+
 def _insert_execution_run(tmp_path: Path, *, status: str) -> Path:
     suite_path = tmp_path / "suite"
     run_dir = suite_path / "runs" / "uirun-1"
@@ -131,6 +160,181 @@ def test_delete_execution_run_rejects_active_run(monkeypatch, tmp_path: Path):
     assert run_dir.exists()
     with core_db.connect() as db:
         assert db.execute("SELECT id FROM ui_automation_execution_runs WHERE id = 'uirun-1'").fetchone()
+
+
+def test_delete_asset_removes_record_artifacts_and_runs(monkeypatch, tmp_path: Path):
+    _use_temp_db(monkeypatch, tmp_path)
+    run_dir = _insert_execution_run(tmp_path, status="failed")
+    suite_path = tmp_path / "suite"
+    artifact_paths = [suite_path / "tests/test_case.py", suite_path / "data/case.yaml", suite_path / "data/case.plan.json"]
+    for path in artifact_paths:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("generated", encoding="utf-8")
+    monkeypatch.setattr(service, "_ensure_project_suite_migrated", lambda project_id: suite_path)
+    monkeypatch.setattr(service, "project_suite_path", lambda project_id: suite_path)
+
+    service.delete_asset("project-1", "uiasset-1", ACTOR)
+
+    assert not run_dir.exists()
+    assert all(not path.exists() for path in artifact_paths)
+    with core_db.connect() as db:
+        assert db.execute("SELECT id FROM ui_automation_assets WHERE id = 'uiasset-1'").fetchone() is None
+        assert db.execute("SELECT id FROM ui_automation_execution_runs WHERE asset_id = 'uiasset-1'").fetchone() is None
+
+
+def test_delete_asset_rejects_active_execution(monkeypatch, tmp_path: Path):
+    _use_temp_db(monkeypatch, tmp_path)
+    run_dir = _insert_execution_run(tmp_path, status="running")
+    suite_path = tmp_path / "suite"
+    monkeypatch.setattr(service, "_ensure_project_suite_migrated", lambda project_id: suite_path)
+    monkeypatch.setattr(service, "project_suite_path", lambda project_id: suite_path)
+
+    with pytest.raises(HTTPException) as exc_info:
+        service.delete_asset("project-1", "uiasset-1", ACTOR)
+
+    assert exc_info.value.status_code == 409
+    assert exc_info.value.detail["code"] == "UI_ASSET_ACTIVE_RUN"
+    assert run_dir.exists()
+    with core_db.connect() as db:
+        assert db.execute("SELECT id FROM ui_automation_assets WHERE id = 'uiasset-1'").fetchone()
+
+
+def _event(sequence: int, event_type: str, **payload) -> dict:
+    return {
+        "schema_version": "ui-run-events/v1",
+        "sequence": sequence,
+        "type": event_type,
+        "run_id": "uirun-1",
+        "timestamp": f"2026-08-02T00:00:0{sequence}+00:00",
+        **payload,
+    }
+
+
+def _write_events(run_dir: Path, events: list[dict]) -> None:
+    (run_dir / "events.jsonl").write_text(
+        "".join(f"{json.dumps(event, ensure_ascii=False)}\n" for event in events),
+        encoding="utf-8",
+    )
+
+
+def test_execution_result_detail_uses_terminal_snapshot(monkeypatch, tmp_path: Path):
+    _use_temp_db(monkeypatch, tmp_path)
+    run_dir = _insert_execution_run(tmp_path, status="passed")
+    terminal = {
+        "schema_version": "ui-run-detail/v1",
+        "detail_available": True,
+        "run_id": "uirun-1",
+        "run_status": "passed",
+        "incomplete": False,
+        "last_sequence": 9,
+        "summary": {"total": 1, "passed": 1},
+        "iterations": [{"iteration_id": "terminal-iteration", "steps": []}],
+    }
+    (run_dir / "result-detail.json").write_text(json.dumps(terminal), encoding="utf-8")
+    _write_events(run_dir, [_event(1, "iteration_collected", iteration_id="event-iteration")])
+
+    assert service.get_execution_result_detail("project-1", "uirun-1", ACTOR) == terminal
+
+
+def test_execution_result_detail_reduces_live_events(monkeypatch, tmp_path: Path):
+    _use_temp_db(monkeypatch, tmp_path)
+    run_dir = _insert_execution_run(tmp_path, status="running")
+    _write_events(
+        run_dir,
+        [
+            _event(
+                1,
+                "iteration_collected",
+                iteration_id="iteration-1",
+                pytest_node_id="tests/test_case.py::test_case[target-a]",
+                index=0,
+                parameters={"target_model": "target-a"},
+            ),
+            _event(2, "iteration_started", iteration_id="iteration-1"),
+        ],
+    )
+
+    detail = service.get_execution_result_detail("project-1", "uirun-1", ACTOR)
+
+    assert detail["detail_available"] is True
+    assert detail["summary"]["running"] == 1
+    assert detail["iterations"][0]["parameters"] == {"target_model": "target-a"}
+
+
+def test_execution_events_are_cursor_paginated(monkeypatch, tmp_path: Path):
+    _use_temp_db(monkeypatch, tmp_path)
+    run_dir = _insert_execution_run(tmp_path, status="running")
+    _write_events(
+        run_dir,
+        [
+            _event(sequence, "iteration_collected", iteration_id=f"iteration-{sequence}")
+            for sequence in range(1, 5)
+        ],
+    )
+
+    first = service.get_execution_events("project-1", "uirun-1", ACTOR, after=0, limit=2)
+    second = service.get_execution_events(
+        "project-1", "uirun-1", ACTOR, after=first["next_cursor"], limit=2
+    )
+
+    assert [event["sequence"] for event in first["items"]] == [1, 2]
+    assert first["next_cursor"] == 2
+    assert first["has_more"] is True
+    assert [event["sequence"] for event in second["items"]] == [3, 4]
+    assert second["next_cursor"] == 4
+    assert second["has_more"] is False
+
+
+def test_execution_step_artifact_requires_manifest_and_run_containment(monkeypatch, tmp_path: Path):
+    _use_temp_db(monkeypatch, tmp_path)
+    run_dir = _insert_execution_run(tmp_path, status="failed")
+    screenshot = run_dir / "step-artifacts" / "iteration-1" / "artifact-safe.png"
+    screenshot.parent.mkdir(parents=True)
+    screenshot.write_bytes(b"png")
+    outside = tmp_path / "outside.png"
+    outside.write_bytes(b"outside")
+
+    def write_detail(relative_path: str, artifact_id: str = "artifact-1") -> None:
+        detail = {
+            "schema_version": "ui-run-detail/v1",
+            "detail_available": True,
+            "run_id": "uirun-1",
+            "run_status": "failed",
+            "incomplete": False,
+            "last_sequence": 1,
+            "summary": {"total": 1, "failed": 1},
+            "iterations": [
+                {
+                    "iteration_id": "iteration-1",
+                    "steps": [
+                        {
+                            "step_id": "step-1",
+                            "artifacts": [
+                                {
+                                    "artifact_id": artifact_id,
+                                    "relative_path": relative_path,
+                                    "mime_type": "image/png",
+                                }
+                            ],
+                        }
+                    ],
+                }
+            ],
+        }
+        (run_dir / "result-detail.json").write_text(json.dumps(detail), encoding="utf-8")
+
+    write_detail("step-artifacts/iteration-1/artifact-safe.png")
+    response = service.get_execution_step_artifact("project-1", "uirun-1", "artifact-1", ACTOR)
+    assert Path(response.path) == screenshot
+
+    with pytest.raises(HTTPException) as missing:
+        service.get_execution_step_artifact("project-1", "uirun-1", "not-in-manifest", ACTOR)
+    assert missing.value.status_code == 404
+
+    write_detail("../../outside.png")
+    with pytest.raises(HTTPException) as escaped:
+        service.get_execution_step_artifact("project-1", "uirun-1", "artifact-1", ACTOR)
+    assert escaped.value.status_code == 404
 
 
 def test_stop_queued_execution_run_marks_it_cancelled(monkeypatch, tmp_path: Path):

@@ -1,12 +1,12 @@
-import sys
-import shutil
 import json
+import sys
+from pathlib import Path
 from types import ModuleType, SimpleNamespace
 
 import pytest
 
 from app.agents.api_automation.pytest_requests import renderer
-from app.services.api_automation.runner import collect_script_suite
+from app.services.api_automation.runner import collect_script_suite, run_script_suite
 
 
 def test_generated_scenario_runtime_extracts_sse_event_json_by_event_and_path() -> None:
@@ -64,6 +64,52 @@ def test_generated_scenario_runtime_extracts_all_matching_sse_event_values() -> 
             }
         ],
     ) == {"tokens": ["hello", " world"]}
+
+
+def test_generated_scenario_runtime_reads_json_pointer_assertion_path(monkeypatch) -> None:
+    support_module = ModuleType("support")
+    assertions_module = ModuleType("support.assertions")
+
+    def assert_response(response, assertions):
+        assertion = assertions[0]
+        path = assertion["path"]
+        actual = response.json().get(path.removeprefix("$."))
+        assert actual == assertion["expected"], (
+            f"路径 {path}: 期望 {assertion['expected']!r}, 实际 {actual!r}"
+        )
+
+    assertions_module.assert_response_assertions = assert_response
+    monkeypatch.setitem(sys.modules, "support", support_module)
+    monkeypatch.setitem(sys.modules, "support.assertions", assertions_module)
+    namespace = {}
+    exec(renderer._scenario_py(), namespace)
+
+    class FakeClient:
+        def request(self, request_data, test_data):
+            return SimpleNamespace(
+                status_code=200,
+                headers={},
+                json=lambda: {"code": "400000", "message": "invalid parameter: MessageSource"},
+            )
+
+    with pytest.raises(
+        AssertionError,
+        match=r"路径 /code: 期望 '000000', 实际 '400000'",
+    ):
+        namespace["run_scenario"](
+            FakeClient(),
+            {
+                "steps": [
+                    {
+                        "id": "segment-code",
+                        "endpoint": {"method": "POST", "path": "/segment-code"},
+                        "assertions": [
+                            {"type": "jsonpath_equals", "path": "/code", "expected": "000000"}
+                        ],
+                    }
+                ]
+            },
+        )
 
 
 def test_generated_scenario_runtime_rejects_missing_required_sse_event_values() -> None:
@@ -616,6 +662,16 @@ def test_generated_scenario_runtime_writes_redacted_partial_failure_result(monke
     serialized = json.dumps(result, ensure_ascii=False)
     assert result["status"] == "failed"
     assert [step["status"] for step in result["steps"]] == ["failed", "skipped", "passed"]
+    failed_step = result["steps"][0]
+    assert isinstance(result["duration_ms"], float)
+    assert isinstance(failed_step["duration_ms"], float)
+    assert failed_step["step_type"] == "api_request"
+    assert failed_step["request"]["request"]["headers"]["Authorization"] == "******"
+    assert failed_step["response"]["status_code"] == 200
+    assert failed_step["response"]["body"]["token"] == "******"
+    assert failed_step["assertions"] == [{"type": "forced_failure"}]
+    assert failed_step["attempts"][0]["status"] == "failed"
+    assert result["steps"][1]["skip_reason"] == "前序步骤失败，执行链路已停止。"
     assert "secret-auth" not in serialized
     assert "secret-password" not in serialized
     assert "secret-cookie" not in serialized
@@ -623,36 +679,58 @@ def test_generated_scenario_runtime_writes_redacted_partial_failure_result(monke
 
 
 def test_generated_scenario_suite_collects_with_pytest(tmp_path) -> None:
-    if not shutil.which("uv"):
-        pytest.skip("uv is not installed")
     files = renderer.render_scenario_files(
         "profile_flow_apiscn_1",
         {
             "id": "apiscn-1",
             "name": "资料查询",
             "variables": {},
-            "steps": [
-                {
-                    "id": "apistep-1",
-                    "name": "查询资料",
-                    "case": {
-                        "request": {"method": "GET", "path": "/profile"},
-                        "test_data": {},
-                        "assertions": [{"type": "status_code", "expected": 200}],
-                    },
-                }
-            ],
+            "steps": [],
         },
     )
+    assert renderer.SCENARIO_TEST_FILE in files
+    assert "scenarios/profile_flow_apiscn_1/test_scenario.py" not in files
+    assert "scenarios/profile_flow_apiscn_1/scenario.py" not in files
     for file_key, content in files.items():
         path = tmp_path / file_key
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(content, encoding="utf-8")
+    (tmp_path / "pytest.ini").write_text(
+        "[pytest]\naddopts = --import-mode=importlib\npythonpath = .\ntestpaths = testcases\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "conftest.py").write_text(
+        "import pytest\n\n@pytest.fixture\ndef api_client():\n    return object()\n",
+        encoding="utf-8",
+    )
 
     result = collect_script_suite(
         suite_path=tmp_path,
         timeout=120,
-        test_paths=["scenarios/profile_flow_apiscn_1/test_scenario.py"],
+        test_paths=[renderer.SCENARIO_TEST_FILE],
     )
 
     assert result["ok"], result["stderr"] or result["stdout"]
+
+    execution = run_script_suite(
+        run_id="apirun-1",
+        project_id="project-1",
+        suite_path=tmp_path,
+        run_dir=tmp_path / "run",
+        environment={"api_base_url": "https://api.example.test"},
+        timeout=120,
+        test_paths=[renderer.SCENARIO_TEST_FILE],
+        scenario_file="scenarios/profile_flow_apiscn_1/scenario.json",
+    )
+
+    assert execution["status"] == "passed", execution["error_message"]
+    assert json.loads(Path(execution["scenario_result_path"]).read_text(encoding="utf-8"))["status"] == "passed"
+
+
+def test_generated_scenario_test_uses_shared_runtime_and_selected_data_file() -> None:
+    source = renderer._test_scenario_py()
+
+    assert "from support.scenario import run_scenario" in source
+    assert 'os.environ.get("API_SCENARIO_FILE"' in source
+    assert "pytestmark = pytest.mark.skipif(" in source
+    assert "from scenario import run_scenario" not in source

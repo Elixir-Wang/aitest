@@ -40,9 +40,10 @@ test("view endpoint asset navigates to and selects the current endpoint", () => 
   assert.match(assetPageSource, /endpoint\.id === requestedEndpointId/);
 });
 
-test("switching a dynamic source back to literal persists the asset default", () => {
+test("switching a dynamic source back to literal persists the resolved override value", () => {
   assert.match(source, /fallbackValue !== undefined/);
-  assert.match(source, /onBindingChange\(field\.target, value, field\.defaultValue\)/);
+  assert.match(source, /resolveRequestFieldValue\(requestOverrides, field\.target, field\.defaultValue\)/);
+  assert.match(source, /onBindingChange\(field\.target, value, literalValue\)/);
 });
 
 test("lifecycle editor preserves structured response extraction and scripts", () => {

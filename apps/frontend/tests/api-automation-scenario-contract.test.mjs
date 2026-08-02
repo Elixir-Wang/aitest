@@ -37,34 +37,45 @@ test("scenario tab renders a project-list style scenario list", () => {
   assert.match(scenarioListSource, /deleteApiAutomationScenario/);
 });
 
-test("new and existing scenarios use dedicated editor routes", () => {
-  assert.match(newScenarioPageSource, /ApiScenarioEditor/);
-  assert.match(newScenarioPageSource, /新建接口场景/);
+test("new scenarios use a list dialog and existing scenarios use dedicated editor routes", () => {
+  assert.match(scenarioListSource, /<Dialog/);
+  assert.match(scenarioListSource, /<DialogTitle>新建场景<\/DialogTitle>/);
+  assert.match(scenarioListSource, /createApiAutomationScenario/);
+  assert.match(scenarioListSource, /listApiAutomationEnvironments/);
+  assert.doesNotMatch(
+    scenarioListSource,
+    /router\.push\(`\/projects\/\$\{projectId\}\/automation\/api\/scenarios\/new/,
+  );
+  assert.match(newScenarioPageSource, /redirect/);
+  assert.match(newScenarioPageSource, /tab=scenarios/);
   assert.match(editScenarioPageSource, /ApiScenarioEditor/);
   assert.match(editScenarioPageSource, /scenarioId/);
-  assert.match(scenarioListSource, /scenarios\/new/);
   assert.match(scenarioListSource, /scenarios\/\$\{scenario\.id\}/);
 });
 
-test("scenario editor supports ordered steps, saving, validation, publishing, and execution", () => {
+test("scenario editor supports ordered steps, version saving, and execution", () => {
   assert.match(scenarioEditorSource, /执行链路/);
   assert.match(scenarioEditorSource, /场景变量/);
   assert.match(scenarioEditorSource, /版本记录/);
   assert.match(scenarioEditorSource, /运行场景/);
+  assert.match(scenarioEditorSource, /保存版本/);
+  assert.match(scenarioEditorSource, /editor\.actions\.saveScenario/);
+  assert.doesNotMatch(scenarioEditorSource, />\s*检查\s*</);
   assert.match(scenarioEditorSource, /ApiScenarioAssetPicker/);
   assert.match(scenarioEditorSource, /ApiScenarioStepConfig/);
   assert.doesNotMatch(scenarioEditorSource, /listApiAutomationTestCases/);
   assert.match(scenarioEditorHookSource, /useApiScenarioEditor/);
   assert.match(scenarioEditorHookSource, /createApiAutomationScenario/);
-  assert.match(scenarioEditorHookSource, /replaceApiAutomationScenarioSteps/);
-  assert.match(scenarioEditorHookSource, /validateApiAutomationScenario/);
-  assert.match(scenarioEditorHookSource, /publishApiAutomationScenario/);
+  assert.match(scenarioEditorHookSource, /saveApiAutomationScenarioVersion/);
   assert.match(scenarioEditorHookSource, /executeApiAutomationScenario/);
   assert.match(scenarioEditorHookSource, /listApiAutomationScenarioRevisions/);
   assert.match(scenarioEditorHookSource, /restoreApiAutomationScenarioRevision/);
   assert.match(scenarioEditorHookSource, /getApiAutomationRun/);
   assert.match(scenarioEditorHookSource, /getApiAutomationScenarioRunResult/);
   assert.match(scenarioEditorHookSource, /router\.replace/);
+  assert.doesNotMatch(scenarioEditorHookSource, /validateApiAutomationScenario/);
+  assert.doesNotMatch(scenarioEditorSource, /IssueBox/);
+  assert.doesNotMatch(scenarioEditorHookSource, /setValidation/);
   assert.doesNotMatch(scenarioEditorHookSource, /listApiAutomationTestCases/);
   assert.match(scenarioAssetPickerSource, /搜索接口名称或路径/);
   assert.match(scenarioAssetPickerSource, /添加到链路/);
@@ -72,9 +83,9 @@ test("scenario editor supports ordered steps, saving, validation, publishing, an
   assert.match(scenarioStepConfigSource, /响应提取/);
   assert.match(scenarioStepConfigSource, /字段类型/);
   assert.match(scenarioStepConfigSource, /基础结构/);
-  assert.match(scenarioVersionPanelSource, /恢复为草稿/);
+  assert.match(scenarioVersionPanelSource, /恢复此版本/);
   assert.match(scenarioVersionPanelSource, /当前版本/);
-  assert.match(scenarioRunDrawerSource, /回到步骤配置/);
+  assert.match(scenarioRunDrawerSource, /定位节点/);
   assert.match(scenarioRunDrawerSource, /请求/);
   assert.match(scenarioRunDrawerSource, /响应/);
   assert.match(scenarioRunDrawerSource, /变量/);
@@ -122,12 +133,23 @@ test("scenario editor provides a constrained canvas backed by the existing step 
   assert.doesNotMatch(scenarioCanvasSource, /rankdir: "LR"/);
   assert.match(scenarioCanvasSource, /h-full min-h-0 min-w-0/);
   assert.match(scenarioCanvasSource, /steps\.length/);
-  assert.match(scenarioStepConfigSource, /minmax\(140px,0\.8fr\)/);
+  assert.match(scenarioStepConfigSource, /minmax\(140px,0\.9fr\)/);
   assert.match(scenarioCanvasSource, /当前画布沿用现有步骤顺序/);
 });
 
-test("scenario editor hides the run footer until a run exists", () => {
-  assert.match(scenarioEditorSource, /editor\.latestRunId \? \([\s\S]*?<footer/);
+test("scenario editor exposes run status from the header without reserving a bottom footer", () => {
+  assert.match(scenarioEditorSource, /editor\.latestRunId \? \([\s\S]*?查看最近一次运行结果/);
+  assert.doesNotMatch(scenarioEditorSource, /<footer/);
+  assert.match(scenarioRunDrawerSource, /direction="right"/);
+  assert.match(scenarioRunDrawerSource, /min\(96vw,760px\)/);
+  assert.match(scenarioRunDrawerSource, /失败于/);
+  assert.match(scenarioRunDrawerSource, /定位节点/);
+  assert.match(scenarioRunDrawerSource, /已确认事实/);
+  assert.match(scenarioRunDrawerSource, /最可能原因/);
+  assert.match(scenarioRunDrawerSource, /建议处理/);
+  assert.match(scenarioRunDrawerSource, /业务字段值与预期不一致/);
+  assert.match(scenarioRunDrawerSource, /响应缺少断言要求的业务字段/);
+  assert.match(scenarioRunDrawerSource, /Number\.isFinite/);
   assert.doesNotMatch(scenarioEditorSource, /尚未运行当前场景/);
   assert.doesNotMatch(scenarioEditorSource, /运行结果将在此处展开/);
 });
@@ -145,14 +167,12 @@ test("scenario asset picker uses a compact grouped interface selector", () => {
   assert.doesNotMatch(scenarioAssetPickerSource, /SelectTrigger/);
 });
 
-test("scenario api client exposes transactional step replacement and lifecycle endpoints", () => {
+test("scenario api client exposes version history and current-version execution", () => {
   assert.match(clientSource, /replaceApiAutomationScenarioSteps/);
   assert.match(clientSource, /method: "PUT"/);
-  assert.match(clientSource, /\/api-scenarios\/\$\{scenarioId\}\/validate/);
-  assert.match(clientSource, /\/api-scenarios\/\$\{scenarioId\}\/publish/);
   assert.match(clientSource, /\/api-scenarios\/\$\{scenarioId\}\/execute/);
-  assert.match(clientSource, /confirm_asset_changes/);
-  assert.match(clientSource, /source/);
+  assert.doesNotMatch(clientSource, /publishApiAutomationScenario/);
+  assert.doesNotMatch(clientSource, /source:\s*"published" \| "draft"/);
   assert.match(clientSource, /listApiAutomationScenarioRevisions/);
   assert.match(clientSource, /restoreApiAutomationScenarioRevision/);
   assert.match(clientSource, /\/revisions\/\$\{revision\}\/restore/);

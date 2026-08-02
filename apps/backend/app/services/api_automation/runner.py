@@ -63,6 +63,7 @@ def run_script_suite(
     environment: dict[str, Any],
     timeout: int,
     test_paths: list[str] | None = None,
+    scenario_file: str | None = None,
 ) -> dict[str, Any]:
     suite_path = suite_path.resolve()
     run_dir = run_dir.resolve()
@@ -70,6 +71,9 @@ def run_script_suite(
     _clear_previous_outputs(run_dir)
     _write_runtime_env(run_dir, environment)
     process_env = _build_process_env(environment)
+    process_env.pop("API_SCENARIO_FILE", None)
+    if scenario_file:
+        process_env["API_SCENARIO_FILE"] = scenario_file
     scenario_result_path = run_dir / "scenario-result.json"
     observation_result_path = run_dir / "observations.json"
     process_env["API_SCENARIO_RESULT_PATH"] = str(scenario_result_path)

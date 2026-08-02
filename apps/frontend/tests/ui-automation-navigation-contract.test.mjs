@@ -26,18 +26,35 @@ test("UI automation asset list reuses the API automation list structure without 
   assert.match(pageSource, /<ListToolbar/);
   assert.match(pageSource, /createLabel="新建 UI 自动化"/);
   assert.match(pageSource, /const selection = useLocalTableSelection<UiAutomationRow>/);
-  assert.match(pageSource, /selectedCount=\{selection\.selectedCount\}/);
+  assert.match(pageSource, /selectedCount=\{selectedAssetRows\.length\}/);
+  assert.match(pageSource, /onBatchDelete=\{\(\) => requestDelete\(selectedAssetRows\)\}/);
   assert.match(pageSource, /aria-label="选择全部 UI 自动化用例"/);
-  assert.match(pageSource, /selection\.toggleAll\(Boolean\(checked\)\)/);
+  assert.match(pageSource, /toggleAllAssets\(Boolean\(checked\)\)/);
   assert.match(pageSource, /selection\.toggleOne\(row\.id, Boolean\(checked\)\)/);
-  assert.match(pageSource, /<div className="overflow-hidden rounded-lg border">/);
-  assert.match(pageSource, /<TableHead>用例名称<\/TableHead>/);
-  assert.doesNotMatch(pageSource, /<TableHead>项目<\/TableHead>/);
-  assert.match(pageSource, /<TableHead>入口路径<\/TableHead>/);
-  assert.match(pageSource, /<TableHead>步骤<\/TableHead>/);
-  assert.match(pageSource, /<TableHead className="w-20">执行<\/TableHead>/);
+  assert.match(pageSource, /<div className="overflow-x-auto rounded-lg border">/);
+  assert.match(pageSource, />用例名称<\/TableHead>/);
+  assert.match(pageSource, />所属项目<\/TableHead>/);
+  assert.doesNotMatch(pageSource, />入口路径<\/TableHead>/);
+  assert.match(pageSource, />步骤数<\/TableHead>/);
+  assert.match(pageSource, />更新时间<\/TableHead>/);
+  assert.match(pageSource, /formatDateTime\(updatedAtForRow\(row\) \|\| null\)/);
+  assert.match(pageSource, /placeholder="搜索用例名称、所属项目或状态"/);
+  assert.match(pageSource, /<TableHead className="w-20">操作<\/TableHead>/);
+  assert.match(pageSource, /<RowActions/);
+  assert.match(pageSource, /label: "查看详情"[\s\S]*?icon: Eye/);
+  assert.match(pageSource, /label: "执行"[\s\S]*?icon: Play/);
+  assert.match(pageSource, /label: "删除"[\s\S]*?icon: Trash2[\s\S]*?destructive: true/);
+  assert.match(pageSource, /<AlertDialogTitle>删除 UI 自动化资产？<\/AlertDialogTitle>/);
   assert.doesNotMatch(pageSource, /<FieldLabel>项目<\/FieldLabel>/);
   assert.doesNotMatch(pageSource, /<FieldLabel>运行环境<\/FieldLabel>/);
+});
+
+test("UI automation asset list does not depend on removed page exploration operations", () => {
+  assert.doesNotMatch(pageSource, /page-exploration\/projects\/\$\{project\.id\}\/operations/);
+  assert.doesNotMatch(pageSource, /operationsArtifact/);
+  assert.match(pageSource, /listUiAutomationAssets\(project\.id\)/);
+  assert.match(pageSource, /apiRequest<ApiTestCaseSet\[]>[\s\S]*?\.catch\(\(\) => \[\]\)/);
+  assert.match(pageSource, /apiRequest<ApiManualTestCase\[]>[\s\S]*?\.catch\(\(\) => \[\]\)/);
 });
 
 test("UI automation create dialog selects the real generation inputs", () => {
@@ -71,9 +88,12 @@ test("API client exposes UI automation asset, generation, and execution contract
   assert.match(apiClientSource, /export function createUiAutomationExecutionRun/);
   assert.match(apiClientSource, /export function getUiAutomationExecutionRun/);
   assert.match(apiClientSource, /export function getUiAutomationAsset/);
+  assert.match(apiClientSource, /export function deleteUiAutomationAsset/);
   assert.match(apiClientSource, /export function listUiAutomationAssetGenerationRuns/);
   assert.match(apiClientSource, /export function listUiAutomationAssetExecutionRuns/);
   assert.match(apiClientSource, /export function getUiAutomationRunLogs/);
+  assert.match(apiClientSource, /export function getUiAutomationRunDetail/);
+  assert.match(apiClientSource, /export function getUiAutomationRunEvents/);
   assert.match(apiClientSource, /export function getUiAutomationLiveView/);
   assert.match(apiClientSource, /export function stopUiAutomationExecutionRun/);
   assert.match(apiClientSource, /export function deleteUiAutomationExecutionRun/);
@@ -130,6 +150,12 @@ test("UI automation run detail exposes logs and browser evidence", () => {
   assert.doesNotMatch(runDetailSource, /trace_path|video_path/);
   assert.match(runDetailSource, /运行日志/);
   assert.match(runDetailSource, /浏览器证据/);
+  assert.match(runDetailSource, /参数与步骤结果/);
+  assert.match(runDetailSource, /filteredIterations/);
+  assert.match(runDetailSource, /selectedIteration/);
+  assert.match(runDetailSource, /step-artifacts/);
+  assert.match(runDetailSource, /iteration\.error/);
+  assert.match(runDetailSource, /该错误发生在首个业务步骤开始前/);
   assert.match(runDetailSource, /实时查看/);
   assert.match(runDetailSource, /浏览器操作过程/);
   assert.match(runDetailSource, /liveView\.stream_path/);
@@ -142,4 +168,10 @@ test("UI automation run detail exposes logs and browser evidence", () => {
   assert.match(runDetailSource, /stopUiAutomationExecutionRun/);
   assert.doesNotMatch(runDetailSource, /结构化结果/);
   assert.doesNotMatch(runDetailSource, /JSON\.stringify\(run\.result/);
+});
+
+test("UI automation run detail virtualizes large parameter result sets", () => {
+  assert.match(runDetailSource, /VIRTUALIZATION_THRESHOLD = 100/);
+  assert.match(runDetailSource, /iterations\.slice\(start, end\)/);
+  assert.match(runDetailSource, /iterations\.length \* ITERATION_ROW_HEIGHT/);
 });

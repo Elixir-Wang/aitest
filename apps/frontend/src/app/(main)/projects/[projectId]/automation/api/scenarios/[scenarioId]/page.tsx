@@ -11,7 +11,7 @@ export default function EditApiScenarioPage() {
   return (
     <PageShell
       breadcrumbs={moduleBreadcrumbs("apiAutomation", { label: "编辑场景" })}
-      description="维护场景步骤、变量、校验、发布和运行配置。"
+      description="维护场景步骤、变量、版本记录和运行配置。"
       fillViewport
       projectScope="project"
       title="编辑接口场景"

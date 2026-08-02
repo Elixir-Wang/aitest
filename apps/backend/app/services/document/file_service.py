@@ -59,6 +59,7 @@ async def upload_documents(
     mode: str = "new",
     document_name: str = "",
     existing_document_id: str = "",
+    project_version_id: str = "",
 ) -> dict:
     if not files:
         raise api_error(400, "DOCUMENT_UPLOAD_EMPTY", "请至少上传一个需求文件。")
@@ -87,6 +88,9 @@ async def upload_documents(
     with connect() as db:
         ensure_project_accepts_upload(db, project_id)
         if mode == "new":
+            from app.services import project_version_service
+
+            target_version = project_version_service.resolve_requirement_version(db, project_id, project_version_id)
             name = document_name.strip()
             if not name:
                 raise api_error(400, "DOCUMENT_NAME_REQUIRED", "请填写需求名称。")
@@ -97,6 +101,7 @@ async def upload_documents(
                 db,
                 document_id=document_id,
                 project_id=project_id,
+                project_version_id=target_version["id"],
                 name=name,
                 document_type="PRD",
                 status=DOCUMENT_PENDING_MERGE_STATUS,

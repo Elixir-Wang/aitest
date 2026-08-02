@@ -1,0 +1,575 @@
+{
+  "description": "",
+  "id": "apiscn-c1a17695269df5da",
+  "name": "测试",
+  "project_id": "project-75fec50973f2adf6",
+  "revision": 1,
+  "steps": [
+    {
+      "api_test_case_id": null,
+      "assertions": [
+        {
+          "expected": 200,
+          "type": "status_code"
+        },
+        {
+          "path": "/data/segment_code",
+          "type": "jsonpath_exists"
+        }
+      ],
+      "bindings": [
+        {
+          "required": true,
+          "source": {
+            "key": "cybertron_robot_token",
+            "type": "secret"
+          },
+          "target": "/request/headers/cybertron-robot-token"
+        },
+        {
+          "required": true,
+          "source": {
+            "key": "cybertron_robot_key",
+            "type": "secret"
+          },
+          "target": "/request/headers/cybertron-robot-key"
+        }
+      ],
+      "control_config": {},
+      "created_at": "2026-08-02 09:17:28",
+      "enabled": true,
+      "endpoint": {
+        "auth": {
+          "security": [
+            {
+              "cybertron_api_key": [],
+              "cybertron_api_token": [],
+              "cybertron_app_id": []
+            }
+          ]
+        },
+        "id": "apiend-5ba6a6e1fdf76150",
+        "method": "POST",
+        "parameters": [
+          {
+            "description": "鉴权 header",
+            "in": "header",
+            "name": "cybertron-app-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "x-source": "security"
+          },
+          {
+            "description": "鉴权 header",
+            "in": "header",
+            "name": "cybertron-robot-token",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "x-source": "security"
+          },
+          {
+            "description": "鉴权 header",
+            "in": "header",
+            "name": "cybertron-robot-key",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "x-source": "security"
+          }
+        ],
+        "path": "/openapi/v1/gw/multi-agent/segment-code/gen",
+        "request_body": {
+          "content": {
+            "application/json": {
+              "examples": {
+                "Example": {
+                  "title": "Example",
+                  "value": {
+                    "message_source": "<string>"
+                  }
+                }
+              },
+              "schema": {
+                "properties": {
+                  "message_source": {
+                    "description": "对话来源，标识消息的产生渠道， 这里用openai-ws",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "message_source"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "exampleType": "generated"
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "Example": {
+                    "title": "Example",
+                    "value": {
+                      "code": "<string>",
+                      "data": {
+                        "segment_code": "<string>"
+                      },
+                      "message": "<string>"
+                    }
+                  }
+                },
+                "schema": {
+                  "properties": {
+                    "code": {
+                      "description": "000000为正常，其他异常",
+                      "type": "string"
+                    },
+                    "data": {
+                      "properties": {
+                        "segment_code": {
+                          "type": "string"
+                        }
+                      },
+                      "type": "object"
+                    },
+                    "message": {
+                      "description": "状态说明",
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "生成SegmentCode, 返回值",
+            "exampleType": "generated"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "Example": {
+                    "title": "Example",
+                    "value": {
+                      "code": "<string>",
+                      "message": "<string>"
+                    }
+                  }
+                },
+                "schema": {
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "message"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Unexpected error",
+            "exampleType": "generated"
+          }
+        },
+        "summary": "生成SegmentCode"
+      },
+      "endpoint_id": "apiend-5ba6a6e1fdf76150",
+      "extractors": [
+        {
+          "name": "segment_code",
+          "path": "/data/segment_code",
+          "value_type": "string"
+        }
+      ],
+      "id": "step_gen_segment_code",
+      "name": "生成SegmentCode",
+      "on_failure": "stop",
+      "project_id": "project-75fec50973f2adf6",
+      "request_overrides": {
+        "request": {
+          "headers": {
+            "cybertron-app-id": "multi-agent-server"
+          },
+          "json": {
+            "message_source": "openai-ws"
+          }
+        }
+      },
+      "scenario_id": "apiscn-c1a17695269df5da",
+      "step_order": 0,
+      "step_type": "api_request",
+      "updated_at": "2026-08-02 09:17:28"
+    },
+    {
+      "api_test_case_id": null,
+      "assertions": [
+        {
+          "expected": 200,
+          "type": "status_code"
+        }
+      ],
+      "bindings": [
+        {
+          "required": true,
+          "source": {
+            "key": "cybertron_robot_key",
+            "type": "secret"
+          },
+          "target": "/request/headers/cybertron-robot-key"
+        },
+        {
+          "required": true,
+          "source": {
+            "key": "cybertron_robot_token",
+            "type": "secret"
+          },
+          "target": "/request/headers/cybertron-robot-token"
+        },
+        {
+          "required": true,
+          "source": {
+            "step_id": "step_gen_segment_code",
+            "type": "step_output",
+            "variable": "segment_code"
+          },
+          "target": "/request/multipart_form/segment_code"
+        },
+        {
+          "required": true,
+          "source": {
+            "name": "username",
+            "type": "user_input"
+          },
+          "target": "/request/multipart_form/username"
+        },
+        {
+          "required": true,
+          "source": {
+            "properties": {
+              "question": {
+                "type": "literal",
+                "value": "上海今天的天气怎么样"
+              },
+              "stream": {
+                "type": "literal",
+                "value": true
+              }
+            },
+            "type": "object"
+          },
+          "target": "/request/multipart_form/data",
+          "transform": "json_encode"
+        }
+      ],
+      "control_config": {},
+      "created_at": "2026-08-02 09:17:28",
+      "enabled": true,
+      "endpoint": {
+        "auth": {
+          "security": []
+        },
+        "id": "apiend-2335bd7dbb86c233",
+        "method": "POST",
+        "parameters": [
+          {
+            "description": "固定值 sse",
+            "in": "header",
+            "name": "SSE-Backend-Type",
+            "required": true,
+            "schema": {
+              "enum": [
+                "sse"
+              ],
+              "type": "string"
+            },
+            "x-source": "labeled-html"
+          },
+          {
+            "description": "智能体 key",
+            "in": "header",
+            "name": "cybertron-robot-key",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "x-source": "labeled-html"
+          },
+          {
+            "description": "智能体 token",
+            "in": "header",
+            "name": "cybertron-robot-token",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "x-source": "labeled-html"
+          },
+          {
+            "description": "默认值 multi-agent-server",
+            "in": "header",
+            "name": "cybertron-app-id",
+            "required": true,
+            "schema": {
+              "default": "multi-agent-server",
+              "type": "string"
+            },
+            "x-source": "labeled-html"
+          }
+        ],
+        "path": "/openapi/v1/gw/multi-agent/sse",
+        "request_body": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "properties": {
+                  "data": {
+                    "description": "JSON 序列化字符串。包含实际请求内容的 JSON 对象",
+                    "example": "{\"question\": \"上海今天的天气怎么样\"}",
+                    "type": "string",
+                    "x-json-schema": {
+                      "properties": {
+                        "question": {
+                          "description": "用户输入的问题或指令",
+                          "example": "上海今天的天气怎么样",
+                          "type": "string"
+                        },
+                        "stream": {
+                          "description": "是否启用流式返回（streaming）",
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "question"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "message_source": {
+                    "description": "对话来源，标识消息的产生渠道",
+                    "example": "openai-ws",
+                    "type": "string"
+                  },
+                  "segment_code": {
+                    "description": "segment-code/gen 接口返回的数据（通常为一段编码或标识字符串）",
+                    "type": "string"
+                  },
+                  "username": {
+                    "description": "用户名",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "message_source",
+                  "segment_code",
+                  "username",
+                  "data"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "text/event-stream": {
+                "example": "id: 666173836047155201 event: message data: {\"code\":\"000000\",\"data\":{\"segment_code\":\"f3f5e6ef3dc743a4952e96f9ea902eae\",\"dialog_id\":\"666173836047155201\",\"message_id\":\"666173836047155201\",\"event_type\":\"start\",\"role\":\"user\",\"answer\":\"上海今天的天气怎么样\",\"content_type\":\"text\",\"finish\":\"y\",\"meta_data\":{}},\"type\":\"multi_agent\",\"msg\":\"\",\"meta_data\":{\"trace_id\":\"e1a7c875-97cf-4031-bc84-184d7885171d\",\"timestamp\":1768287419426,\"publish_version\":\"V1\"}} id: 666173836047156225 event: message data: {\"code\":\"000000\",\"data\":{\"segment_code\":\"f3f5e6ef3dc743a4952e96f9ea902eae\",\"dialog_id\":\"666173836047155201\",\"message_id\":\"666173836047156225\",\"event_type\":\"call_llm_start\",\"role\":\"assistant\",\"content_type\":\"text\",\"finish\":\"y\",\"meta_data\":{\"agent_id\":\"a64f4359-97fb-458a-b89f-7f4db833ce26\",\"agent_name\":\"Agent1\"},\"index\":1},\"type\":\"multi_agent\",\"msg\":\"\",\"meta_data\":{\"trace_id\":\"e1a7c875-97cf-4031-bc84-184d7885171d\",\"timestamp\":1768287420048,\"publish_version\":\"V1\"}} id: 666173836047157249 event: message data: {\"code\":\"000000\",\"data\":{\"segment_code\":\"f3f5e6ef3dc743a4952e96f9ea902eae\",\"dialog_id\":\"666173836047155201\",\"message_id\":\"666173836047157249\",\"event_type\":\"call_llm_end\",\"role\":\"assistant\",\"answer\":\"\",\"content_type\":\"text\",\"finish\":\"y\",\"meta_data\":{\"agent_id\":\"a64f4359-97fb-458a-b89f-7f4db833ce26\",\"agent_name\":\"Agent1\",\"use_age\":{\"tokens\":521,\"prompt_tokens\":497,\"answer_tokens\":24},\"latency\":{\"duration\":0.927506612,\"duration_ms\":927,\"first_token_latency\":0.927506612},\"model_config\":{\"seed\":0,\"top_p\":0,\"max_token\":1000,\"model_name\":\"aliyun-qwen-max\",\"temperature\":0}},\"index\":5,\"finish_reason\":\"llm_end\"},\"type\":\"multi_agent\",\"msg\":\"\",\"meta_data\":{\"trace_id\":\"e1a7c875-97cf-4031-bc84-184d7885171d\",\"timestamp\":1768287420354,\"publish_version\":\"V1\"}} id: 666173836047158273 event: message data: {\"code\":\"000000\",\"data\":{\"segment_code\":\"f3f5e6ef3dc743a4952e96f9ea902eae\",\"dialog_id\":\"666173836047155201\",\"message_id\":\"666173836047158273\",\"event_type\":\"tool_call_start\",\"role\":\"tool\",\"answer\":[{\"index\":0,\"id\":\"call_560541b750624a3ba6c379\",\"type\":\"function\",\"function\":{\"name\":\"query-weather\",\"arguments\":\"{\\\"address\\\": \\\"上海\\\", \\\"day\\\": \\\"今天\\\"}\"}}],\"content_type\":\"json\",\"finish\":\"y\",\"meta_data\":{\"agent_id\":\"a64f4359-97fb-458a-b89f-7f4db833ce26\",\"agent_name\":\"Agent1\",\"tool_name\":\"query-weather\",\"tool_arguments\":\"{\\\"address\\\": \\\"上海\\\", \\\"day\\\": \\\"今天\\\"}\",\"tool_call_id\":\"call_560541b750624a3ba6c379\"},\"index\":6,\"finish_reason\":\"tool_call\"},\"type\":\"multi_agent\",\"msg\":\"\",\"meta_data\":{\"trace_id\":\"e1a7c875-97cf-4031-bc84-184d7885171d\",\"timestamp\":1768287420354,\"publish_version\":\"V1\"}} id: 666173836047159297 event: message data: {\"code\":\"000000\",\"data\":{\"segment_code\":\"f3f5e6ef3dc743a4952e96f9ea902eae\",\"dialog_id\":\"666173836047155201\",\"message_id\":\"666173836047159297\",\"event_type\":\"tool_call_end\",\"role\":\"tool\",\"answer\":\"{\\\"desc\\\":\\\"2026-01-13 上海天气预报：白天晴，15摄氏度；夜间晴，5摄氏度。 风力1-3级。\\\\n请合理安排您的活动，注意适时添加衣物。如果还有其他问题，我可以继续为您提供帮助。\\\",\\\"markdown\\\":\\\"| 天气 | 详情 |\\\\n|:---------|:-----------|\\\\n| 白天天气 | 晴 |\\\\n| 夜间天气 | 晴 |\\\\n| 白天温度 | 15摄氏度 |\\\\n| 夜间温度 | 5摄氏度 |\\\\n| 风力 | 1-3级 |\\\\n| 日期 | 2026-01-13 |\\\",\\\"raw\\\":{\\\"夜间天气\\\":\\\"晴\\\",\\\"夜间温度\\\":\\\"5摄氏度\\\",\\\"日期\\\":\\\"2026-01-13\\\",\\\"白天天气\\\":\\\"晴\\\",\\\"白天温度\\\":\\\"15摄氏度\\\",\\\"风力\\\":\\\"1-3级\\\"},\\\"type\\\":\\\"markdown\\\"}\\n\",\"content_type\":\"text\",\"finish\":\"y\",\"meta_data\":{\"agent_id\":\"Agent1\",\"agent_name\":\"Agent1\",\"latency\":{\"duration\":0.355055471,\"duration_ms\":355,\"first_token_latency\":0.355055471},\"tool_name\":\"query-weather\",\"tool_arguments\":\"{\\\"address\\\": \\\"上海\\\", \\\"day\\\": \\\"今天\\\"}\",\"tool_call_id\":\"call_560541b750624a3ba6c379\",\"tool_results\":\"{\\\"desc\\\":\\\"2026-01-13 上海天气预报：白天晴，15摄氏度；夜间晴，5摄氏度。 风力1-3级。\\\\n请合理安排您的活动，注意适时添加衣物。如果还有其他问题，我可以继续为您提供帮助。\\\",\\\"markdown\\\":\\\"| 天气 | 详情 |\\\\n|:---------|:-----------|\\\\n| 白天天气 | 晴 |\\\\n| 夜间天气 | 晴 |\\\\n| 白天温度 | 15摄氏度 |\\\\n| 夜间温度 | 5摄氏度 |\\\\n| 风力 | 1-3级 |\\\\n| 日期 | 2026-01-13 |\\\",\\\"raw\\\":{\\\"夜间天气\\\":\\\"晴\\\",\\\"夜间温度\\\":\\\"5摄氏度\\\",\\\"日期\\\":\\\"2026-01-13\\\",\\\"白天天气\\\":\\\"晴\\\",\\\"白天温度\\\":\\\"15摄氏度\\\",\\\"风力\\\":\\\"1-3级\\\"},\\\"type\\\":\\\"markdown\\\"}\\n\",\"tool_call_status\":\"success\",\"plugin_name\":\"【官方】国内天气\",\"plugin_type\":1},\"index\":7,\"finish_reason\":\"tool_call\"},\"type\":\"multi_agent\",\"msg\":\"\",\"meta_data\":{\"trace_id\":\"e1a7c875-97cf-4031-bc84-184d7885171d\",\"timestamp\":1768287420709,\"publish_version\":\"V1\"}} id: 666173836047160321 event: message data: {\"code\":\"000000\",\"data\":{\"segment_code\":\"f3f5e6ef3dc743a4952e96f9ea902eae\",\"dialog_id\":\"666173836047155201\",\"message_id\":\"666173836047160321\",\"event_type\":\"call_llm_start\",\"role\":\"assistant\",\"content_type\":\"text\",\"finish\":\"y\",\"meta_data\":{\"agent_id\":\"a64f4359-97fb-458a-b89f-7f4db833ce26\",\"agent_name\":\"Agent1\"},\"index\":8},\"type\":\"multi_agent\",\"msg\":\"\",\"meta_data\":{\"trace_id\":\"e1a7c875-97cf-4031-bc84-184d7885171d\",\"timestamp\":1768287421293,\"publish_version\":\"V1\"}} id: 666173836047161345 event: message data: {\"code\":\"000000\",\"data\":{\"segment_code\":\"f3f5e6ef3dc743a4952e96f9ea902eae\",\"dialog_id\":\"666173836047155201\",\"message_id\":\"666173836047161345\",\"event_type\":\"answer\",\"role\":\"assistant\",\"answer\":\"2\",\"content_type\":\"text\",\"finish\":\"n\",\"meta_data\":{\"agent_id\":\"a64f4359-97fb-458a-b89f-7f4db833ce26\",\"agent_name\":\"Agent1\"},\"index\":8},\"type\":\"multi_agent\",\"msg\":\"\",\"meta_data\":{\"trace_id\":\"e1a7c875-97cf-4031-bc84-184d7885171d\",\"timestamp\":1768287421293,\"publish_version\":\"V1\"}} id: 666173836047161345 event: message data: {\"code\":\"000000\",\"data\":{\"segment_code\":\"f3f5e6ef3dc743a4952e96f9ea902eae\",\"dialog_id\":\"666173836047155201\",\"message_id\":\"666173836047161345\",\"event_type\":\"answer\",\"role\":\"assistant\",\"answer\":\"026\",\"content_type\":\"text\",\"finish\":\"n\",\"meta_data\":{\"agent_id\":\"a64f4359-97fb-458a-b89f-7f4db833ce26\",\"agent_name\":\"Agent1\"},\"index\":9},\"type\":\"multi_agent\",\"msg\":\"\",\"meta_data\":{\"trace_id\":\"e1a7c875-97cf-4031-bc84-184d7885171d\",\"timestamp\":1768287421329,\"publish_version\":\"V1\"}} id: 666173836047161345 event: message data: {\"code\":\"000000\",\"data\":{\"segment_code\":\"f3f5e6ef3dc743a4952e96f9ea902eae\",\"dialog_id\":\"666173836047155201\",\"message_id\":\"666173836047161345\",\"event_type\":\"answer\",\"role\":\"assistant\",\"answer\":\"-01-13\",\"content_type\":\"text\",\"finish\":\"n\",\"meta_data\":{\"agent_id\":\"a64f4359-97fb-458a-b89f-7f4db833ce26\",\"agent_name\":\"Agent1\"},\"index\":10},\"type\":\"multi_agent\",\"msg\":\"\",\"meta_data\":{\"trace_id\":\"e1a7c875-97cf-4031-bc84-184d7885171d\",\"timestamp\":1768287421398,\"publish_version\":\"V1\"}} id: 666173836047161345 event: message data: {\"code\":\"000000\",\"data\":{\"segment_code\":\"f3f5e6ef3dc743a4952e96f9ea902eae\",\"dialog_id\":\"666173836047155201\",\"message_id\":\"666173836047161345\",\"event_type\":\"answer\",\"role\":\"assistant\",\"answer\":\" 上海天气预报：\",\"content_type\":\"text\",\"finish\":\"n\",\"meta_data\":{\"agent_id\":\"a64f4359-97fb-458a-b89f-7f4db833ce26\",\"agent_name\":\"Agent1\"},\"index\":11},\"type\":\"multi_agent\",\"msg\":\"\",\"meta_data\":{\"trace_id\":\"e1a7c875-97cf-4031-bc84-184d7885171d\",\"timestamp\":1768287421490,\"publish_version\":\"V1\"}} id: 666173836047161345 event: message data: {\"code\":\"000000\",\"data\":{\"segment_code\":\"f3f5e6ef3dc743a4952e96f9ea902eae\",\"dialog_id\":\"666173836047155201\",\"message_id\":\"666173836047161345\",\"event_type\":\"answer\",\"role\":\"assistant\",\"answer\":\"白天晴，15摄\",\"content_type\":\"text\",\"finish\":\"n\",\"meta_data\":{\"agent_id\":\"a64f4359-97fb-458a-b89f-7f4db833ce26\",\"agent_name\":\"Agent1\"},\"index\":12},\"type\":\"multi_agent\",\"msg\":\"\",\"meta_data\":{\"trace_id\":\"e1a7c875-97cf-4031-bc84-184d7885171d\",\"timestamp\":1768287422200,\"publish_version\":\"V1\"}} id: 666173836047161345 event: message data: {\"code\":\"000000\",\"data\":{\"segment_code\":\"f3f5e6ef3dc743a4952e96f9ea902eae\",\"dialog_id\":\"666173836047155201\",\"message_id\":\"666173836047161345\",\"event_type\":\"answer\",\"role\":\"assistant\",\"answer\":\"氏度；夜间晴，\",\"content_type\":\"text\",\"finish\":\"n\",\"meta_data\":{\"agent_id\":\"a64f4359-97fb-458a-b89f-7f4db833ce26\",\"agent_name\":\"Agent1\"},\"index\":13},\"type\":\"multi_agent\",\"msg\":\"\",\"meta_data\":{\"trace_id\":\"e1a7c875-97cf-4031-bc84-184d7885171d\",\"timestamp\":1768287422860,\"publish_version\":\"V1\"}} id: 666173836047161345 event: message data: {\"code\":\"000000\",\"data\":{\"segment_code\":\"f3f5e6ef3dc743a4952e96f9ea902eae\",\"dialog_id\":\"666173836047155201\",\"message_id\":\"666173836047161345\",\"event_type\":\"answer\",\"role\":\"assistant\",\"answer\":\"5摄氏度。风\",\"content_type\":\"text\",\"finish\":\"n\",\"meta_data\":{\"agent_id\":\"a64f4359-97fb-458a-b89f-7f4db833ce26\",\"agent_name\":\"Agent1\"},\"index\":14},\"type\":\"multi_agent\",\"msg\":\"\",\"meta_data\":{\"trace_id\":\"e1a7c875-97cf-4031-bc84-184d7885171d\",\"timestamp\":1768287422963,\"publish_version\":\"V1\"}} id: 666173836047161345 event: message data: {\"code\":\"000000\",\"data\":{\"segment_code\":\"f3f5e6ef3dc743a4952e96f9ea902eae\",\"dialog_id\":\"666173836047155201\",\"message_id\":\"666173836047161345\",\"event_type\":\"answer\",\"role\":\"assistant\",\"answer\":\"力1-3级。\",\"content_type\":\"text\",\"finish\":\"n\",\"meta_data\":{\"agent_id\":\"a64f4359-97fb-458a-b89f-7f4db833ce26\",\"agent_name\":\"Agent1\"},\"index\":15},\"type\":\"multi_agent\",\"msg\":\"\",\"meta_data\":{\"trace_id\":\"e1a7c875-97cf-4031-bc84-184d7885171d\",\"timestamp\":1768287423028,\"publish_version\":\"V1\"}} id: 666173836047161345 event: message data: {\"code\":\"000000\",\"data\":{\"segment_code\":\"f3f5e6ef3dc743a4952e96f9ea902eae\",\"dialog_id\":\"666173836047155201\",\"message_id\":\"666173836047161345\",\"event_type\":\"answer\",\"role\":\"assistant\",\"answer\":\"\\n请合理安排您的活动，\",\"content_type\":\"text\",\"finish\":\"n\",\"meta_data\":{\"agent_id\":\"a64f4359-97fb-458a-b89f-7f4db833ce26\",\"agent_name\":\"Agent1\"},\"index\":16},\"type\":\"multi_agent\",\"msg\":\"\",\"meta_data\":{\"trace_id\":\"e1a7c875-97cf-4031-bc84-184d7885171d\",\"timestamp\":1768287423132,\"publish_version\":\"V1\"}} id: 666173836047161345 event: message data: {\"code\":\"000000\",\"data\":{\"segment_code\":\"f3f5e6ef3dc743a4952e96f9ea902eae\",\"dialog_id\":\"666173836047155201\",\"message_id\":\"666173836047161345\",\"event_type\":\"answer\",\"role\":\"assistant\",\"answer\":\"注意适时添加衣物。如果\",\"content_type\":\"text\",\"finish\":\"n\",\"meta_data\":{\"agent_id\":\"a64f4359-97fb-458a-b89f-7f4db833ce26\",\"agent_name\":\"Agent1\"},\"index\":17},\"type\":\"multi_agent\",\"msg\":\"\",\"meta_data\":{\"trace_id\":\"e1a7c875-97cf-4031-bc84-184d7885171d\",\"timestamp\":1768287423190,\"publish_version\":\"V1\"}} id: 666173836047161345 event: message data: {\"code\":\"000000\",\"data\":{\"segment_code\":\"f3f5e6ef3dc743a4952e96f9ea902eae\",\"dialog_id\":\"666173836047155201\",\"message_id\":\"666173836047161345\",\"event_type\":\"answer\",\"role\":\"assistant\",\"answer\":\"还有其他问题，我可以继续\",\"content_type\":\"text\",\"finish\":\"n\",\"meta_data\":{\"agent_id\":\"a64f4359-97fb-458a-b89f-7f4db833ce26\",\"agent_name\":\"Agent1\"},\"index\":18},\"type\":\"multi_agent\",\"msg\":\"\",\"meta_data\":{\"trace_id\":\"e1a7c875-97cf-4031-bc84-184d7885171d\",\"timestamp\":1768287423296,\"publish_version\":\"V1\"}} id: 666173836047161345 event: message data: {\"code\":\"000000\",\"data\":{\"segment_code\":\"f3f5e6ef3dc743a4952e96f9ea902eae\",\"dialog_id\":\"666173836047155201\",\"message_id\":\"666173836047161345\",\"event_type\":\"answer\",\"role\":\"assistant\",\"answer\":\"为您提供帮助。\\n\\n|\",\"content_type\":\"text\",\"finish\":\"n\",\"meta_data\":{\"agent_id\":\"a64f4359-97fb-458a-b89f-7f4db833ce26\",\"agent_name\":\"Agent1\"},\"index\":19},\"type\":\"multi_agent\",\"msg\":\"\",\"meta_data\":{\"trace_id\":\"e1a7c875-97cf-4031-bc84-184d7885171d\",\"timestamp\":1768287423354,\"publish_version\":\"V1\"}} id: 666173836047161345 event: message data: {\"code\":\"000000\",\"data\":{\"segment_code\":\"f3f5e6ef3dc743a4952e96f9ea902eae\",\"dialog_id\":\"666173836047155201\",\"message_id\":\"666173836047161345\",\"event_type\":\"answer\",\"role\":\"assistant\",\"answer\":\" 天气 |\",\"content_type\":\"text\",\"finish\":\"n\",\"meta_data\":{\"agent_id\":\"a64f4359-97fb-458a-b89f-7f4db833ce26\",\"agent_name\":\"Agent1\"},\"index\":20},\"type\":\"multi_agent\",\"msg\":\"\",\"meta_data\":{\"trace_id\":\"e1a7c875-97cf-4031-bc84-184d7885171d\",\"timestamp\":1768287423496,\"publish_version\":\"V1\"}} id: 666173836047161345 event: message data: {\"code\":\"000000\",\"data\":{\"segment_code\":\"f3f5e6ef3dc743a4952e96f9ea902eae\",\"dialog_id\":\"666173836047155201\",\"message_id\":\"666173836047161345\",\"event_type\":\"answer\",\"role\":\"assistant\",\"answer\":\" 详情 |\\n|:---------\",\"content_type\":\"text\",\"finish\":\"n\",\"meta_data\":{\"agent_id\":\"a64f4359-97fb-458a-b89f-7f4db833ce26\",\"agent_name\":\"Agent1\"},\"index\":21},\"type\":\"multi_agent\",\"msg\":\"\",\"meta_data\":{\"trace_id\":\"e1a7c875-97cf-4031-bc84-184d7885171d\",\"timestamp\":1768287423533,\"publish_version\":\"V1\"}} id: 666173836047161345 event: message data: {\"code\":\"000000\",\"data\":{\"segment_code\":\"f3f5e6ef3dc743a4952e96f9ea902eae\",\"dialog_id\":\"666173836047155201\",\"message_id\":\"666173836047161345\",\"event_type\":\"answer\",\"role\":\"assistant\",\"answer\":\"|:-----------|\\n|\",\"content_type\":\"text\",\"finish\":\"n\",\"meta_data\":{\"agent_id\":\"a64f4359-97fb-458a-b89f-7f4db833ce26\",\"agent_name\":\"Agent1\"},\"index\":22},\"type\":\"multi_agent\",\"msg\":\"\",\"meta_data\":{\"trace_id\":\"e1a7c875-97cf-4031-bc84-184d7885171d\",\"timestamp\":1768287423615,\"publish_version\":\"V1\"}} id: 666173836047161345 event: message data: {\"code\":\"000000\",\"data\":{\"segment_code\":\"f3f5e6ef3dc743a4952e96f9ea902eae\",\"dialog_id\":\"666173836047155201\",\"message_id\":\"666173836047161345\",\"event_type\":\"answer\",\"role\":\"assistant\",\"answer\":\" 白天天气 |\",\"content_type\":\"text\",\"finish\":\"n\",\"meta_data\":{\"agent_id\":\"a64f4359-97fb-458a-b89f-7f4db833ce26\",\"agent_name\":\"Agent1\"},\"index\":23},\"type\":\"multi_agent\",\"msg\":\"\",\"meta_data\":{\"trace_id\":\"e1a7c875-97cf-4031-bc84-184d7885171d\",\"timestamp\":1768287423676,\"publish_version\":\"V1\"}} id: 666173836047161345 event: message data: {\"code\":\"000000\",\"data\":{\"segment_code\":\"f3f5e6ef3dc743a4952e96f9ea902eae\",\"dialog_id\":\"666173836047155201\",\"message_id\":\"666173836047161345\",\"event_type\":\"answer\",\"role\":\"assistant\",\"answer\":\" 晴 |\\n| 夜\",\"content_type\":\"text\",\"finish\":\"n\",\"meta_data\":{\"agent_id\":\"a64f4359-97fb-458a-b89f-7f4db833ce26\",\"agent_name\":\"Agent1\"},\"index\":24},\"type\":\"multi_agent\",\"msg\":\"\",\"meta_data\":{\"trace_id\":\"e1a7c875-97cf-4031-bc84-184d7885171d\",\"timestamp\":1768287423778,\"publish_version\":\"V1\"}} id: 666173836047161345 event: message data: {\"code\":\"000000\",\"data\":{\"segment_code\":\"f3f5e6ef3dc743a4952e96f9ea902eae\",\"dialog_id\":\"666173836047155201\",\"message_id\":\"666173836047161345\",\"event_type\":\"answer\",\"role\":\"assistant\",\"answer\":\"间天气 | 晴\",\"content_type\":\"text\",\"finish\":\"n\",\"meta_data\":{\"agent_id\":\"a64f4359-97fb-458a-b89f-7f4db833ce26\",\"agent_name\":\"Agent1\"},\"index\":25},\"type\":\"multi_agent\",\"msg\":\"\",\"meta_data\":{\"trace_id\":\"e1a7c875-97cf-4031-bc84-184d7885171d\",\"timestamp\":1768287423838,\"publish_version\":\"V1\"}} id: 666173836047161345 event: message data: {\"code\":\"000000\",\"data\":{\"segment_code\":\"f3f5e6ef3dc743a4952e96f9ea902eae\",\"dialog_id\":\"666173836047155201\",\"message_id\":\"666173836047161345\",\"event_type\":\"answer\",\"role\":\"assistant\",\"answer\":\" |\\n| 白天\",\"content_type\":\"text\",\"finish\":\"n\",\"meta_data\":{\"agent_id\":\"a64f4359-97fb-458a-b89f-7f4db833ce26\",\"agent_name\":\"Agent1\"},\"index\":26},\"type\":\"multi_agent\",\"msg\":\"\",\"meta_data\":{\"trace_id\":\"e1a7c875-97cf-4031-bc84-184d7885171d\",\"timestamp\":1768287423938,\"publish_version\":\"V1\"}} id: 666173836047161345 event: message data: {\"code\":\"000000\",\"data\":{\"segment_code\":\"f3f5e6ef3dc743a4952e96f9ea902eae\",\"dialog_id\":\"666173836047155201\",\"message_id\":\"666173836047161345\",\"event_type\":\"answer\",\"role\":\"assistant\",\"answer\":\"温度 | 15摄\",\"content_type\":\"text\",\"finish\":\"n\",\"meta_data\":{\"agent_id\":\"a64f4359-97fb-458a-b89f-7f4db833ce26\",\"agent_name\":\"Agent1\"},\"index\":27},\"type\":\"multi_agent\",\"msg\":\"\",\"meta_data\":{\"trace_id\":\"e1a7c875-97cf-4031-bc84-184d7885171d\",\"timestamp\":1768287423998,\"publish_version\":\"V1\"}} id: 666173836047161345 event: message data: {\"code\":\"000000\",\"data\":{\"segment_code\":\"f3f5e6ef3dc743a4952e96f9ea902eae\",\"dialog_id\":\"666173836047155201\",\"message_id\":\"666173836047161345\",\"event_type\":\"answer\",\"role\":\"assistant\",\"answer\":\"氏度 |\\n|\",\"content_type\":\"text\",\"finish\":\"n\",\"meta_data\":{\"agent_id\":\"a64f4359-97fb-458a-b89f-7f4db833ce26\",\"agent_name\":\"Agent1\"},\"index\":28},\"type\":\"multi_agent\",\"msg\":\"\",\"meta_data\":{\"trace_id\":\"e1a7c875-97cf-4031-bc84-184d7885171d\",\"timestamp\":1768287424135,\"publish_version\":\"V1\"}} id: 666173836047161345 event: message data: {\"code\":\"000000\",\"data\":{\"segment_code\":\"f3f5e6ef3dc743a4952e96f9ea902eae\",\"dialog_id\":\"666173836047155201\",\"message_id\":\"666173836047161345\",\"event_type\":\"answer\",\"role\":\"assistant\",\"answer\":\" 夜间温度 | 5\",\"content_type\":\"text\",\"finish\":\"n\",\"meta_data\":{\"agent_id\":\"a64f4359-97fb-458a-b89f-7f4db833ce26\",\"agent_name\":\"Agent1\"},\"index\":29},\"type\":\"multi_agent\",\"msg\":\"\",\"meta_data\":{\"trace_id\":\"e1a7c875-97cf-4031-bc84-184d7885171d\",\"timestamp\":1768287424208,\"publish_version\":\"V1\"}} id: 666173836047161345 event: message data: {\"code\":\"000000\",\"data\":{\"segment_code\":\"f3f5e6ef3dc743a4952e96f9ea902eae\",\"dialog_id\":\"666173836047155201\",\"message_id\":\"666173836047161345\",\"event_type\":\"answer\",\"role\":\"assistant\",\"answer\":\"摄氏度 |\\n|\",\"content_type\":\"text\",\"finish\":\"n\",\"meta_data\":{\"agent_id\":\"a64f4359-97fb-458a-b89f-7f4db833ce26\",\"agent_name\":\"Agent1\"},\"index\":30},\"type\":\"multi_agent\",\"msg\":\"\",\"meta_data\":{\"trace_id\":\"e1a7c875-97cf-4031-bc84-184d7885171d\",\"timestamp\":1768287424267,\"publish_version\":\"V1\"}} id: 666173836047161345 event: message data: {\"code\":\"000000\",\"data\":{\"segment_code\":\"f3f5e6ef3dc743a4952e96f9ea902eae\",\"dialog_id\":\"666173836047155201\",\"message_id\":\"666173836047161345\",\"event_type\":\"answer\",\"role\":\"assistant\",\"answer\":\" 风力 |\",\"content_type\":\"text\",\"finish\":\"n\",\"meta_data\":{\"agent_id\":\"a64f4359-97fb-458a-b89f-7f4db833ce26\",\"agent_name\":\"Agent1\"},\"index\":31},\"type\":\"multi_agent\",\"msg\":\"\",\"meta_data\":{\"trace_id\":\"e1a7c875-97cf-4031-bc84-184d7885171d\",\"timestamp\":1768287424337,\"publish_version\":\"V1\"}} id: 666173836047161345 event: message data: {\"code\":\"000000\",\"data\":{\"segment_code\":\"f3f5e6ef3dc743a4952e96f9ea902eae\",\"dialog_id\":\"666173836047155201\",\"message_id\":\"666173836047161345\",\"event_type\":\"answer\",\"role\":\"assistant\",\"answer\":\" 1-3级\",\"content_type\":\"text\",\"finish\":\"n\",\"meta_data\":{\"agent_id\":\"a64f4359-97fb-458a-b89f-7f4db833ce26\",\"agent_name\":\"Agent1\"},\"index\":32},\"type\":\"multi_agent\",\"msg\":\"\",\"meta_data\":{\"trace_id\":\"e1a7c875-97cf-4031-bc84-184d7885171d\",\"timestamp\":1768287424401,\"publish_version\":\"V1\"}} id: 666173836047161345 event: message data: {\"code\":\"000000\",\"data\":{\"segment_code\":\"f3f5e6ef3dc743a4952e96f9ea902eae\",\"dialog_id\":\"666173836047155201\",\"message_id\":\"666173836047161345\",\"event_type\":\"answer\",\"role\":\"assistant\",\"answer\":\" |\\n| 日期 |\",\"content_type\":\"text\",\"finish\":\"n\",\"meta_data\":{\"agent_id\":\"a64f4359-97fb-458a-b89f-7f4db833ce26\",\"agent_name\":\"Agent1\"},\"index\":33},\"type\":\"multi_agent\",\"msg\":\"\",\"meta_data\":{\"trace_id\":\"e1a7c875-97cf-4031-bc84-184d7885171d\",\"timestamp\":1768287424503,\"publish_version\":\"V1\"}} id: 666173836047161345 event: message data: {\"code\":\"000000\",\"data\":{\"segment_code\":\"f3f5e6ef3dc743a4952e96f9ea902eae\",\"dialog_id\":\"666173836047155201\",\"message_id\":\"666173836047161345\",\"event_type\":\"answer\",\"role\":\"assistant\",\"answer\":\" 2026-\",\"content_type\":\"text\",\"finish\":\"n\",\"meta_data\":{\"agent_id\":\"a64f4359-97fb-458a-b89f-7f4db833ce26\",\"agent_name\":\"Agent1\"},\"index\":34},\"type\":\"multi_agent\",\"msg\":\"\",\"meta_data\":{\"trace_id\":\"e1a7c875-97cf-4031-bc84-184d7885171d\",\"timestamp\":1768287424560,\"publish_version\":\"V1\"}} id: 666173836047161345 event: message data: {\"code\":\"000000\",\"data\":{\"segment_code\":\"f3f5e6ef3dc743a4952e96f9ea902eae\",\"dialog_id\":\"666173836047155201\",\"message_id\":\"666173836047161345\",\"event_type\":\"answer\",\"role\":\"assistant\",\"answer\":\"01-13 |\",\"content_type\":\"text\",\"finish\":\"n\",\"meta_data\":{\"agent_id\":\"a64f4359-97fb-458a-b89f-7f4db833ce26\",\"agent_name\":\"Agent1\"},\"index\":35},\"type\":\"multi_agent\",\"msg\":\"\",\"meta_data\":{\"trace_id\":\"e1a7c875-97cf-4031-bc84-184d7885171d\",\"timestamp\":1768287424640,\"publish_version\":\"V1\"}} id: 666173836047161345 event: message data: {\"code\":\"000000\",\"data\":{\"segment_code\":\"f3f5e6ef3dc743a4952e96f9ea902eae\",\"dialog_id\":\"666173836047155201\",\"message_id\":\"666173836047161345\",\"event_type\":\"answer\",\"role\":\"assistant\",\"answer\":\"\\n\\n我将把此\",\"content_type\":\"text\",\"finish\":\"n\",\"meta_data\":{\"agent_id\":\"a64f4359-97fb-458a-b89f-7f4db833ce26\",\"agent_name\":\"Agent1\"},\"index\":36},\"type\":\"multi_agent\",\"msg\":\"\",\"meta_data\":{\"trace_id\":\"e1a7c875-97cf-4031-bc84-184d7885171d\",\"timestamp\":1768287424983,\"publish_version\":\"V1\"}} id: 666173836047161345 event: message data: {\"code\":\"000000\",\"data\":{\"segment_code\":\"f3f5e6ef3dc743a4952e96f9ea902eae\",\"dialog_id\":\"666173836047155201\",\"message_id\":\"666173836047161345\",\"event_type\":\"answer\",\"role\":\"assistant\",\"answer\":\"天气信息传递给Agent2\",\"content_type\":\"text\",\"finish\":\"n\",\"meta_data\":{\"agent_id\":\"a64f4359-97fb-458a-b89f-7f4db833ce26\",\"agent_name\":\"Agent1\"},\"index\":37},\"type\":\"multi_agent\",\"msg\":\"\",\"meta_data\":{\"trace_id\":\"e1a7c875-97cf-4031-bc84-184d7885171d\",\"timestamp\":1768287425050,\"publish_version\":\"V1\"}} id: 666173836047161345 event: message data: {\"code\":\"000000\",\"data\":{\"segment_code\":\"f3f5e6ef3dc743a4952e96f9ea902eae\",\"dialog_id\":\"666173836047155201\",\"message_id\":\"666173836047161345\",\"event_type\":\"answer\",\"role\":\"assistant\",\"answer\":\"来帮您规划元旦\",\"content_type\":\"text\",\"finish\":\"n\",\"meta_data\":{\"agent_id\":\"a64f4359-97fb-458a-b89f-7f4db833ce26\",\"agent_name\":\"Agent1\"},\"index\":38},\"type\":\"multi_agent\",\"msg\":\"\",\"meta_data\":{\"trace_id\":\"e1a7c875-97cf-4031-bc84-184d7885171d\",\"timestamp\":1768287425193,\"publish_version\":\"V1\"}} id: 666173836047161345 event: message data: {\"code\":\"000000\",\"data\":{\"segment_code\":\"f3f5e6ef3dc743a4952e96f9ea902eae\",\"dialog_id\":\"666173836047155201\",\"message_id\":\"666173836047161345\",\"event_type\":\"answer\",\"role\":\"assistant\",\"answer\":\"旅行计划。\",\"content_type\":\"text\",\"finish\":\"n\",\"meta_data\":{\"agent_id\":\"a64f4359-97fb-458a-b89f-7f4db833ce26\",\"agent_name\":\"Agent1\"},\"index\":39},\"type\":\"multi_agent\",\"msg\":\"\",\"meta_data\":{\"trace_id\":\"e1a7c875-97cf-4031-bc84-184d7885171d\",\"timestamp\":1768287425246,\"publish_version\":\"V1\"}} id: 666173836047161345 event: message data: {\"code\":\"000000\",\"data\":{\"segment_code\":\"f3f5e6ef3dc743a4952e96f9ea902eae\",\"dialog_id\":\"666173836047155201\",\"message_id\":\"666173836047161345\",\"event_type\":\"call_llm_end\",\"role\":\"assistant\",\"answer\":\"2026-01-13 上海天气预报：白天晴，15摄氏度；夜间晴，5摄氏度。风力1-3级。\\n请合理安排您的活动，注意适时添加衣物。如果还有其他问题，我可以继续为您提供帮助。\\n\\n| 天气 | 详情 |\\n|:---------|:-----------|\\n| 白天天气 | 晴 |\\n| 夜间天气 | 晴 |\\n| 白天温度 | 15摄氏度 |\\n| 夜间温度 | 5摄氏度 |\\n| 风力 | 1-3级 |\\n| 日期 | 2026-01-13 |\\n\\n我将把此天气信息传递给Agent2来帮您规划元旦旅行计划。\",\"content_type\":\"text\",\"finish\":\"y\",\"meta_data\":{\"agent_id\":\"a64f4359-97fb-458a-b89f-7f4db833ce26\",\"agent_name\":\"Agent1\",\"use_age\":{\"tokens\":953,\"prompt_tokens\":756,\"answer_tokens\":197},\"latency\":{\"duration\":5.103427232,\"duration_ms\":5103,\"first_token_latency\":0.584252404},\"model_config\":{\"seed\":0,\"top_p\":0,\"max_token\":1000,\"model_name\":\"aliyun-qwen-max\",\"temperature\":0}},\"index\":43,\"finish_reason\":\"llm_end\"},\"type\":\"multi_agent\",\"msg\":\"\",\"meta_data\":{\"trace_id\":\"e1a7c875-97cf-4031-bc84-184d7885171d\",\"timestamp\":1768287425812,\"publish_version\":\"V1\"}} id: 666173836047162369 event: message data: {\"code\":\"000000\",\"data\":{\"segment_code\":\"f3f5e6ef3dc743a4952e96f9ea902eae\",\"dialog_id\":\"666173836047155201\",\"message_id\":\"666173836047162369\",\"event_type\":\"tool_call_start\",\"role\":\"tool\",\"answer\":[{\"index\":0,\"id\":\"call_ce31fb997cb04421946c5a\",\"type\":\"function\",\"function\":{\"name\":\"transfer_to_agent\",\"arguments\":\"{\\\"agent_name\\\": \\\"Agent2\\\"}\"}}],\"content_type\":\"json\",\"finish\":\"y\",\"meta_data\":{\"agent_id\":\"a64f4359-97fb-458a-b89f-7f4db833ce26\",\"agent_name\":\"Agent1\",\"tool_name\":\"transfer_to_agent\",\"tool_arguments\":\"{\\\"agent_name\\\": \\\"Agent2\\\"}\",\"tool_call_id\":\"call_ce31fb997cb04421946c5a\"},\"index\":44,\"finish_reason\":\"tool_call\"},\"type\":\"multi_agent\",\"msg\":\"\",\"meta_data\":{\"trace_id\":\"e1a7c875-97cf-4031-bc84-184d7885171d\",\"timestamp\":1768287425812,\"publish_version\":\"V1\"}} id: 666173836047163393 event: message data: {\"code\":\"000000\",\"data\":{\"segment_code\":\"f3f5e6ef3dc743a4952e96f9ea902eae\",\"dialog_id\":\"666173836047155201\",\"message_id\":\"666173836047163393\",\"event_type\":\"tool_call_end\",\"role\":\"tool\",\"answer\":\"successfully transferred to agent [Agent2]\",\"content_type\":\"text\",\"finish\":\"y\",\"meta_data\":{\"agent_id\":\"Agent1\",\"agent_name\":\"Agent1\",\"latency\":{\"duration\":0.000246546,\"duration_ms\":0,\"first_token_latency\":0.000246546},\"tool_name\":\"transfer_to_agent\",\"tool_arguments\":\"{\\\"agent_name\\\": \\\"Agent2\\\"}\",\"tool_call_id\":\"call_ce31fb997cb04421946c5a\",\"tool_results\":\"successfully transferred to agent [Agent2]\",\"tool_call_status\":\"success\"},\"index\":45,\"finish_reason\":\"tool_call\"},\"type\":\"multi_agent\",\"msg\":\"\",\"meta_data\":{\"trace_id\":\"e1a7c875-97cf-4031-bc84-184d7885171d\",\"timestamp\":1768287425813,\"publish_version\":\"V1\"}} id: 666173836047164417 event: message data: {\"code\":\"000000\",\"data\":{\"segment_code\":\"f3f5e6ef3dc743a4952e96f9ea902eae\",\"dialog_id\":\"666173836047155201\",\"message_id\":\"666173836047164417\",\"event_type\":\"agent_transfer\",\"role\":\"assistant\",\"content_type\":\"text\",\"finish\":\"y\",\"meta_data\":{\"agent_id\":\"a64f4359-97fb-458a-b89f-7f4db833ce26\",\"agent_name\":\"Agent1\",\"jump_agent_id\":\"e23eab88-2781-4142-acdc-7df307a6be39\",\"jump_agent_name\":\"Agent2\"},\"index\":46,\"finish_reason\":\"transfer\"},\"type\":\"multi_agent\",\"msg\":\"\",\"meta_data\":{\"trace_id\":\"e1a7c875-97cf-4031-bc84-184d7885171d\",\"timestamp\":1768287425813,\"publish_version\":\"V1\"}} id: 666173836047165441 event: message data: {\"code\":\"000000\",\"data\":{\"segment_code\":\"f3f5e6ef3dc743a4952e96f9ea902eae\",\"dialog_id\":\"666173836047155201\",\"message_id\":\"666173836047165441\",\"event_type\":\"call_llm_start\",\"role\":\"assistant\",\"content_type\":\"text\",\"finish\":\"y\",\"meta_data\":{\"agent_id\":\"e23eab88-2781-4142-acdc-7df307a6be39\",\"agent_name\":\"Agent2\"},\"index\":47},\"type\":\"multi_agent\",\"msg\":\"\",\"meta_data\":{\"trace_id\":\"e1a7c875-97cf-4031-bc84-184d7885171d\",\"timestamp\":1768287426194,\"publish_version\":\"V1\"}} id: 666173836047166465 event: message data: {\"code\":\"000000\",\"data\":{\"segment_code\":\"f3f5e6ef3dc743a4952e96f9ea902eae\",\"dialog_id\":\"666173836047155201\",\"message_id\":\"666173836047166465\",\"event_type\":\"answer\",\"role\":\"assistant\",\"answer\":\"2\",\"content_type\":\"text\",\"finish\":\"n\",\"meta_data\":{\"agent_id\":\"e23eab88-2781-4142-acdc-7df307a6be39\",\"agent_name\":\"Agent2\"},\"index\":47},\"type\":\"multi_agent\",\"msg\":\"\",\"meta_data\":{\"trace_id\":\"e1a7c875-97cf-4031-bc84-184d7885171d\",\"timestamp\":1768287426194,\"publish_version\":\"V1\"}} id: 666173836047166465 event: message data: {\"code\":\"000000\",\"data\":{\"segment_code\":\"f3f5e6ef3dc743a4952e96f9ea902eae\",\"dialog_id\":\"666173836047155201\",\"message_id\":\"666173836047166465\",\"event_type\":\"answer\",\"role\":\"assistant\",\"answer\":\"026\",\"content_type\":\"text\",\"finish\":\"n\",\"meta_data\":{\"agent_id\":\"e23eab88-2781-4142-acdc-7df307a6be39\",\"agent_name\":\"Agent2\"},\"index\":48},\"type\":\"multi_agent\",\"msg\":\"\",\"meta_data\":{\"trace_id\":\"e1a7c875-97cf-4031-bc84-184d7885171d\",\"timestamp\":1768287426238,\"publish_version\":\"V1\"}} id: 666173836047166465 event: message data: {\"code\":\"000000\",\"data\":{\"segment_code\":\"f3f5e6ef3dc743a4952e96f9ea902eae\",\"dialog_id\":\"666173836047155201\",\"message_id\":\"666173836047166465\",\"event_type\":\"answer\",\"role\":\"assistant\",\"answer\":\"年\",\"content_type\":\"text\",\"finish\":\"n\",\"meta_data\":{\"agent_id\":\"e23eab88-2781-4142-acdc-7df307a6be39\",\"agent_name\":\"Agent2\"},\"index\":49},\"type\":\"multi_agent\",\"msg\":\"\",\"meta_data\":{\"trace_id\":\"e1a7c875-97cf-4031-bc84-184d7885171d\",\"timestamp\":1768287426331,\"publish_version\":\"V1\"}} id: 666173836047166465 event: message data: {\"code\":\"000000\",\"data\":{\"segment_code\":\"f3f5e6ef3dc743a4952e96f9ea902eae\",\"dialog_id\":\"666173836047155201\",\"message_id\":\"666173836047166465\",\"event_type\":\"answer\",\"role\":\"assistant\",\"answer\":\"1月1\",\"content_type\":\"text\",\"finish\":\"n\",\"meta_data\":{\"agent_id\":\"e23eab88-2781-4142-acdc-7df307a6be39\",\"agent_name\":\"Agent2\"},\"index\":50},\"type\":\"multi_agent\",\"msg\":\"\",\"meta_data\":{\"trace_id\":\"e1a7c875-97cf-4031-bc84-184d7885171d\",\"timestamp\":1768287426334,\"publish_version\":\"V1\"}} id: 666173836047166465 event: message data: {\"code\":\"000000\",\"data\":{\"segment_code\":\"f3f5e6ef3dc743a4952e96f9ea902eae\",\"dialog_id\":\"666173836047155201\",\"message_id\":\"666173836047166465\",\"event_type\":\"answer\",\"role\":\"assistant\",\"answer\":\"3日上海的天气预报\",\"content_type\":\"text\",\"finish\":\"n\",\"meta_data\":{\"agent_id\":\"e23eab88-2781-4142-acdc-7df307a6be39\",\"agent_name\":\"Agent2\"},\"index\":51},\"type\":\"multi_agent\",\"msg\":\"\",\"meta_data\":{\"trace_id\":\"e1a7c875-97cf-4031-bc84-184d7885171d\",\"timestamp\":1768287426467,\"publish_version\":\"V1\"}} id: 666173836047166465 event: message data: {\"code\":\"000000\",\"data\":{\"segment_code\":\"f3f5e6ef3dc743a4952e96f9ea902eae\",\"dialog_id\":\"666173836047155201\",\"message_id\":\"666173836047166465\",\"event_type\":\"answer\",\"role\":\"assistant\",\"answer\":\"显示，白天是\",\"content_type\":\"text\",\"finish\":\"n\",\"meta_data\":{\"agent_id\":\"e23eab88-2781-4142-acdc-7df307a6be39\",\"agent_name\":\"Agent2\"},\"index\":52},\"type\":\"multi_agent\",\"msg\":\"\",\"meta_data\":{\"trace_id\":\"e1a7c875-97cf-4031-bc84-184d7885171d\",\"timestamp\":1768287426533,\"publish_version\":\"V1\"}} id: 666173836047166465 event: message data: {\"code\":\"000000\",\"data\":{\"segment_code\":\"f3f5e6ef3dc743a4952e96f9ea902eae\",\"dialog_id\":\"666173836047155201\",\"message_id\":\"666173836047166465\",\"event_type\":\"answer\",\"role\":\"assistant\",\"answer\":\"晴朗的好天气，气温\",\"content_type\":\"text\",\"finish\":\"n\",\"meta_data\":{\"agent_id\":\"e23eab88-2781-4142-acdc-7df307a6be39\",\"agent_name\":\"Agent2\"},\"index\":53},\"type\":\"multi_agent\",\"msg\":\"\",\"meta_data\":{\"trace_id\":\"e1a7c875-97cf-4031-bc84-184d7885171d\",\"timestamp\":1768287426639,\"publish_version\":\"V1\"}} id: 666173836047166465 event: message data: {\"code\":\"000000\",\"data\":{\"segment_code\":\"f3f5e6ef3dc743a4952e96f9ea902eae\",\"dialog_id\":\"666173836047155201\",\"message_id\":\"666173836047166465\",\"event_type\":\"answer\",\"role\":\"assistant\",\"answer\":\"大约在15摄\",\"content_type\":\"text\",\"finish\":\"n\",\"meta_data\":{\"agent_id\":\"e23eab88-2781-4142-acdc-7df307a6be39\",\"agent_name\":\"Agent2\"},\"index\":54},\"type\":\"multi_agent\",\"msg\":\"\",\"meta_data\":{\"trace_id\":\"e1a7c875-97cf-4031-bc84-184d7885171d\",\"timestamp\":1768287426782,\"publish_version\":\"V1\"}} id: 666173836047166465 event: message data: {\"code\":\"000000\",\"data\":{\"segment_code\":\"f3f5e6ef3dc743a4952e96f9ea902eae\",\"dialog_id\":\"666173836047155201\",\"message_id\":\"666173836047166465\",\"event_type\":\"answer\",\"role\":\"assistant\",\"answer\":\"氏度左右；\",\"content_type\":\"text\",\"finish\":\"n\",\"meta_data\":{\"agent_id\":\"e23eab88-2781-4142-acdc-7df307a6be39\",\"agent_name\":\"Agent2\"},\"index\":55},\"type\":\"multi_agent\",\"msg\":\"\",\"meta_data\":{\"trace_id\":\"e1a7c875-97cf-4031-bc84-184d7885171d\",\"timestamp\":1768287426870,\"publish_version\":\"V1\"}} id: 666173836047166465 event: message data: {\"code\":\"000000\",\"data\":{\"segment_code\":\"f3f5e6ef3dc743a4952e96f9ea902eae\",\"dialog_id\":\"666173836047155201\",\"message_id\":\"666173836047166465\",\"event_type\":\"answer\",\"role\":\"assistant\",\"answer\":\"到了晚上，依旧是\",\"content_type\":\"text\",\"finish\":\"n\",\"meta_data\":{\"agent_id\":\"e23eab88-2781-4142-acdc-7df307a6be39\",\"agent_name\":\"Agent2\"},\"index\":56},\"type\":\"multi_agent\",\"msg\":\"\",\"meta_data\":{\"trace_id\":\"e1a7c875-97cf-4031-bc84-184d7885171d\",\"timestamp\":1768287427030,\"publish_version\":\"V1\"}} id: 666173836047166465 event: message data: {\"code\":\"000000\",\"data\":{\"segment_code\":\"f3f5e6ef3dc743a4952e96f9ea902eae\",\"dialog_id\":\"666173836047155201\",\"message_id\":\"666173836047166465\",\"event_type\":\"answer\",\"role\":\"assistant\",\"answer\":\"晴天，但\",\"content_type\":\"text\",\"finish\":\"n\",\"meta_data\":{\"agent_id\":\"e23eab88-2781-4142-acdc-7df307a6be39\",\"agent_name\":\"Agent2\"},\"index\":57},\"type\":\"multi_agent\",\"msg\":\"\",\"meta_data\":{\"trace_id\":\"e1a7c875-97cf-4031-bc84-184d7885171d\",\"timestamp\":1768287427087,\"publish_version\":\"V1\"}} id: 666173836047166465 event: message data: {\"code\":\"000000\",\"data\":{\"segment_code\":\"f3f5e6ef3dc743a4952e96f9ea902eae\",\"dialog_id\":\"666173836047155201\",\"message_id\":\"666173836047166465\",\"event_type\":\"answer\",\"role\":\"assistant\",\"answer\":\"温度会下降到5摄\",\"content_type\":\"text\",\"finish\":\"n\",\"meta_data\":{\"agent_id\":\"e23eab88-2781-4142-acdc-7df307a6be39\",\"agent_name\":\"Agent2\"},\"index\":58},\"type\":\"multi_agent\",\"msg\":\"\",\"meta_data\":{\"trace_id\":\"e1a7c875-97cf-4031-bc84-184d7885171d\",\"timestamp\":1768287427821,\"publish_version\":\"V1\"}} id: 666173836047166465 event: message data: {\"code\":\"000000\",\"data\":{\"segment_code\":\"f3f5e6ef3dc743a4952e96f9ea902eae\",\"dialog_id\":\"666173836047155201\",\"message_id\":\"666173836047166465\",\"event_type\":\"answer\",\"role\":\"assistant\",\"answer\":\"氏度。风力较\",\"content_type\":\"text\",\"finish\":\"n\",\"meta_data\":{\"agent_id\":\"e23eab88-2781-4142-acdc-7df307a6be39\",\"agent_name\":\"Agent2\"},\"index\":59},\"type\":\"multi_agent\",\"msg\":\"\",\"meta_data\":{\"trace_id\":\"e1a7c875-97cf-4031-bc84-184d7885171d\",\"timestamp\":1768287427935,\"publish_version\":\"V1\"}} id: 666173836047166465 event: message data: {\"code\":\"000000\",\"data\":{\"segment_code\":\"f3f5e6ef3dc743a4952e96f9ea902eae\",\"dialog_id\":\"666173836047155201\",\"message_id\":\"666173836047166465\",\"event_type\":\"answer\",\"role\":\"assistant\",\"answer\":\"轻，为1-3\",\"content_type\":\"text\",\"finish\":\"n\",\"meta_data\":{\"agent_id\":\"e23eab88-2781-4142-acdc-7df307a6be39\",\"agent_name\":\"Agent2\"},\"index\":60},\"type\":\"multi_agent\",\"msg\":\"\",\"meta_data\":{\"trace_id\":\"e1a7c875-97cf-4031-bc84-184d7885171d\",\"timestamp\":1768287428051,\"publish_version\":\"V1\"}} id: 666173836047166465 event: message data: {\"code\":\"000000\",\"data\":{\"segment_code\":\"f3f5e6ef3dc743a4952e96f9ea902eae\",\"dialog_id\":\"666173836047155201\",\"message_id\":\"666173836047166465\",\"event_type\":\"answer\",\"role\":\"assistant\",\"answer\":\"级。这样的天气条件\",\"content_type\":\"text\",\"finish\":\"n\",\"meta_data\":{\"agent_id\":\"e23eab88-2781-4142-acdc-7df307a6be39\",\"agent_name\":\"Agent2\"},\"index\":61},\"type\":\"multi_agent\",\"msg\":\"\",\"meta_data\":{\"trace_id\":\"e1a7c875-97cf-4031-bc84-184d7885171d\",\"timestamp\":1768287428164,\"publish_version\":\"V1\"}} id: 666173836047166465 event: message data: {\"code\":\"000000\",\"data\":{\"segment_code\":\"f3f5e6ef3dc743a4952e96f9ea902eae\",\"dialog_id\":\"666173836047155201\",\"message_id\":\"666173836047166465\",\"event_type\":\"answer\",\"role\":\"assistant\",\"answer\":\"非常适合外出活动，不过\",\"content_type\":\"text\",\"finish\":\"n\",\"meta_data\":{\"agent_id\":\"e23eab88-2781-4142-acdc-7df307a6be39\",\"agent_name\":\"Agent2\"},\"index\":62},\"type\":\"multi_agent\",\"msg\":\"\",\"meta_data\":{\"trace_id\":\"e1a7c875-97cf-4031-bc84-184d7885171d\",\"timestamp\":1768287428287,\"publish_version\":\"V1\"}} id: 666173836047166465 event: message data: {\"code\":\"000000\",\"data\":{\"segment_code\":\"f3f5e6ef3dc743a4952e96f9ea902eae\",\"dialog_id\":\"666173836047155201\",\"message_id\":\"666173836047166465\",\"event_type\":\"answer\",\"role\":\"assistant\",\"answer\":\"早晚温差较大，请\",\"content_type\":\"text\",\"finish\":\"n\",\"meta_data\":{\"agent_id\":\"e23eab88-2781-4142-acdc-7df307a6be39\",\"agent_name\":\"Agent2\"},\"index\":63},\"type\":\"multi_agent\",\"msg\":\"\",\"meta_data\":{\"trace_id\":\"e1a7c875-97cf-4031-bc84-184d7885171d\",\"timestamp\":1768287428445,\"publish_version\":\"V1\"}} id: 666173836047166465 event: message data: {\"code\":\"000000\",\"data\":{\"segment_code\":\"f3f5e6ef3dc743a4952e96f9ea902eae\",\"dialog_id\":\"666173836047155201\",\"message_id\":\"666173836047166465\",\"event_type\":\"answer\",\"role\":\"assistant\",\"answer\":\"记得适时增减衣物以\",\"content_type\":\"text\",\"finish\":\"n\",\"meta_data\":{\"agent_id\":\"e23eab88-2781-4142-acdc-7df307a6be39\",\"agent_name\":\"Agent2\"},\"index\":64},\"type\":\"multi_agent\",\"msg\":\"\",\"meta_data\":{\"trace_id\":\"e1a7c875-97cf-4031-bc84-184d7885171d\",\"timestamp\":1768287428563,\"publish_version\":\"V1\"}} id: 666173836047166465 event: message data: {\"code\":\"000000\",\"data\":{\"segment_code\":\"f3f5e6ef3dc743a4952e96f9ea902eae\",\"dialog_id\":\"666173836047155201\",\"message_id\":\"666173836047166465\",\"event_type\":\"answer\",\"role\":\"assistant\",\"answer\":\"保持舒适。\\n\\n接下来\",\"content_type\":\"text\",\"finish\":\"n\",\"meta_data\":{\"agent_id\":\"e23eab88-2781-4142-acdc-7df307a6be39\",\"agent_name\":\"Agent2\"},\"index\":65},\"type\":\"multi_agent\",\"msg\":\"\",\"meta_data\":{\"trace_id\":\"e1a7c875-97cf-4031-bc84-184d7885171d\",\"timestamp\":1768287428721,\"publish_version\":\"V1\"}} id: 666173836047166465 event: message data: {\"code\":\"000000\",\"data\":{\"segment_code\":\"f3f5e6ef3dc743a4952e96f9ea902eae\",\"dialog_id\":\"666173836047155201\",\"message_id\":\"666173836047166465\",\"event_type\":\"answer\",\"role\":\"assistant\",\"answer\":\"，关于您提到的元旦\",\"content_type\":\"text\",\"finish\":\"n\",\"meta_data\":{\"agent_id\":\"e23eab88-2781-4142-acdc-7df307a6be39\",\"agent_name\":\"Agent2\"},\"index\":66},\"type\":\"multi_agent\",\"msg\":\"\",\"meta_data\":{\"trace_id\":\"e1a7c875-97cf-4031-bc84-184d7885171d\",\"timestamp\":1768287428857,\"publish_version\":\"V1\"}} id: 666173836047166465 event: message data: {\"code\":\"000000\",\"data\":{\"segment_code\":\"f3f5e6ef3dc743a4952e96f9ea902eae\",\"dialog_id\":\"666173836047155201\",\"message_id\":\"666173836047166465\",\"event_type\":\"answer\",\"role\":\"assistant\",\"answer\":\"出行计划，由于您\",\"content_type\":\"text\",\"finish\":\"n\",\"meta_data\":{\"agent_id\":\"e23eab88-2781-4142-acdc-7df307a6be39\",\"agent_name\":\"Agent2\"},\"index\":67},\"type\":\"multi_agent\",\"msg\":\"\",\"meta_data\":{\"trace_id\":\"e1a7c875-97cf-4031-bc84-184d7885171d\",\"timestamp\":1768287428957,\"publish_version\":\"V1\"}} id: 666173836047166465 event: message data: {\"code\":\"000000\",\"data\":{\"segment_code\":\"f3f5e6ef3dc743a4952e96f9ea902eae\",\"dialog_id\":\"666173836047155201\",\"message_id\":\"666173836047166465\",\"event_type\":\"answer\",\"role\":\"assistant\",\"answer\":\"提供的信息中包含\",\"content_type\":\"text\",\"finish\":\"n\",\"meta_data\":{\"agent_id\":\"e23eab88-2781-4142-acdc-7df307a6be39\",\"agent_name\":\"Agent2\"},\"index\":68},\"type\":\"multi_agent\",\"msg\":\"\",\"meta_data\":{\"trace_id\":\"e1a7c875-97cf-4031-bc84-184d7885171d\",\"timestamp\":1768287429025,\"publish_version\":\"V1\"}} id: 666173836047166465 event: message data: {\"code\":\"000000\",\"data\":{\"segment_code\":\"f3f5e6ef3dc743a4952e96f9ea902eae\",\"dialog_id\":\"666173836047155201\",\"message_id\":\"666173836047166465\",\"event_type\":\"answer\",\"role\":\"assistant\",\"answer\":\"了一串特定的时间\",\"content_type\":\"text\",\"finish\":\"n\",\"meta_data\":{\"agent_id\":\"e23eab88-2781-4142-acdc-7df307a6be39\",\"agent_name\":\"Agent2\"},\"index\":69},\"type\":\"multi_agent\",\"msg\":\"\",\"meta_data\":{\"trace_id\":\"e1a7c875-97cf-4031-bc84-184d7885171d\",\"timestamp\":1768287429232,\"publish_version\":\"V1\"}} id: 666173836047166465 event: message data: {\"code\":\"000000\",\"data\":{\"segment_code\":\"f3f5e6ef3dc743a4952e96f9ea902eae\",\"dialog_id\":\"666173836047155201\",\"message_id\":\"666173836047166465\",\"event_type\":\"answer\",\"role\":\"assistant\",\"answer\":\"戳（2026\",\"content_type\":\"text\",\"finish\":\"n\",\"meta_data\":{\"agent_id\":\"e23eab88-2781-4142-acdc-7df307a6be39\",\"agent_name\":\"Agent2\"},\"index\":70},\"type\":\"multi_agent\",\"msg\":\"\",\"meta_data\":{\"trace_id\":\"e1a7c875-97cf-4031-bc84-184d7885171d\",\"timestamp\":1768287429397,\"publish_version\":\"V1\"}} id: 666173836047166465 event: message data: {\"code\":\"000000\",\"data\":{\"segment_code\":\"f3f5e6ef3dc743a4952e96f9ea902eae\",\"dialog_id\":\"666173836047155201\",\"message_id\":\"666173836047166465\",\"event_type\":\"answer\",\"role\":\"assistant\",\"answer\":\"-01-13\",\"content_type\":\"text\",\"finish\":\"n\",\"meta_data\":{\"agent_id\":\"e23eab88-2781-4142-acdc-7df307a6be39\",\"agent_name\":\"Agent2\"},\"index\":71},\"type\":\"multi_agent\",\"msg\":\"\",\"meta_data\":{\"trace_id\":\"e1a7c875-97cf-4031-bc84-184d7885171d\",\"timestamp\":1768287429492,\"publish_version\":\"V1\"}} id: 666173836047166465 event: message data: {\"code\":\"000000\",\"data\":{\"segment_code\":\"f3f5e6ef3dc743a4952e96f9ea902eae\",\"dialog_id\":\"666173836047155201\",\"message_id\":\"666173836047166465\",\"event_type\":\"answer\",\"role\":\"assistant\",\"answer\":\" 14:56\",\"content_type\":\"text\",\"finish\":\"n\",\"meta_data\":{\"agent_id\":\"e23eab88-2781-4142-acdc-7df307a6be39\",\"agent_name\":\"Agent2\"},\"index\":72},\"type\":\"multi_agent\",\"msg\":\"\",\"meta_data\":{\"trace_id\":\"e1a7c875-97cf-4031-bc84-184d7885171d\",\"timestamp\":1768287429608,\"publish_version\":\"V1\"}} id: 666173836047166465 event: message data: {\"code\":\"000000\",\"data\":{\"segment_code\":\"f3f5e6ef3dc743a4952e96f9ea902eae\",\"dialog_id\":\"666173836047155201\",\"message_id\":\"666173836047166465\",\"event_type\":\"answer\",\"role\":\"assistant\",\"answer\":\":59）\",\"content_type\":\"text\",\"finish\":\"n\",\"meta_data\":{\"agent_id\":\"e23eab88-2781-4142-acdc-7df307a6be39\",\"agent_name\":\"Agent2\"},\"index\":73},\"type\":\"multi_agent\",\"msg\":\"\",\"meta_data\":{\"trace_id\":\"e1a7c875-97cf-4031-bc84-184d7885171d\",\"timestamp\":1768287429680,\"publish_version\":\"V1\"}} id: 666173836047166465 event: message data: {\"code\":\"000000\",\"data\":{\"segment_code\":\"f3f5e6ef3dc743a4952e96f9ea902eae\",\"dialog_id\":\"666173836047155201\",\"message_id\":\"666173836047166465\",\"event_type\":\"answer\",\"role\":\"assistant\",\"answer\":\"和一个看似随机生成\",\"content_type\":\"text\",\"finish\":\"n\",\"meta_data\":{\"agent_id\":\"e23eab88-2781-4142-acdc-7df307a6be39\",\"agent_name\":\"Agent2\"},\"index\":74},\"type\":\"multi_agent\",\"msg\":\"\",\"meta_data\":{\"trace_id\":\"e1a7c875-97cf-4031-bc84-184d7885171d\",\"timestamp\":1768287429778,\"publish_version\":\"V1\"}} id: 666173836047166465 event: message data: {\"code\":\"000000\",\"data\":{\"segment_code\":\"f3f5e6ef3dc743a4952e96f9ea902eae\",\"dialog_id\":\"666173836047155201\",\"message_id\":\"666173836047166465\",\"event_type\":\"answer\",\"role\":\"assistant\",\"answer\":\"的字符串（4d\",\"content_type\":\"text\",\"finish\":\"n\",\"meta_data\":{\"agent_id\":\"e23eab88-2781-4142-acdc-7df307a6be39\",\"agent_name\":\"Agent2\"},\"index\":75},\"type\":\"multi_agent\",\"msg\":\"\",\"meta_data\":{\"trace_id\":\"e1a7c875-97cf-4031-bc84-184d7885171d\",\"timestamp\":1768287429891,\"publish_version\":\"V1\"}} id: 666173836047166465 event: message data: {\"code\":\"000000\",\"data\":{\"segment_code\":\"f3f5e6ef3dc743a4952e96f9ea902eae\",\"dialog_id\":\"666173836047155201\",\"message_id\":\"666173836047166465\",\"event_type\":\"answer\",\"role\":\"assistant\",\"answer\":\"ffc900ea6\",\"content_type\":\"text\",\"finish\":\"n\",\"meta_data\":{\"agent_id\":\"e23eab88-2781-4142-acdc-7df307a6be39\",\"agent_name\":\"Agent2\"},\"index\":76},\"type\":\"multi_agent\",\"msg\":\"\",\"meta_data\":{\"trace_id\":\"e1a7c875-97cf-4031-bc84-184d7885171d\",\"timestamp\":1768287429960,\"publish_version\":\"V1\"}} id: 666173836047166465 event: message data: {\"code\":\"000000\",\"data\":{\"segment_code\":\"f3f5e6ef3dc743a4952e96f9ea902eae\",\"dialog_id\":\"666173836047155201\",\"message_id\":\"666173836047166465\",\"event_type\":\"answer\",\"role\":\"assistant\",\"answer\":\"749bbb10\",\"content_type\":\"text\",\"finish\":\"n\",\"meta_data\":{\"agent_id\":\"e23eab88-2781-4142-acdc-7df307a6be39\",\"agent_name\":\"Agent2\"},\"index\":77},\"type\":\"multi_agent\",\"msg\":\"\",\"meta_data\":{\"trace_id\":\"e1a7c875-97cf-4031-bc84-184d7885171d\",\"timestamp\":1768287430078,\"publish_version\":\"V1\"}} id: 666173836047166465 event: message data: {\"code\":\"000000\",\"data\":{\"segment_code\":\"f3f5e6ef3dc743a4952e96f9ea902eae\",\"dialog_id\":\"666173836047155201\",\"message_id\":\"666173836047166465\",\"event_type\":\"answer\",\"role\":\"assistant\",\"answer\":\"740d71\",\"content_type\":\"text\",\"finish\":\"n\",\"meta_data\":{\"agent_id\":\"e23eab88-2781-4142-acdc-7df307a6be39\",\"agent_name\":\"Agent2\"},\"index\":78},\"type\":\"multi_agent\",\"msg\":\"\",\"meta_data\":{\"trace_id\":\"e1a7c875-97cf-4031-bc84-184d7885171d\",\"timestamp\":1768287430147,\"publish_version\":\"V1\"}} id: 666173836047166465 event: message data: {\"code\":\"000000\",\"data\":{\"segment_code\":\"f3f5e6ef3dc743a4952e96f9ea902eae\",\"dialog_id\":\"666173836047155201\",\"message_id\":\"666173836047166465\",\"event_type\":\"answer\",\"role\":\"assistant\",\"answer\":\"9dd83fc），\",\"content_type\":\"text\",\"finish\":\"n\",\"meta_data\":{\"agent_id\":\"e23eab88-2781-4142-acdc-7df307a6be39\",\"agent_name\":\"Agent2\"},\"index\":79},\"type\":\"multi_agent\",\"msg\":\"\",\"meta_data\":{\"trace_id\":\"e1a7c875-97cf-4031-bc84-184d7885171d\",\"timestamp\":1768287430264,\"publish_version\":\"V1\"}} id: 666173836047166465 event: message data: {\"code\":\"000000\",\"data\":{\"segment_code\":\"f3f5e6ef3dc743a4952e96f9ea902eae\",\"dialog_id\":\"666173836047155201\",\"message_id\":\"666173836047166465\",\"event_type\":\"answer\",\"role\":\"assistant\",\"answer\":\"这些数据似乎与旅行\",\"content_type\":\"text\",\"finish\":\"n\",\"meta_data\":{\"agent_id\":\"e23eab88-2781-4142-acdc-7df307a6be39\",\"agent_name\":\"Agent2\"},\"index\":80},\"type\":\"multi_agent\",\"msg\":\"\",\"meta_data\":{\"trace_id\":\"e1a7c875-97cf-4031-bc84-184d7885171d\",\"timestamp\":1768287430382,\"publish_version\":\"V1\"}} id: 666173836047166465 event: message data: {\"code\":\"000000\",\"data\":{\"segment_code\":\"f3f5e6ef3dc743a4952e96f9ea902eae\",\"dialog_id\":\"666173836047155201\",\"message_id\":\"666173836047166465\",\"event_type\":\"answer\",\"role\":\"assistant\",\"answer\":\"规划直接相关性\",\"content_type\":\"text\",\"finish\":\"n\",\"meta_data\":{\"agent_id\":\"e23eab88-2781-4142-acdc-7df307a6be39\",\"agent_name\":\"Agent2\"},\"index\":81},\"type\":\"multi_agent\",\"msg\":\"\",\"meta_data\":{\"trace_id\":\"e1a7c875-97cf-4031-bc84-184d7885171d\",\"timestamp\":1768287430499,\"publish_version\":\"V1\"}} id: 666173836047166465 event: message data: {\"code\":\"000000\",\"data\":{\"segment_code\":\"f3f5e6ef3dc743a4952e96f9ea902eae\",\"dialog_id\":\"666173836047155201\",\"message_id\":\"666173836047166465\",\"event_type\":\"answer\",\"role\":\"assistant\",\"answer\":\"不大。如果我们专注于\",\"content_type\":\"text\",\"finish\":\"n\",\"meta_data\":{\"agent_id\":\"e23eab88-2781-4142-acdc-7df307a6be39\",\"agent_name\":\"Agent2\"},\"index\":82},\"type\":\"multi_agent\",\"msg\":\"\",\"meta_data\":{\"trace_id\":\"e1a7c875-97cf-4031-bc84-184d7885171d\",\"timestamp\":1768287430570,\"publish_version\":\"V1\"}} id: 666173836047166465 event: message data: {\"code\":\"000000\",\"data\":{\"segment_code\":\"f3f5e6ef3dc743a4952e96f9ea902eae\",\"dialog_id\":\"666173836047155201\",\"message_id\":\"666173836047166465\",\"event_type\":\"answer\",\"role\":\"assistant\",\"answer\":\"制定从上海出发\",\"content_type\":\"text\",\"finish\":\"n\",\"meta_data\":{\"agent_id\":\"e23eab88-2781-4142-acdc-7df307a6be39\",\"agent_name\":\"Agent2\"},\"index\":83},\"type\":\"multi_agent\",\"msg\":\"\",\"meta_data\":{\"trace_id\":\"e1a7c875-97cf-4031-bc84-184d7885171d\",\"timestamp\":1768287430774,\"publish_version\":\"V1\"}} id: 666173836047166465 event: message data: {\"code\":\"000000\",\"data\":{\"segment_code\":\"f3f5e6ef3dc743a4952e96f9ea902eae\",\"dialog_id\":\"666173836047155201\",\"message_id\":\"666173836047166465\",\"event_type\":\"answer\",\"role\":\"assistant\",\"answer\":\"的元旦假期旅行建议\",\"content_type\":\"text\",\"finish\":\"n\",\"meta_data\":{\"agent_id\":\"e23eab88-2781-4142-acdc-7df307a6be39\",\"agent_name\":\"Agent2\"},\"index\":84},\"type\":\"multi_agent\",\"msg\":\"\",\"meta_data\":{\"trace_id\":\"e1a7c875-97cf-4031-bc84-184d7885171d\",\"timestamp\":1768287430843,\"publish_version\":\"V1\"}} id: 666173836047166465 event: message data: {\"code\":\"000000\",\"data\":{\"segment_code\":\"f3f5e6ef3dc743a4952e96f9ea902eae\",\"dialog_id\":\"666173836047155201\",\"message_id\":\"666173836047166465\",\"event_type\":\"answer\",\"role\":\"assistant\",\"answer\":\"，我需要更多\",\"content_type\":\"text\",\"finish\":\"n\",\"meta_data\":{\"agent_id\":\"e23eab88-2781-4142-acdc-7df307a6be39\",\"agent_name\":\"Agent2\"},\"index\":85},\"type\":\"multi_agent\",\"msg\":\"\",\"meta_data\":{\"trace_id\":\"e1a7c875-97cf-4031-bc84-184d7885171d\",\"timestamp\":1768287430957,\"publish_version\":\"V1\"}} id: 666173836047166465 event: message data: {\"code\":\"000000\",\"data\":{\"segment_code\":\"f3f5e6ef3dc743a4952e96f9ea902eae\",\"dialog_id\":\"666173836047155201\",\"message_id\":\"666173836047166465\",\"event_type\":\"answer\",\"role\":\"assistant\",\"answer\":\"具体信息如目的地\",\"content_type\":\"text\",\"finish\":\"n\",\"meta_data\":{\"agent_id\":\"e23eab88-2781-4142-acdc-7df307a6be39\",\"agent_name\":\"Agent2\"},\"index\":86},\"type\":\"multi_agent\",\"msg\":\"\",\"meta_data\":{\"trace_id\":\"e1a7c875-97cf-4031-bc84-184d7885171d\",\"timestamp\":1768287431118,\"publish_version\":\"V1\"}} id: 666173836047166465 event: message data: {\"code\":\"000000\",\"data\":{\"segment_code\":\"f3f5e6ef3dc743a4952e96f9ea902eae\",\"dialog_id\":\"666173836047155201\",\"message_id\":\"666173836047166465\",\"event_type\":\"answer\",\"role\":\"assistant\",\"answer\":\"偏好、兴趣点等\",\"content_type\":\"text\",\"finish\":\"n\",\"meta_data\":{\"agent_id\":\"e23eab88-2781-4142-acdc-7df307a6be39\",\"agent_name\":\"Agent2\"},\"index\":87},\"type\":\"multi_agent\",\"msg\":\"\",\"meta_data\":{\"trace_id\":\"e1a7c875-97cf-4031-bc84-184d7885171d\",\"timestamp\":1768287431281,\"publish_version\":\"V1\"}} id: 666173836047166465 event: message data: {\"code\":\"000000\",\"data\":{\"segment_code\":\"f3f5e6ef3dc743a4952e96f9ea902eae\",\"dialog_id\":\"666173836047155201\",\"message_id\":\"666173836047166465\",\"event_type\":\"answer\",\"role\":\"assistant\",\"answer\":\"来更好地为您服务\",\"content_type\":\"text\",\"finish\":\"n\",\"meta_data\":{\"agent_id\":\"e23eab88-2781-4142-acdc-7df307a6be39\",\"agent_name\":\"Agent2\"},\"index\":88},\"type\":\"multi_agent\",\"msg\":\"\",\"meta_data\":{\"trace_id\":\"e1a7c875-97cf-4031-bc84-184d7885171d\",\"timestamp\":1768287431377,\"publish_version\":\"V1\"}} id: 666173836047166465 event: message data: {\"code\":\"000000\",\"data\":{\"segment_code\":\"f3f5e6ef3dc743a4952e96f9ea902eae\",\"dialog_id\":\"666173836047155201\",\"message_id\":\"666173836047166465\",\"event_type\":\"answer\",\"role\":\"assistant\",\"answer\":\"。如果您能提供一些\",\"content_type\":\"text\",\"finish\":\"n\",\"meta_data\":{\"agent_id\":\"e23eab88-2781-4142-acdc-7df307a6be39\",\"agent_name\":\"Agent2\"},\"index\":89},\"type\":\"multi_agent\",\"msg\":\"\",\"meta_data\":{\"trace_id\":\"e1a7c875-97cf-4031-bc84-184d7885171d\",\"timestamp\":1768287431646,\"publish_version\":\"V1\"}} id: 666173836047166465 event: message data: {\"code\":\"000000\",\"data\":{\"segment_code\":\"f3f5e6ef3dc743a4952e96f9ea902eae\",\"dialog_id\":\"666173836047155201\",\"message_id\":\"666173836047166465\",\"event_type\":\"answer\",\"role\":\"assistant\",\"answer\":\"额外的信息，比如\",\"content_type\":\"text\",\"finish\":\"n\",\"meta_data\":{\"agent_id\":\"e23eab88-2781-4142-acdc-7df307a6be39\",\"agent_name\":\"Agent2\"},\"index\":90},\"type\":\"multi_agent\",\"msg\":\"\",\"meta_data\":{\"trace_id\":\"e1a7c875-97cf-4031-bc84-184d7885171d\",\"timestamp\":1768287431702,\"publish_version\":\"V1\"}} id: 666173836047166465 event: message data: {\"code\":\"000000\",\"data\":{\"segment_code\":\"f3f5e6ef3dc743a4952e96f9ea902eae\",\"dialog_id\":\"666173836047155201\",\"message_id\":\"666173836047166465\",\"event_type\":\"answer\",\"role\":\"assistant\",\"answer\":\"您喜欢自然风光还是\",\"content_type\":\"text\",\"finish\":\"n\",\"meta_data\":{\"agent_id\":\"e23eab88-2781-4142-acdc-7df307a6be39\",\"agent_name\":\"Agent2\"},\"index\":91},\"type\":\"multi_agent\",\"msg\":\"\",\"meta_data\":{\"trace_id\":\"e1a7c875-97cf-4031-bc84-184d7885171d\",\"timestamp\":1768287431852,\"publish_version\":\"V1\"}} id: 666173836047166465 event: message data: {\"code\":\"000000\",\"data\":{\"segment_code\":\"f3f5e6ef3dc743a4952e96f9ea902eae\",\"dialog_id\":\"666173836047155201\",\"message_id\":\"666173836047166465\",\"event_type\":\"answer\",\"role\":\"assistant\",\"answer\":\"城市探索？是否有\",\"content_type\":\"text\",\"finish\":\"n\",\"meta_data\":{\"agent_id\":\"e23eab88-2781-4142-acdc-7df307a6be39\",\"agent_name\":\"Agent2\"},\"index\":92},\"type\":\"multi_agent\",\"msg\":\"\",\"meta_data\":{\"trace_id\":\"e1a7c875-97cf-4031-bc84-184d7885171d\",\"timestamp\":1768287432381,\"publish_version\":\"V1\"}} id: 666173836047166465 event: message data: {\"code\":\"000000\",\"data\":{\"segment_code\":\"f3f5e6ef3dc743a4952e96f9ea902eae\",\"dialog_id\":\"666173836047155201\",\"message_id\":\"666173836047166465\",\"event_type\":\"answer\",\"role\":\"assistant\",\"answer\":\"特别想去的地方或是\",\"content_type\":\"text\",\"finish\":\"n\",\"meta_data\":{\"agent_id\":\"e23eab88-2781-4142-acdc-7df307a6be39\",\"agent_name\":\"Agent2\"},\"index\":93},\"type\":\"multi_agent\",\"msg\":\"\",\"meta_data\":{\"trace_id\":\"e1a7c875-97cf-4031-bc84-184d7885171d\",\"timestamp\":1768287432536,\"publish_version\":\"V1\"}} id: 666173836047166465 event: message data: {\"code\":\"000000\",\"data\":{\"segment_code\":\"f3f5e6ef3dc743a4952e96f9ea902eae\",\"dialog_id\":\"666173836047155201\",\"message_id\":\"666173836047166465\",\"event_type\":\"answer\",\"role\":\"assistant\",\"answer\":\"想体验的活动？这样\",\"content_type\":\"text\",\"finish\":\"n\",\"meta_data\":{\"agent_id\":\"e23eab88-2781-4142-acdc-7df307a6be39\",\"agent_name\":\"Agent2\"},\"index\":94},\"type\":\"multi_agent\",\"msg\":\"\",\"meta_data\":{\"trace_id\":\"e1a7c875-97cf-4031-bc84-184d7885171d\",\"timestamp\":1768287432591,\"publish_version\":\"V1\"}} id: 666173836047166465 event: message data: {\"code\":\"000000\",\"data\":{\"segment_code\":\"f3f5e6ef3dc743a4952e96f9ea902eae\",\"dialog_id\":\"666173836047155201\",\"message_id\":\"666173836047166465\",\"event_type\":\"answer\",\"role\":\"assistant\",\"answer\":\"我可以为您提供更加个性化的旅行\",\"content_type\":\"text\",\"finish\":\"n\",\"meta_data\":{\"agent_id\":\"e23eab88-2781-4142-acdc-7df307a6be39\",\"agent_name\":\"Agent2\"},\"index\":95},\"type\":\"multi_agent\",\"msg\":\"\",\"meta_data\":{\"trace_id\":\"e1a7c875-97cf-4031-bc84-184d7885171d\",\"timestamp\":1768287432744,\"publish_version\":\"V1\"}} id: 666173836047166465 event: message data: {\"code\":\"000000\",\"data\":{\"segment_code\":\"f3f5e6ef3dc743a4952e96f9ea902eae\",\"dialog_id\":\"666173836047155201\",\"message_id\":\"666173836047166465\",\"event_type\":\"answer\",\"role\":\"assistant\",\"answer\":\"建议。\",\"content_type\":\"text\",\"finish\":\"n\",\"meta_data\":{\"agent_id\":\"e23eab88-2781-4142-acdc-7df307a6be39\",\"agent_name\":\"Agent2\"},\"index\":96},\"type\":\"multi_agent\",\"msg\":\"\",\"meta_data\":{\"trace_id\":\"e1a7c875-97cf-4031-bc84-184d7885171d\",\"timestamp\":1768287432759,\"publish_version\":\"V1\"}} id: 666173836047166465 event: message data: {\"code\":\"000000\",\"data\":{\"segment_code\":\"f3f5e6ef3dc743a4952e96f9ea902eae\",\"dialog_id\":\"666173836047155201\",\"message_id\":\"666173836047166465\",\"event_type\":\"call_llm_end\",\"role\":\"assistant\",\"answer\":\"2026年1月13日上海的天气预报显示，白天是晴朗的好天气，气温大约在15摄氏度左右；到了晚上，依旧是晴天，但温度会下降到5摄氏度。风力较轻，为1-3级。这样的天气条件非常适合外出活动，不过早晚温差较大，请记得适时增减衣物以保持舒适。\\n\\n接下来，关于您提到的元旦出行计划，由于您提供的信息中包含了一串特定的时间戳（2026-01-13 14:56:59）和一个看似随机生成的字符串（4dffc900ea6749bbb10740d719dd83fc），这些数据似乎与旅行规划直接相关性不大。如果我们专注于制定从上海出发的元旦假期旅行建议，我需要更多具体信息如目的地偏好、兴趣点等来更好地为您服务。如果您能提供一些额外的信息，比如您喜欢自然风光还是城市探索？是否有特别想去的地方或是想体验的活动？这样我可以为您提供更加个性化的旅行建议。\",\"content_type\":\"text\",\"finish\":\"y\",\"meta_data\":{\"agent_id\":\"e23eab88-2781-4142-acdc-7df307a6be39\",\"agent_name\":\"Agent2\",\"use_age\":{\"tokens\":605,\"prompt_tokens\":371,\"answer_tokens\":234},\"latency\":{\"duration\":6.9703724430000005,\"duration_ms\":6970,\"first_token_latency\":0.381462257},\"model_config\":{\"seed\":0,\"top_p\":0,\"max_token\":1000,\"model_name\":\"aliyun-qwen-max\",\"temperature\":0}},\"index\":98,\"finish_reason\":\"llm_end\"},\"type\":\"multi_agent\",\"msg\":\"\",\"meta_data\":{\"trace_id\":\"e1a7c875-97cf-4031-bc84-184d7885171d\",\"timestamp\":1768287432783,\"publish_version\":\"V1\"}} id: 666173836047167489 event: message data: {\"code\":\"000000\",\"data\":{\"segment_code\":\"f3f5e6ef3dc743a4952e96f9ea902eae\",\"dialog_id\":\"666173836047155201\",\"message_id\":\"666173836047167489\",\"event_type\":\"query_end\",\"role\":\"assistant\",\"content_type\":\"text\",\"finish\":\"y\",\"meta_data\":{},\"index\":98,\"finish_reason\":\"query_end\"},\"type\":\"multi_agent\",\"msg\":\"\",\"meta_data\":{\"trace_id\":\"e1a7c875-97cf-4031-bc84-184d7885171d\",\"timestamp\":1768287432783,\"publish_version\":\"V1\"}}",
+                "schema": {
+                  "description": "SSE event stream",
+                  "type": "string"
+                },
+                "x-event-data-schema": {
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "properties": {
+                        "answer": {
+                          "type": "string"
+                        },
+                        "content_type": {
+                          "type": "string"
+                        },
+                        "dialog_id": {
+                          "type": "string"
+                        },
+                        "event_type": {
+                          "type": "string"
+                        },
+                        "finish": {
+                          "type": "string"
+                        },
+                        "finish_reason": {
+                          "type": "string"
+                        },
+                        "index": {
+                          "type": "integer"
+                        },
+                        "message_id": {
+                          "type": "string"
+                        },
+                        "meta_data": {
+                          "properties": {
+                            "agent_id": {
+                              "type": "string"
+                            },
+                            "agent_name": {
+                              "type": "string"
+                            },
+                            "jump_agent_id": {
+                              "type": "string"
+                            },
+                            "jump_agent_name": {
+                              "type": "string"
+                            },
+                            "latency": {
+                              "properties": {
+                                "duration": {
+                                  "type": "integer"
+                                },
+                                "duration_ms": {
+                                  "type": "integer"
+                                },
+                                "first_token_latency": {
+                                  "type": "integer"
+                                }
+                              },
+                              "type": "object"
+                            },
+                            "model_config": {
+                              "properties": {
+                                "max_token": {
+                                  "type": "integer"
+                                },
+                                "model_name": {
+                                  "type": "string"
+                                },
+                                "seed": {
+                                  "type": "integer"
+                                },
+                                "temperature": {
+                                  "type": "integer"
+                                },
+                                "top_p": {
+                                  "type": "integer"
+                                }
+                              },
+                              "type": "object"
+                            },
+                            "plugin_name": {
+                              "type": "string"
+                            },
+                            "plugin_type": {
+                              "type": "integer"
+                            },
+                            "tool_arguments": {
+                              "type": "string"
+                            },
+                            "tool_call_id": {
+                              "type": "string"
+                            },
+                            "tool_call_status": {
+                              "type": "string"
+                            },
+                            "tool_name": {
+                              "type": "string"
+                            },
+                            "tool_results": {
+                              "type": "string"
+                            },
+                            "use_age": {
+                              "properties": {
+                                "answer_tokens": {
+                                  "type": "integer"
+                                },
+                                "prompt_tokens": {
+                                  "type": "integer"
+                                },
+                                "tokens": {
+                                  "type": "integer"
+                                }
+                              },
+                              "type": "object"
+                            }
+                          },
+                          "type": "object"
+                        },
+                        "reasoning_content": {
+                          "type": "string"
+                        },
+                        "role": {
+                          "type": "string"
+                        },
+                        "segment_code": {
+                          "type": "string"
+                        }
+                      },
+                      "type": "object"
+                    },
+                    "meta_data": {
+                      "properties": {
+                        "publish_version": {
+                          "type": "string"
+                        },
+                        "timestamp": {
+                          "type": "integer"
+                        },
+                        "trace_id": {
+                          "type": "string"
+                        }
+                      },
+                      "type": "object"
+                    },
+                    "msg": {
+                      "type": "string"
+                    },
+                    "type": {
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "SSE 事件流。x-event-data-schema 描述每个 data 字段中的 JSON payload。"
+          }
+        },
+        "summary": "对话(SSE)"
+      },
+      "endpoint_id": "apiend-2335bd7dbb86c233",
+      "extractors": [],
+      "id": "step_sse_dialog",
+      "name": "SSE对话",
+      "on_failure": "stop",
+      "project_id": "project-75fec50973f2adf6",
+      "request_overrides": {
+        "request": {
+          "multipart_form": {
+            "message_source": "openai-ws"
+          }
+        }
+      },
+      "scenario_id": "apiscn-c1a17695269df5da",
+      "step_order": 1,
+      "step_type": "api_request",
+      "updated_at": "2026-08-02 09:17:28"
+    }
+  ],
+  "variables": {}
+}

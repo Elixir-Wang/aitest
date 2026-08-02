@@ -27,4 +27,5 @@ class RequirementUploadSessionCreateIn(BaseModel):
     mode: str = Field(default="new", pattern="^(new|append)$")
     document_name: str = Field(default="", max_length=200)
     existing_document_id: str = Field(default="", max_length=100)
+    project_version_id: str = Field(default="", max_length=100)
     files: list[RequirementUploadFileIn] = Field(min_length=1)

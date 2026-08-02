@@ -219,6 +219,17 @@ def find_endpoint(db: Connection, endpoint_id: str) -> Row | None:
     return db.execute("SELECT * FROM api_endpoints WHERE id = ?", (endpoint_id,)).fetchone()
 
 
+def find_endpoint_by_route(db: Connection, project_id: str, method: str, normalized_path: str) -> Row | None:
+    return db.execute(
+        """
+        SELECT *
+        FROM api_endpoints
+        WHERE project_id = ? AND method = ? AND normalized_path = ?
+        """,
+        (project_id, method.upper(), normalized_path),
+    ).fetchone()
+
+
 def delete_endpoint(db: Connection, endpoint_id: str) -> None:
     db.execute("DELETE FROM api_endpoints WHERE id = ?", (endpoint_id,))
 

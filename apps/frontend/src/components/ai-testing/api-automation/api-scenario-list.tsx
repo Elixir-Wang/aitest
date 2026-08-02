@@ -9,13 +9,29 @@ import { Pencil, Trash2 } from "lucide-react";
 
 import { ListToolbar, RowActions, ShellSection } from "@/components/ai-testing/page-shell";
 import { TableLoadingRow } from "@/components/ai-testing/table-loading-row";
+import { Select, SelectOption } from "@/components/ui/animated-select-1";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  type ApiAutomationEnvironment,
   type ApiAutomationScenario,
+  createApiAutomationScenario,
   deleteApiAutomationScenario,
   formatDateTime,
+  listApiAutomationEnvironments,
   listApiAutomationScenarios,
 } from "@/lib/api-client";
 import { toast } from "@/lib/toast";
@@ -31,6 +47,13 @@ export function ApiScenarioList({ projectId }: ApiScenarioListProps) {
   const [searchText, setSearchText] = useState("");
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [loadingEnvironments, setLoadingEnvironments] = useState(false);
+  const [environments, setEnvironments] = useState<ApiAutomationEnvironment[]>([]);
+  const [scenarioName, setScenarioName] = useState("");
+  const [scenarioDescription, setScenarioDescription] = useState("");
+  const [environmentId, setEnvironmentId] = useState("");
 
   const loadScenarios = useCallback(async () => {
     setLoading(true);
@@ -48,6 +71,27 @@ export function ApiScenarioList({ projectId }: ApiScenarioListProps) {
   useEffect(() => {
     void loadScenarios();
   }, [loadScenarios]);
+
+  useEffect(() => {
+    if (!createDialogOpen) return;
+
+    let cancelled = false;
+    setLoadingEnvironments(true);
+    listApiAutomationEnvironments(projectId)
+      .then((rows) => {
+        if (cancelled) return;
+        setEnvironments(rows);
+        setEnvironmentId(rows[0]?.id ?? "");
+      })
+      .catch((error) => toast.error(error instanceof Error ? error.message : "环境加载失败"))
+      .finally(() => {
+        if (!cancelled) setLoadingEnvironments(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [createDialogOpen, projectId]);
 
   const filteredRows = useMemo(() => {
     const keyword = searchText.trim().toLowerCase();
@@ -72,6 +116,35 @@ export function ApiScenarioList({ projectId }: ApiScenarioListProps) {
     );
   }
 
+  function openCreateDialog() {
+    setScenarioName("");
+    setScenarioDescription("");
+    setEnvironmentId("");
+    setEnvironments([]);
+    setCreateDialogOpen(true);
+  }
+
+  async function createScenario() {
+    const name = scenarioName.trim();
+    if (!name || !environmentId) return;
+
+    setCreating(true);
+    try {
+      const scenario = await createApiAutomationScenario(projectId, {
+        name,
+        description: scenarioDescription.trim(),
+      });
+      setCreateDialogOpen(false);
+      router.push(
+        `/projects/${projectId}/automation/api/scenarios/${scenario.id}?environmentId=${encodeURIComponent(environmentId)}`,
+      );
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "场景创建失败");
+    } finally {
+      setCreating(false);
+    }
+  }
+
   async function deleteScenarios(ids: string[]) {
     if (ids.length === 0) return;
     setBusy(true);
@@ -90,10 +163,10 @@ export function ApiScenarioList({ projectId }: ApiScenarioListProps) {
   return (
     <ShellSection>
       <ListToolbar
-        createDisabled={busy}
+        createDisabled={busy || creating}
         createLabel="新建场景"
         onBatchDelete={busy ? undefined : () => deleteScenarios(visibleSelectedIds)}
-        onCreate={() => router.push(`/projects/${projectId}/automation/api/scenarios/new`)}
+        onCreate={openCreateDialog}
         onSearch={setSearchText}
         placeholder="搜索场景名称或描述"
         selectedCount={visibleSelectedIds.length}
@@ -176,6 +249,75 @@ export function ApiScenarioList({ projectId }: ApiScenarioListProps) {
           </TableBody>
         </Table>
       </div>
+      <Dialog
+        onOpenChange={(open) => {
+          if (!creating) setCreateDialogOpen(open);
+        }}
+        open={createDialogOpen}
+      >
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>新建场景</DialogTitle>
+            <DialogDescription>填写场景基本信息，创建后进入画布编排步骤。</DialogDescription>
+          </DialogHeader>
+          <FieldGroup>
+            <Field>
+              <FieldLabel htmlFor="scenario-name">场景名称</FieldLabel>
+              <Input
+                autoFocus
+                disabled={creating}
+                id="scenario-name"
+                maxLength={100}
+                onChange={(event) => setScenarioName(event.target.value)}
+                placeholder="请输入场景名称"
+                value={scenarioName}
+              />
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="scenario-environment">运行环境</FieldLabel>
+              <Select
+                disabled={loadingEnvironments || creating}
+                id="scenario-environment"
+                placeholder={loadingEnvironments ? "加载环境中..." : "请选择运行环境"}
+                setValue={setEnvironmentId}
+                value={environmentId}
+              >
+                {environments.map((environment) => (
+                  <SelectOption key={environment.id} value={environment.id}>
+                    {environment.name}
+                  </SelectOption>
+                ))}
+              </Select>
+              {!loadingEnvironments && environments.length === 0 ? (
+                <p className="text-muted-foreground text-xs">暂无可用环境，请先在接口环境中创建环境。</p>
+              ) : null}
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="scenario-description">场景描述</FieldLabel>
+              <Textarea
+                disabled={creating}
+                id="scenario-description"
+                maxLength={500}
+                onChange={(event) => setScenarioDescription(event.target.value)}
+                placeholder="请输入场景描述（选填）"
+                value={scenarioDescription}
+              />
+            </Field>
+          </FieldGroup>
+          <DialogFooter>
+            <Button disabled={creating} onClick={() => setCreateDialogOpen(false)} type="button" variant="outline">
+              取消
+            </Button>
+            <Button
+              disabled={creating || loadingEnvironments || !scenarioName.trim() || !environmentId}
+              onClick={createScenario}
+              type="button"
+            >
+              {creating ? "创建中..." : "新建"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </ShellSection>
   );
 }

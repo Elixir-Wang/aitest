@@ -39,10 +39,14 @@ from . import serializer as document_serializer
 
 # === Listing ============================================================
 
-def list_documents(project_id: str, actor) -> list[dict]:
+def list_documents(project_id: str, actor, *, project_version_id: str = "") -> list[dict]:
     task_service.recover_stale_requirement_analysis_runs(project_id=project_id)
     with connect() as db:
-        rows = document_repo.list_by_project(db, project_id)
+        if project_version_id:
+            from app.services import project_version_service
+
+            project_version_service.resolve_requirement_version(db, project_id, project_version_id)
+        rows = document_repo.list_by_project(db, project_id, project_version_id)
         return [document_serializer.serialize_document(row, actor["role"]) for row in rows]
 
 
@@ -71,6 +75,7 @@ async def upload_documents(
     mode: str = "new",
     document_name: str = "",
     existing_document_id: str = "",
+    project_version_id: str = "",
 ) -> dict:
     return await document_file_service.upload_documents(
         project_id,
@@ -79,6 +84,7 @@ async def upload_documents(
         mode=mode,
         document_name=document_name,
         existing_document_id=existing_document_id,
+        project_version_id=project_version_id,
     )
 
 
@@ -171,6 +177,11 @@ def get_document_detail(project_id: str, document_id: str, actor) -> dict:
         row = db.execute(
             """
             SELECT d.*,
+                   p.name AS project_name,
+                   pv.id AS project_version_id_joined,
+                   pv.version AS project_version,
+                   pv.name AS project_version_name,
+                   CASE WHEN p.default_version_id = pv.id THEN 1 ELSE 0 END AS project_version_is_default,
                    COUNT(m.id) AS file_count,
                    v.id AS version_id,
                    v.version_no AS version_no,
@@ -187,6 +198,8 @@ def get_document_detail(project_id: str, document_id: str, actor) -> dict:
                    latest_run.created_at AS requirement_analysis_run_created_at,
                    latest_run.updated_at AS requirement_analysis_run_updated_at
             FROM source_documents d
+            JOIN projects p ON p.id = d.project_id
+            LEFT JOIN project_versions pv ON pv.id = d.project_version_id
             LEFT JOIN source_document_versions v ON v.id = d.current_version_id
             LEFT JOIN source_document_file_mappings m ON m.document_id = d.id
             LEFT JOIN requirement_analysis_runs latest_run ON latest_run.id = (
@@ -310,6 +323,41 @@ def update_document(project_id: str, document_id: str, payload: SourceDocumentUp
         after={"name": name, "version_id": version_id, "version_no": version_no},
     )
     return result
+
+
+def update_document_project_version(project_id: str, document_id: str, project_version_id: str, actor) -> dict:
+    from app.services import project_version_service
+
+    with connect() as db:
+        document = document_repo.find_by_project_and_id(db, project_id, document_id)
+        if not document:
+            raise api_error(404, "DOCUMENT_NOT_FOUND", "需求文档不存在。")
+        target = project_version_service.resolve_requirement_version(db, project_id, project_version_id)
+        if document["project_version_id"] == target["id"]:
+            return get_document_detail(project_id, document_id, actor)
+        previous = None
+        if document["project_version_id"]:
+            from app.repositories import project_version_repo
+
+            previous = project_version_repo.find_by_project_and_id(db, project_id, document["project_version_id"])
+        document_repo.update_project_version(db, document_id, target["id"])
+
+    operation_log_service.record_change(
+        log_type="audit",
+        module="requirement",
+        action="move_version",
+        object_type="requirement",
+        object_id=document_id,
+        object_name=document["name"],
+        project_id=project_id,
+        actor_id=actor["id"],
+        actor_name=operation_log_service.actor_display_name(actor),
+        source="web",
+        summary=f"迁移需求版本：{document['name']}",
+        before={"project_version_id": document["project_version_id"], "version": previous["version"] if previous else ""},
+        after={"project_version_id": target["id"], "version": target["version"]},
+    )
+    return get_document_detail(project_id, document_id, actor)
 
 
 def set_primary_requirement_file(project_id: str, document_id: str, mapping_id: str, actor) -> dict:

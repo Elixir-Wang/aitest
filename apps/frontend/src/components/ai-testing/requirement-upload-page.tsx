@@ -5,7 +5,6 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 import { ArrowLeft, Loader2, Upload } from "lucide-react";
-import { toast } from "@/lib/toast";
 
 import { type PageBreadcrumb, PageShell, ShellSection } from "@/components/ai-testing/page-shell";
 import { Select, SelectOption } from "@/components/ui/animated-select-1";
@@ -16,7 +15,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { notifyAiTaskStarted } from "@/lib/ai-task-events";
-import { type ApiProject, apiRequest } from "@/lib/api-client";
+import { type ApiProject, type ApiProjectVersion, apiRequest } from "@/lib/api-client";
 import { reportError } from "@/lib/error-feedback";
 import {
   DEFAULT_REQUIREMENT_UPLOAD_CONFIG,
@@ -25,6 +24,7 @@ import {
   requirementUploadFileKey,
   uploadRequirementFiles,
 } from "@/lib/requirement-upload-client";
+import { toast } from "@/lib/toast";
 
 type RequirementUploadPageProps = {
   title: string;
@@ -62,6 +62,8 @@ export function RequirementUploadPage({
   const [projectId, setProjectId] = useState(defaultProjectId);
   const [mode, setMode] = useState<UploadMode>("new");
   const [requirements, setRequirements] = useState<RequirementOption[]>([]);
+  const [projectVersions, setProjectVersions] = useState<ApiProjectVersion[]>([]);
+  const [projectVersionId, setProjectVersionId] = useState("");
   const [existingDocumentId, setExistingDocumentId] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [uploadConfig, setUploadConfig] = useState<RequirementUploadConfig>(DEFAULT_REQUIREMENT_UPLOAD_CONFIG);
@@ -69,6 +71,39 @@ export function RequirementUploadPage({
     Record<string, { progress: number; status: "idle" | "uploading" | "completed" | "error" }>
   >({});
   const selectedRequirement = requirements.find((item) => item.id === existingDocumentId);
+
+  useEffect(() => {
+    let ignore = false;
+    if (!projectId || mode !== "new") {
+      setProjectVersions([]);
+      setProjectVersionId("");
+      return;
+    }
+    void apiRequest<ApiProjectVersion[]>(`/projects/${projectId}/versions`)
+      .then((versions) => {
+        if (ignore) return;
+        setProjectVersions(versions);
+        setProjectVersionId((current) =>
+          versions.some((item) => item.id === current)
+            ? current
+            : (versions.find((item) => item.is_default)?.id ?? versions[0]?.id ?? ""),
+        );
+      })
+      .catch((requestError) => {
+        if (ignore) return;
+        setProjectVersions([]);
+        setProjectVersionId("");
+        reportError(requestError, {
+          fallbackMessage: "项目版本加载失败",
+          actionLabel: "加载项目版本",
+          method: "GET",
+          path: `/projects/${projectId}/versions`,
+        });
+      });
+    return () => {
+      ignore = true;
+    };
+  }, [mode, projectId]);
 
   useEffect(() => {
     setProjectId(defaultProjectId);
@@ -171,6 +206,10 @@ export function RequirementUploadPage({
         nameInputRef.current?.focus();
         return;
       }
+      if (!projectVersionId) {
+        toast.error("请选择所属版本");
+        return;
+      }
     }
     if (mode === "append" && !existingDocumentId) {
       toast.error("请选择要追加文件的需求");
@@ -189,6 +228,7 @@ export function RequirementUploadPage({
         mode,
         documentName: name,
         existingDocumentId,
+        projectVersionId,
         onProgress: (file, progress) => {
           setUploadStates((current) => ({
             ...current,
@@ -274,20 +314,38 @@ export function RequirementUploadPage({
           </Field>
 
           {mode === "new" ? (
-            <Field>
-              <FieldLabel htmlFor="requirement-name">需求名称</FieldLabel>
-              <Input
-                id="requirement-name"
-                placeholder="请输入需求名称"
-                ref={nameInputRef}
-                value={name}
-                onChange={(event) => {
-                  setName(event.target.value);
-                  setNameError("");
-                }}
-              />
-              {nameError ? <div className="text-destructive text-xs">{nameError}</div> : null}
-            </Field>
+            <>
+              <Field>
+                <FieldLabel htmlFor="requirement-name">需求名称</FieldLabel>
+                <Input
+                  id="requirement-name"
+                  placeholder="请输入需求名称"
+                  ref={nameInputRef}
+                  value={name}
+                  onChange={(event) => {
+                    setName(event.target.value);
+                    setNameError("");
+                  }}
+                />
+                {nameError ? <div className="text-destructive text-xs">{nameError}</div> : null}
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="requirement-project-version">所属版本</FieldLabel>
+                <Select
+                  id="requirement-project-version"
+                  placeholder={projectVersions.length === 0 ? "当前项目暂无可用版本" : "请选择所属版本"}
+                  setValue={setProjectVersionId}
+                  value={projectVersionId}
+                >
+                  {projectVersions.map((version) => (
+                    <SelectOption key={version.id} value={version.id}>
+                      {`${version.version}${version.name ? ` · ${version.name}` : ""}${version.is_default ? "（当前）" : ""}`}
+                    </SelectOption>
+                  ))}
+                </Select>
+                <FieldDescription>新需求默认关联项目当前版本，可在创建前改选。</FieldDescription>
+              </Field>
+            </>
           ) : (
             <Field>
               <FieldLabel htmlFor="requirement-select">选择已有需求</FieldLabel>
@@ -342,7 +400,11 @@ export function RequirementUploadPage({
               <ArrowLeft className="size-4" />
               返回列表
             </Button>
-            <Button disabled={submitting || files.length === 0 || !projectId} type="button" onClick={submitUpload}>
+            <Button
+              disabled={submitting || files.length === 0 || !projectId || (mode === "new" && !projectVersionId)}
+              type="button"
+              onClick={submitUpload}
+            >
               {submitting ? <Loader2 className="size-4 animate-spin" /> : <Upload className="size-4" />}
               {submitting ? "提交中" : "提交"}
             </Button>

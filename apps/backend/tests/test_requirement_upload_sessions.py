@@ -15,6 +15,7 @@ from app.core import storage as core_storage
 from app.schemas.requirement_upload import RequirementUploadSessionCreateIn
 from app.seed.init_db import init_db
 from app.services.document import file_service, upload_sessions
+from app.services import project_version_service
 
 
 ACTOR = {
@@ -42,6 +43,7 @@ def _use_temp_storage(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     init_db()
     with core_db.connect() as db:
         db.execute("INSERT INTO projects (id, name, status, description) VALUES ('project-upload', '上传项目', 'active', '')")
+        project_version_service.create_initial_version(db, "project-upload", ACTOR["id"])
 
 
 def _payload(content: bytes, *, filename: str = "requirement.md") -> RequirementUploadSessionCreateIn:

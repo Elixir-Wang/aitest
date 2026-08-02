@@ -11,6 +11,7 @@ from app.repositories import (
     performance_script_repo,
     performance_test_repo,
 )
+from app.services.api_automation.openapi_parser import normalize_path
 from app.services.performance_testing import run_repo
 
 
@@ -77,9 +78,21 @@ def collect_performance_evidence(project_id: str, run_id: str) -> dict[str, Any]
             raise LookupError("性能测试运行不存在")
         performance_test_row = performance_test_repo.find_performance_test(db, run["performance_test_id"])
         script_row = performance_script_repo.find_script(db, run["script_id"])
+        script = performance_script_repo.serialize_script(script_row) if script_row else {}
         endpoint_row = None
         if performance_test_row and performance_test_row["endpoint_id"]:
             endpoint_row = api_automation_repo.find_endpoint(db, performance_test_row["endpoint_id"])
+        if not endpoint_row:
+            request = (script.get("plan") or {}).get("request") or {}
+            method = str(request.get("method") or "").strip()
+            path = str(request.get("path") or "").strip()
+            if method and path:
+                endpoint_row = api_automation_repo.find_endpoint_by_route(
+                    db,
+                    project_id,
+                    method,
+                    normalize_path(path),
+                )
         stats = [_stat_payload(row) for row in run_repo.list_stats(db, run_id)]
         failures = [dict(row) for row in run_repo.list_failures(db, run_id)]
         exceptions = [dict(row) for row in run_repo.list_exceptions(db, run_id)]
@@ -95,23 +108,29 @@ def collect_performance_evidence(project_id: str, run_id: str) -> dict[str, Any]
         ][:5]
 
     performance_test = performance_test_repo.serialize_performance_test(performance_test_row) if performance_test_row else {}
-    script = performance_script_repo.serialize_script(script_row) if script_row else {}
     endpoint = _endpoint_payload(endpoint_row)
     runtime_config = _json_value(run["runtime_config_json"], {})
+    summary = _json_value(run["latest_summary_json"], {})
     request_execution_facts = _request_execution_facts(script, runtime_config)
     report_directory = Path(str(run["report_directory"] or "")) if run["report_directory"] else None
     artifacts, missing_evidence = _collect_artifacts(report_directory)
+    if int(summary.get("failure_count") or 0) == 0:
+        missing_evidence = [
+            item
+            for item in missing_evidence
+            if item not in {"locust-events.jsonl", "result_failures.csv"}
+        ]
     prior_preflight = _prior_preflight_payload(source_analysis)
     diagnostic_constraints = _diagnostic_constraints(prior_preflight, request_execution_facts)
     if not endpoint:
         missing_evidence.append("openapi_endpoint")
-    if not failures:
+    if int(summary.get("failure_count") or 0) > 0 and not failures:
         missing_evidence.append("performance_failures")
 
     return redact_sensitive(
         {
             "run": _run_summary(run),
-            "summary": _json_value(run["latest_summary_json"], {}),
+            "summary": summary,
             "stats": stats,
             "failures": failures,
             "exceptions": exceptions,
@@ -243,6 +262,7 @@ def _collect_artifacts(report_directory: Path | None) -> tuple[dict[str, Any], l
     missing: list[str] = []
     expected = {
         "locust_events": "locust-events.jsonl",
+        "result_stats": "result_stats.csv",
         "result_failures": "result_failures.csv",
         "result_exceptions": "result_exceptions.csv",
         "generated_locustfile": "generated_locustfile.py",

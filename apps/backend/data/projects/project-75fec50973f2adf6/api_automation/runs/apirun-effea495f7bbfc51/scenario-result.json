@@ -1,0 +1,1 @@
+{"scenario_id": "apiscn-bc3f810656b5628a", "status": "failed", "steps": [{"step_id": "step_gen_segment_code", "name": "生成SegmentCode", "status": "failed", "outputs": {}, "error": "路径 /code: 期望 '000000', 实际 None"}, {"step_id": "step_sse_chat", "name": "对话SSE", "status": "skipped", "outputs": {}, "error": ""}]}

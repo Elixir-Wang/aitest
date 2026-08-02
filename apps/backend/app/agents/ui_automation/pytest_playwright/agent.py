@@ -30,6 +30,8 @@ SYSTEM_PROMPT = """
 调用 validate_automation_plan 校验，再调用 render_automation_plan 生成或更新 POM 与测试代码。
 如果 case.parameters 声明了参数，AutomationPlan.parameters 必须包含对应参数名；使用参数值选择页面文本时，
 使用 click_parameter_text 并通过 value_ref 引用参数，禁止把某个参数值固化成 locator。
+每个自动化动作必须使用 business_step_id 显式引用原始用例步骤 ID，并填写一致的用户可读 title；
+同一业务步骤拆出的 fill、click、wait 等动作必须共享 business_step_id，禁止用合成 ID 代替业务步骤映射。
 发送聊天消息后等待助手回复时，必须使用 wait_for_response，并确保目标 locator 只匹配助手回复；
 不得用 wait_visible 代替，也不得假设页面存在初始欢迎语。
 不得绕过渲染工具直接写任意 Python 测试代码。完成后调用 run_pytest_collection；生成阶段不得执行真实 UI 用例。
@@ -101,7 +103,7 @@ def _build_validate_tool() -> StructuredTool:
     return StructuredTool.from_function(
         func=validate_automation_plan,
         name="validate_automation_plan",
-        description="Validate a complete AutomationPlan against the strict v1 schema.",
+        description="Validate a complete AutomationPlan including explicit business-step mappings.",
     )
 
 

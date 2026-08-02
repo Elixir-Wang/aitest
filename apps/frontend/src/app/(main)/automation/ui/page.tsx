@@ -4,12 +4,21 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import Link from "next/link";
 
-import { Loader2, Play, Plus, X } from "lucide-react";
-import { toast } from "@/lib/toast";
+import { Eye, Loader2, Play, Plus, Trash2, X } from "lucide-react";
 
-import { ListToolbar, PageShell, ShellSection } from "@/components/ai-testing/page-shell";
+import { ListToolbar, PageShell, RowActions, ShellSection } from "@/components/ai-testing/page-shell";
 import { TableLoadingRow } from "@/components/ai-testing/table-loading-row";
 import { useLocalTableSelection } from "@/components/ai-testing/use-local-table-selection";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Select, SelectOption } from "@/components/ui/animated-select-1";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -25,6 +34,8 @@ import {
   apiRequest,
   createUiAutomationExecutionRun,
   createUiAutomationGenerationRun,
+  deleteUiAutomationAsset,
+  formatDateTime,
   getUiAutomationGenerationRun,
   listUiAutomationAssets,
   listUiAutomationGenerationRuns,
@@ -32,20 +43,13 @@ import {
   type UiAutomationGenerationRun,
 } from "@/lib/api-client";
 import type { ExplorationEnvironment } from "@/lib/exploration-types";
+import { toast } from "@/lib/toast";
 import { moduleBreadcrumbs } from "@/navigation/breadcrumbs";
-
-type Operation = {
-  key: string;
-  status: string;
-  page_path: string;
-  steps: Array<{ action: string; element_key: string }>;
-};
 
 type UiAutomationRow = {
   id: string;
   project: ApiProject;
   testCase: ApiManualTestCase | ApiTestCase | null;
-  operation: Operation | null;
   asset?: UiAutomationAsset;
   generationRun?: UiAutomationGenerationRun;
 };
@@ -67,6 +71,10 @@ function labelForStatus(status: string) {
   return statusLabels[status] ?? status;
 }
 
+function updatedAtForRow(row: UiAutomationRow) {
+  return row.asset?.updated_at ?? row.generationRun?.updated_at ?? "";
+}
+
 export default function Page() {
   const selection = useLocalTableSelection<UiAutomationRow>([]);
   const [projects, setProjects] = useState<ApiProject[]>([]);
@@ -83,18 +91,22 @@ export default function Page() {
   const [executionEnvironments, setExecutionEnvironments] = useState<ExplorationEnvironment[]>([]);
   const [executionEnvironmentId, setExecutionEnvironmentId] = useState("");
   const [executionLoading, setExecutionLoading] = useState(false);
+  const [pendingDeleteRows, setPendingDeleteRows] = useState<UiAutomationRow[]>([]);
+  const [deleting, setDeleting] = useState(false);
 
   const activeProjects = projects.filter((project) => project.status === "active");
+  const selectableRows = selection.rows.filter((row) => row.asset);
+  const selectedAssetRows = selectableRows.filter((row) => selection.selectedIds.includes(row.id));
+  const allSelectableRowsSelected = selectableRows.length > 0 && selectedAssetRows.length === selectableRows.length;
+  const partiallySelected = selectedAssetRows.length > 0 && !allSelectableRowsSelected;
   const filteredRows = useMemo(() => {
     const query = searchText.trim().toLowerCase();
     return selection.rows.filter((row) => {
       if (!query) return true;
       return [
         row.testCase?.title,
-        row.operation?.key,
-        row.operation?.page_path,
-        row.asset?.test_file_path,
-        row.generationRun?.id,
+        row.project.name,
+        labelForStatus(row.asset?.status ?? row.generationRun?.status ?? ""),
       ]
         .filter(Boolean)
         .some((value) => value?.toLowerCase().includes(query));
@@ -106,29 +118,26 @@ export default function Page() {
       const active = nextProjects.filter((project) => project.status === "active");
       const projectRows = await Promise.all(
         active.map(async (project) => {
-          const [assets, generationRuns, operationsArtifact, testCaseSets, manualTestCases] = await Promise.all([
+          const [assets, generationRuns] = await Promise.all([
             listUiAutomationAssets(project.id),
             listUiAutomationGenerationRuns(project.id),
-            apiRequest<{ operations: Operation[] }>(`/page-exploration/projects/${project.id}/operations`),
-            apiRequest<ApiTestCaseSet[]>(`/projects/${project.id}/test-case-sets`),
-            apiRequest<ApiManualTestCase[]>(`/projects/${project.id}/test-cases`),
+          ]);
+          const [testCaseSets, manualTestCases] = await Promise.all([
+            apiRequest<ApiTestCaseSet[]>(`/projects/${project.id}/test-case-sets`).catch(() => []),
+            apiRequest<ApiManualTestCase[]>(`/projects/${project.id}/test-cases`).catch(() => []),
           ]);
           const detailedSets = await Promise.all(
-            testCaseSets.map((set) => apiRequest<ApiTestCaseSet>(`/projects/${project.id}/test-case-sets/${set.id}`)),
+            testCaseSets.map((set) =>
+              apiRequest<ApiTestCaseSet>(`/projects/${project.id}/test-case-sets/${set.id}`).catch(() => null),
+            ),
           );
           const cases = [
             ...manualTestCases,
-            ...detailedSets.flatMap((set) => set.cases ?? []).filter((item) => item.status === "approved"),
+            ...detailedSets.flatMap((set) => set?.cases ?? []).filter((item) => item.status === "approved"),
           ];
           const assetRows = assets.map((asset) => {
             const testCase = cases.find((item) => item.id === asset.test_case_id) ?? null;
-            const operation =
-              operationsArtifact.operations?.find(
-                (item) =>
-                  asset.pytest_node_id.includes(item.key) ||
-                  Boolean(testCase?.title && item.key.includes(testCase.title)),
-              ) ?? null;
-            return { id: asset.id, asset, project, testCase, operation };
+            return { id: asset.id, asset, project, testCase };
           });
           const generationRows = generationRuns
             .filter(
@@ -141,12 +150,13 @@ export default function Page() {
               generationRun,
               project,
               testCase: cases.find((item) => item.id === generationRun.test_case_id) ?? null,
-              operation: null,
             }));
           return [...generationRows, ...assetRows];
         }),
       );
-      selection.setRows(projectRows.flat());
+      selection.setRows(
+        projectRows.flat().sort((first, second) => updatedAtForRow(second).localeCompare(updatedAtForRow(first))),
+      );
     },
     [selection.setRows],
   );
@@ -272,6 +282,49 @@ export default function Page() {
     }
   }
 
+  function toggleAllAssets(checked: boolean) {
+    selection.clearSelection();
+    if (checked) {
+      selectableRows.forEach((row) => {
+        selection.toggleOne(row.id, true);
+      });
+    }
+  }
+
+  function requestDelete(rows: UiAutomationRow[]) {
+    setPendingDeleteRows(rows.filter((row) => row.asset));
+  }
+
+  async function deletePendingAssets() {
+    const rows = pendingDeleteRows.filter((row) => row.asset);
+    if (rows.length === 0) return;
+    setDeleting(true);
+    try {
+      const results = await Promise.allSettled(
+        rows.map((row) => deleteUiAutomationAsset(row.project.id, row.asset?.id ?? "")),
+      );
+      const failedRows = rows.filter((_, index) => results[index]?.status === "rejected");
+      const deletedCount = rows.length - failedRows.length;
+      selection.clearSelection();
+      await loadProjectRows(projects);
+      setPendingDeleteRows(failedRows);
+      if (failedRows.length === 0) {
+        toast.success(`已删除 ${deletedCount} 个 UI 自动化资产`);
+      } else {
+        const firstError = results.find((result) => result.status === "rejected");
+        const message =
+          firstError?.status === "rejected" && firstError.reason instanceof Error ? firstError.reason.message : "";
+        toast.error(
+          deletedCount > 0
+            ? `已删除 ${deletedCount} 个，${failedRows.length} 个删除失败${message ? `：${message}` : ""}`
+            : message || "UI 自动化资产删除失败",
+        );
+      }
+    } finally {
+      setDeleting(false);
+    }
+  }
+
   const selectedProjectEnvironments = createEnvironments.filter((item) => item.project_id === selectedProjectId);
 
   return (
@@ -284,33 +337,35 @@ export default function Page() {
       <ShellSection>
         <ListToolbar
           createLabel="新建 UI 自动化"
+          onBatchDelete={() => requestDelete(selectedAssetRows)}
           onCreate={openCreateDialog}
           onSearch={setSearchText}
-          placeholder="搜索用例名称、入口路径或自动化文件"
-          selectedCount={selection.selectedCount}
+          placeholder="搜索用例名称、所属项目或状态"
+          selectedCount={selectedAssetRows.length}
           title="UI 自动化列表"
         />
-        <div className="overflow-hidden rounded-lg border">
+        <div className="overflow-x-auto rounded-lg border">
           <Table>
             <TableHeader>
               <TableRow>
                 <TableHead className="w-10">
                   <Checkbox
                     aria-label="选择全部 UI 自动化用例"
-                    checked={selection.allSelected || (selection.partiallySelected ? "indeterminate" : false)}
+                    checked={allSelectableRowsSelected || (partiallySelected ? "indeterminate" : false)}
                     disabled={loading}
-                    onCheckedChange={(checked) => selection.toggleAll(Boolean(checked))}
+                    onCheckedChange={(checked) => toggleAllAssets(Boolean(checked))}
                   />
                 </TableHead>
-                <TableHead>用例名称</TableHead>
-                <TableHead>状态</TableHead>
-                <TableHead>入口路径</TableHead>
-                <TableHead>步骤</TableHead>
-                <TableHead className="w-20">执行</TableHead>
+                <TableHead className="min-w-72">用例名称</TableHead>
+                <TableHead className="w-44">所属项目</TableHead>
+                <TableHead className="w-28">状态</TableHead>
+                <TableHead className="w-20">步骤数</TableHead>
+                <TableHead className="w-44">更新时间</TableHead>
+                <TableHead className="w-20">操作</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {loading ? <TableLoadingRow colSpan={6} label="UI 自动化列表加载中" /> : null}
+              {loading ? <TableLoadingRow colSpan={7} label="UI 自动化列表加载中" /> : null}
               {!loading
                 ? filteredRows.map((row) => (
                     <TableRow data-state={selection.selectedIds.includes(row.id) ? "selected" : undefined} key={row.id}>
@@ -337,6 +392,9 @@ export default function Page() {
                           </span>
                         )}
                       </TableCell>
+                      <TableCell className="max-w-44 truncate text-muted-foreground" title={row.project.name}>
+                        {row.project.name}
+                      </TableCell>
                       <TableCell>
                         <StatusBadge
                           title={row.generationRun?.error_message || undefined}
@@ -345,29 +403,44 @@ export default function Page() {
                           {labelForStatus(row.asset?.status ?? row.generationRun?.status ?? "")}
                         </StatusBadge>
                       </TableCell>
-                      <TableCell
-                        className="max-w-64 truncate font-mono text-xs"
-                        title={row.operation?.page_path ?? row.asset?.suite_path ?? row.generationRun?.suite_path}
-                      >
-                        {row.operation?.page_path ?? row.asset?.suite_path ?? "生成任务"}
+                      <TableCell>{row.testCase?.steps.length ?? "-"}</TableCell>
+                      <TableCell className="whitespace-nowrap text-muted-foreground">
+                        {formatDateTime(updatedAtForRow(row) || null)}
                       </TableCell>
-                      <TableCell>{row.operation?.steps.length ?? row.testCase?.steps.length ?? "-"}</TableCell>
                       <TableCell>
-                        <Button
-                          aria-label={`执行 ${row.testCase?.title ?? row.asset?.id ?? row.generationRun?.id}`}
-                          disabled={!row.asset || ["degraded", "deprecated"].includes(row.asset.status)}
-                          onClick={() => void openExecutionDialog(row)}
-                          size="icon-sm"
-                        >
-                          <Play className="size-4" />
-                        </Button>
+                        <RowActions
+                          actions={
+                            row.asset
+                              ? [
+                                  {
+                                    label: "查看详情",
+                                    href: `/projects/${row.project.id}/automation/ui/assets/${row.asset.id}`,
+                                    icon: Eye,
+                                  },
+                                  {
+                                    label: "执行",
+                                    icon: Play,
+                                    disabled: ["degraded", "deprecated"].includes(row.asset.status),
+                                    onSelect: () => void openExecutionDialog(row),
+                                  },
+                                  {
+                                    label: "删除",
+                                    icon: Trash2,
+                                    destructive: true,
+                                    onSelect: () => requestDelete([row]),
+                                  },
+                                ]
+                              : [{ label: "生成任务处理中", icon: Loader2, disabled: true }]
+                          }
+                          label={`打开 ${row.testCase?.title ?? row.asset?.id ?? row.generationRun?.id} 操作菜单`}
+                        />
                       </TableCell>
                     </TableRow>
                   ))
                 : null}
               {!loading && filteredRows.length === 0 ? (
                 <TableRow>
-                  <TableCell className="h-24 text-center text-muted-foreground" colSpan={6}>
+                  <TableCell className="h-24 text-center text-muted-foreground" colSpan={7}>
                     暂无 UI 自动化资产。可新建 UI 自动化后从已采纳测试用例生成。
                   </TableCell>
                 </TableRow>
@@ -376,6 +449,40 @@ export default function Page() {
           </Table>
         </div>
       </ShellSection>
+
+      <AlertDialog
+        onOpenChange={(open) => {
+          if (!open && !deleting) setPendingDeleteRows([]);
+        }}
+        open={pendingDeleteRows.length > 0}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <div className="flex size-10 items-center justify-center rounded-lg bg-destructive/10 text-destructive">
+              <Trash2 className="size-5" />
+            </div>
+            <AlertDialogTitle>删除 UI 自动化资产？</AlertDialogTitle>
+            <AlertDialogDescription>
+              将永久删除 {pendingDeleteRows.length}{" "}
+              个自动化资产、关联运行记录及生成文件。原始测试用例和生成任务记录不会被删除。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>取消</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={deleting}
+              onClick={(event) => {
+                event.preventDefault();
+                void deletePendingAssets();
+              }}
+            >
+              {deleting ? <Loader2 className="size-4 animate-spin" /> : <Trash2 className="size-4" />}
+              {deleting ? "删除中" : "确认删除"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <Dialog
         open={Boolean(executionRow)}

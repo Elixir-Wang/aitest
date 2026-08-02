@@ -8,10 +8,10 @@
 - ``DELETE /projects/{project_id}/requirements/{document_id}`` —— 删除文档
 """
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, Query, UploadFile
 
 from app.dependencies.auth import current_user, require_admin
-from app.schemas.document import SourceDocumentUpdateIn
+from app.schemas.document import SourceDocumentProjectVersionUpdateIn, SourceDocumentUpdateIn
 from app.services.document import documents as document_documents
 from app.services import test_point_service
 
@@ -19,8 +19,12 @@ router = APIRouter(prefix="/projects/{project_id}/requirements", tags=["requirem
 
 
 @router.get("")
-def list_requirements(project_id: str, actor=Depends(current_user)) -> list[dict]:
-    return document_documents.list_documents(project_id, actor)
+def list_requirements(
+    project_id: str,
+    project_version_id: str = Query(default=""),
+    actor=Depends(current_user),
+) -> list[dict]:
+    return document_documents.list_documents(project_id, actor, project_version_id=project_version_id)
 
 
 @router.post("")
@@ -31,6 +35,7 @@ async def upload_requirements(
     mode: str = Form(default="new"),
     document_name: str = Form(default=""),
     existing_document_id: str = Form(default=""),
+    project_version_id: str = Form(default=""),
     actor=Depends(current_user),
 ) -> dict:
     result = await document_documents.upload_documents(
@@ -40,6 +45,7 @@ async def upload_requirements(
         mode=mode,
         document_name=document_name,
         existing_document_id=existing_document_id,
+        project_version_id=project_version_id,
     )
     background_tasks.add_task(
         document_documents.convert_pending_file_mappings,
@@ -80,3 +86,13 @@ def update_requirement(
 @router.delete("/{document_id}")
 def delete_requirement(project_id: str, document_id: str, actor=Depends(require_admin)) -> dict:
     return document_documents.delete_document(project_id, document_id, actor)
+
+
+@router.patch("/{document_id}/project-version")
+def update_requirement_project_version(
+    project_id: str,
+    document_id: str,
+    payload: SourceDocumentProjectVersionUpdateIn,
+    actor=Depends(require_admin),
+) -> dict:
+    return document_documents.update_document_project_version(project_id, document_id, payload.project_version_id, actor)

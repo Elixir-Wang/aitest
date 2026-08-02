@@ -8,6 +8,9 @@ from .schemas import AssertionPlan, AutomationPlan, LocatorPlan, PageObjectPlan,
 from .suite import ensure_suite_root, resolve_suite_file
 
 
+INSTRUMENTATION_VERSION = 2
+
+
 SUITE_FILES = {
     "AGENTS.md": """# Pytest Playwright Suite Instructions
 
@@ -367,7 +370,7 @@ def _render_test(plan: AutomationPlan) -> str:
         f"load_case_data(Path(__file__).resolve().parents[{suite_parent_index}] / "
         f"{json.dumps(plan.artifacts.data_file)})"
     )
-    body = ["", ""]
+    body = ["", "", f"UI_AUTOMATION_INSTRUMENTATION_VERSION = {INSTRUMENTATION_VERSION}", "", ""]
     if any(step.kind == "wait_for_response" for step in plan.steps):
         body.extend(_response_wait_helper())
     if any(step.kind == "commit_value" for step in plan.steps):
@@ -387,12 +390,32 @@ def _render_test(plan: AutomationPlan) -> str:
     parameters = "".join(f", {name}" for name in plan.parameters)
     body.extend(
         [
-            f"def test_{_python_identifier(plan.automation_case_id)}(page{parameters}):",
+            f"def test_{_python_identifier(plan.automation_case_id)}(page, ui_case{parameters}):",
             "    case_data = CASE_DATA" if plan.parameters else f"    case_data = {data_expression}",
         ]
     )
     for page in plan.page_objects:
         body.append(f"    {page.page_key}_page = {page.class_name}(page)")
+    step_definitions = [
+        {
+            "step_id": group[0][1].business_step_id or group[0][1].source_step_id,
+            "title": group[0][1].title or group[0][1].source_step_id,
+            "visible": any(step.visible for _, step in group),
+            "operation_ids": [step.source_step_id for _, step in group],
+        }
+        for group in _step_groups(plan.steps)
+    ]
+    if any(not assertion.after_step_id for assertion in plan.assertions):
+        step_definitions.append(
+            {
+                "step_id": "__final_assertions__",
+                "title": "最终断言",
+                "visible": True,
+                "operation_ids": [],
+            }
+        )
+    if step_definitions:
+        body.append(f"    ui_case.define_steps({step_definitions!r})")
     assertions_by_step: dict[str, list[AssertionPlan]] = {}
     trailing_assertions: list[AssertionPlan] = []
     for assertion in plan.assertions:
@@ -400,27 +423,60 @@ def _render_test(plan: AutomationPlan) -> str:
             assertions_by_step.setdefault(assertion.after_step_id, []).append(assertion)
         else:
             trailing_assertions.append(assertion)
-    for index, step in enumerate(plan.steps):
-        if index + 1 < len(plan.steps) and plan.steps[index + 1].kind == "wait_for_response":
-            wait_step = plan.steps[index + 1]
-            wait_target = f"{wait_step.page_key}_page.{wait_step.element_key}"
-            body.append(f"    _response_before_{index + 1} = _last_locator_text({wait_target})")
-        body.extend(_render_step(step, set(plan.parameters), step_index=index))
-        for assertion in assertions_by_step.get(step.source_step_id, []):
-            body.extend(_render_assertion(assertion, set(plan.parameters)))
-    for assertion in trailing_assertions:
-        body.extend(_render_assertion(assertion, set(plan.parameters)))
+    for group in _step_groups(plan.steps):
+        first_step = group[0][1]
+        step_id = first_step.business_step_id or first_step.source_step_id
+        title = first_step.title or first_step.source_step_id
+        operation_ids = [step.source_step_id for _, step in group]
+        visible = any(step.visible for _, step in group)
+        body.append(
+            f"    with ui_case.step({json.dumps(step_id, ensure_ascii=False)}, "
+            f"{json.dumps(title, ensure_ascii=False)}, operation_ids={json.dumps(operation_ids, ensure_ascii=False)}, "
+            f"visible={visible}):"
+        )
+        for index, step in group:
+            if index + 1 < len(plan.steps) and plan.steps[index + 1].kind == "wait_for_response":
+                wait_step = plan.steps[index + 1]
+                wait_target = f"{wait_step.page_key}_page.{wait_step.element_key}"
+                body.append(f"        _response_before_{index + 1} = _last_locator_text({wait_target})")
+            body.extend(_render_step(step, set(plan.parameters), step_index=index, indent="        "))
+            for assertion in assertions_by_step.get(step.source_step_id, []):
+                body.extend(_render_assertion(assertion, set(plan.parameters), indent="        "))
+    if trailing_assertions:
+        body.append('    with ui_case.step("__final_assertions__", "最终断言", operation_ids=[]):')
+        for assertion in trailing_assertions:
+            body.extend(_render_assertion(assertion, set(plan.parameters), indent="        "))
     if not plan.steps and not plan.assertions:
         body.append("    assert case_data is not None")
     return "\n".join([*imports, *body]) + "\n"
 
 
-def _render_step(step: StepPlan, parameters: set[str], *, step_index: int = 0) -> list[str]:
+def _step_groups(steps: list[StepPlan]) -> list[list[tuple[int, StepPlan]]]:
+    groups: list[list[tuple[int, StepPlan]]] = []
+    for index, step in enumerate(steps):
+        group_id = step.business_step_id or step.source_step_id
+        if groups:
+            previous = groups[-1][0][1]
+            previous_group_id = previous.business_step_id or previous.source_step_id
+            if previous_group_id == group_id:
+                groups[-1].append((index, step))
+                continue
+        groups.append([(index, step)])
+    return groups
+
+
+def _render_step(
+    step: StepPlan,
+    parameters: set[str],
+    *,
+    step_index: int = 0,
+    indent: str = "    ",
+) -> list[str]:
     page_var = f"{step.page_key}_page"
     if step.kind == "navigate":
-        return [f"    {page_var}.open()"]
+        return [f"{indent}{page_var}.open()"]
     if step.kind == "click_parameter_text":
-        return [f"    {page_var}.visible_text(str({step.value_ref})).click()"]
+        return [f"{indent}{page_var}.visible_text(str({step.value_ref})).click()"]
     target = f"{page_var}.{step.element_key}"
     value = (
         step.value_ref
@@ -441,7 +497,7 @@ def _render_step(step: StepPlan, parameters: set[str], *, step_index: int = 0) -
         "wait_for_response": f"_wait_for_response({target}, _response_before_{step_index})",
         "commit_value": f"_commit_current_value({target})",
     }
-    return [f"    {actions[step.kind]}"]
+    return [f"{indent}{actions[step.kind]}"]
 
 
 def _response_wait_helper() -> list[str]:
@@ -490,7 +546,12 @@ def _commit_value_helper() -> list[str]:
     ]
 
 
-def _render_assertion(assertion: AssertionPlan, parameters: set[str]) -> list[str]:
+def _render_assertion(
+    assertion: AssertionPlan,
+    parameters: set[str],
+    *,
+    indent: str = "    ",
+) -> list[str]:
     expected = (
         assertion.expected_ref
         if assertion.expected_ref in parameters
@@ -499,7 +560,7 @@ def _render_assertion(assertion: AssertionPlan, parameters: set[str]) -> list[st
         else json.dumps(assertion.expected, ensure_ascii=False)
     )
     if assertion.kind == "url":
-        return [f"    expect(page).to_have_url(re.compile(re.escape(str({expected}))))"]
+        return [f"{indent}expect(page).to_have_url(re.compile(re.escape(str({expected}))))"]
     target = f"{assertion.page_key}_page.{assertion.element_key}"
     statement = {
         "visible": f"expect({target}).to_be_visible()",
@@ -507,7 +568,7 @@ def _render_assertion(assertion: AssertionPlan, parameters: set[str]) -> list[st
         "text": f"expect({target}).to_contain_text(str({expected}))",
         "value": f"expect({target}).to_have_value(str({expected}))",
     }[assertion.kind]
-    return [f"    {statement}"]
+    return [f"{indent}{statement}"]
 
 
 def _python_identifier(value: str) -> str:

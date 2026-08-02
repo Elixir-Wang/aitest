@@ -166,3 +166,66 @@ def test_repeated_endpoint_calls_remain_separate_steps() -> None:
 
     assert [step.step_id for step in review.steps] == ["step-1", "step-2"]
     assert [step.endpoint_id for step in review.steps] == ["apiend-1", "apiend-1"]
+
+
+def test_review_ignores_sse_extractor_without_asset_event() -> None:
+    proposal = PlannerProposal.model_validate(
+        {
+            "scenario_name": "SSE 对话",
+            "steps": [
+                {
+                    "client_step_id": "step-sse",
+                    "endpoint_id": "apiend-sse",
+                    "order": 1,
+                    "extractors": [
+                        {
+                            "name": "answer",
+                            "source": "sse_event_json",
+                            "path": "/data/answer",
+                            "value_type": "string",
+                        },
+                        {
+                            "name": "dialog_id",
+                            "source": "sse_event_json",
+                            "path": "/data/dialog_id",
+                            "value_type": "string",
+                        },
+                    ],
+                }
+            ],
+        }
+    )
+    endpoint = {
+        "id": "apiend-sse",
+        "method": "POST",
+        "path": "/sse",
+        "parameters": [],
+        "request_body": {},
+        "responses": {
+            "200": {
+                "content": {
+                    "text/event-stream": {
+                        "x-event-data-schema": {
+                            "type": "object",
+                            "properties": {
+                                "data": {
+                                    "type": "object",
+                                    "properties": {
+                                        "answer": {"type": "string"},
+                                        "dialog_id": {"type": "string"},
+                                    },
+                                }
+                            },
+                        }
+                    }
+                }
+            }
+        },
+    }
+
+    review = _build(proposal, [endpoint])
+
+    assert review.steps[0].extractors == []
+    assert review.validation["valid"] is True
+    assert len(review.validation["warnings"]) == 2
+    assert all("缺少资产明确提供的 event" in warning for warning in review.validation["warnings"])

@@ -57,10 +57,15 @@ def test_run_case_executes_exact_node_and_writes_generic_result(monkeypatch, tmp
     assert captured["command"][-1] == "testcases/generated/test_login.py::test_uiauto_1"
     assert captured["kwargs"]["env"]["UI_BASE_URL"] == "https://example.test"
     assert Path(captured["kwargs"]["env"]["UI_ARTIFACT_DIR"]) == tmp_path / "run" / "browser"
+    assert captured["kwargs"]["env"]["UI_RUN_ID"] == "uirun-1"
+    assert Path(captured["kwargs"]["env"]["UI_RUN_EVENT_PATH"]) == tmp_path / "run" / "events.jsonl"
+    assert Path(captured["kwargs"]["env"]["UI_RUN_ARTIFACT_DIR"]) == tmp_path / "run" / "step-artifacts"
+    assert captured["kwargs"]["env"]["UI_BUSINESS_PARAMETERS"] == "[]"
     assert captured["kwargs"]["env"]["UI_RUNNER_PARENT_PID"] == str(os.getpid())
     assert captured["kwargs"]["env"]["UI_VIEWPORT_WIDTH"] == "1440"
     assert captured["kwargs"]["env"]["UI_VIEWPORT_HEIGHT"] == "900"
     assert result["status"] == "passed"
+    assert result["detail_available"] is False
     assert Path(result["result_path"]).exists()
     assert Path(result["stdout_path"]).read_text(encoding="utf-8") == "1 passed"
 

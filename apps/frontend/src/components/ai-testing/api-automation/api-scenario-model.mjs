@@ -95,11 +95,17 @@ export function toScenarioStepInput(step, stepOrder) {
     request_overrides: requestOverrides,
     bindings,
     extractors: step.extractors || [],
-    assertions: step.assertions || [],
+    assertions: (step.assertions || []).map(toScenarioAssertionInput),
     control_config: step.control_config || {},
     on_failure: step.on_failure || "stop",
     enabled: step.enabled !== false,
   };
+}
+
+function toScenarioAssertionInput(assertion) {
+  const input = { ...assertion };
+  delete input.id;
+  return input;
 }
 
 export function buildVariableOptions(steps, activeStepId, scenarioVariables = {}, environmentVariables = {}) {
@@ -245,6 +251,12 @@ export function buildEndpointRequestFields(endpoint) {
   return { bodyMode, mediaType, fields: [...parameterFields, ...bodyFields] };
 }
 
+export function resolveRequestFieldValue(requestOverrides, target, defaultValue) {
+  const overrideValue = getPointer(requestOverrides, target);
+  if (overrideValue === undefined) return defaultValue;
+  return overrideValue;
+}
+
 function validateRequestLifecycle(step, label, currentIndex, stepIndexes, stepOutputs, errors) {
   if (step.step_type !== "api_request") return;
   const request = step.request_overrides?.request || {};
@@ -352,6 +364,16 @@ function setPointer(document, pointer, value) {
   }
   current[parts.at(-1)] = value;
   return document;
+}
+
+function getPointer(document, pointer) {
+  const parts = pointer.split("/").filter(Boolean).map(unescapePointer);
+  let current = document;
+  for (const part of parts) {
+    if (!current || typeof current !== "object" || !Object.hasOwn(current, part)) return undefined;
+    current = current[part];
+  }
+  return current;
 }
 
 function formatLiteralValue(value) {

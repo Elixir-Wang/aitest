@@ -261,6 +261,60 @@ def test_collect_performance_evidence_gathers_run_config_openapi_and_missing_fil
     assert "result_exceptions.csv" in evidence["missing_evidence"]
 
 
+def test_collect_performance_evidence_does_not_report_missing_failures_for_zero_failure_run(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    report_directory = tmp_path / "runs" / "perfrun-1"
+    report_directory.mkdir(parents=True)
+    _seed_evidence_run(report_directory)
+    with connect() as db:
+        db.execute("DELETE FROM performance_test_run_failures WHERE run_id = 'perfrun-1'")
+        db.execute(
+            "UPDATE performance_test_runs SET latest_summary_json = ? WHERE id = 'perfrun-1'",
+            (json.dumps({"request_count": 250, "failure_count": 0, "failure_rate": 0}),),
+        )
+
+    evidence = collect_performance_evidence("project-1", "perfrun-1")
+
+    assert evidence["failures"] == []
+    assert "performance_failures" not in evidence["missing_evidence"]
+    assert "result_failures.csv" not in evidence["missing_evidence"]
+    assert "locust-events.jsonl" not in evidence["missing_evidence"]
+
+
+def test_collect_performance_evidence_resolves_endpoint_definition_from_executed_route(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    report_directory = tmp_path / "runs" / "perfrun-1"
+    report_directory.mkdir(parents=True)
+    _seed_evidence_run(report_directory)
+    with connect() as db:
+        db.execute("UPDATE performance_tests SET endpoint_id = NULL WHERE id = 'perftest-1'")
+        db.execute(
+            "UPDATE performance_test_scripts SET plan_json = ? WHERE id = 'perfscript-1'",
+            (
+                json.dumps(
+                    {
+                        "request": {
+                            "method": "POST",
+                            "path": "/openapi/v1/agent/analysis/",
+                        }
+                    }
+                ),
+            ),
+        )
+
+    evidence = collect_performance_evidence("project-1", "perfrun-1")
+
+    assert evidence["endpoint"]["id"] == "endpoint-1"
+    assert evidence["endpoint"]["request_body"]["required"] is True
+    assert "openapi_endpoint" not in evidence["missing_evidence"]
+
+
 def test_collect_performance_evidence_adds_prior_preflight_route_constraint(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -435,7 +489,7 @@ def test_diagnosis_service_uses_structured_agent_output() -> None:
 
     assert diagnosis == expected
     assert model_name == "test-model"
-    assert diagnosis_service.PROMPT_VERSION == "v3-evidence-contract"
+    assert diagnosis_service.PROMPT_VERSION == "v4-report-contract"
 
 
 def test_diagnosis_service_builds_targeted_repair_prompt() -> None:
@@ -747,7 +801,7 @@ def test_analysis_service_creates_executes_and_lists_structured_analysis(
     assert completed["report_snapshot"]["verdict"] == "indeterminate"
     assert completed["generation_mode"] == "ai_primary"
     assert completed["analysis_attempts"][0]["status"] == "completed"
-    assert completed["prompt_version"] == "v3-evidence-contract"
+    assert completed["prompt_version"] == "v4-report-contract"
     assert completed["model_name"] == "test-model"
     assert history[0]["id"] == created["id"]
 

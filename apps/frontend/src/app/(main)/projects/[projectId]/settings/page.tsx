@@ -7,9 +7,9 @@ import { useParams } from "next/navigation";
 import { FolderCog, ShieldCheck, SlidersHorizontal } from "lucide-react";
 
 import { MetricCard, PageShell, ShellSection } from "@/components/ai-testing/page-shell";
-import { moduleBreadcrumbs } from "@/navigation/breadcrumbs";
 import { Button } from "@/components/ui/button";
-import { apiRequest, type ApiProject } from "@/lib/api-client";
+import { type ApiProject, apiRequest } from "@/lib/api-client";
+import { moduleBreadcrumbs } from "@/navigation/breadcrumbs";
 import { useProjectContextStore } from "@/stores/project-context-store";
 
 export default function Page() {
@@ -60,6 +60,7 @@ export default function Page() {
       activeTab="项目设置"
       tabs={[
         { label: "项目概览", href: `/projects/${projectId}` },
+        { label: "版本管理", href: `/projects/${projectId}/versions` },
         { label: "项目设置", href: `/projects/${projectId}/settings` },
         "成员",
         "环境配置",

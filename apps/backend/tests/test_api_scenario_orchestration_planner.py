@@ -70,6 +70,40 @@ async def test_planner_parses_json_content_in_one_call() -> None:
 
 
 @pytest.mark.anyio
+async def test_planner_accepts_sse_extractor_without_unverified_event() -> None:
+    proposal_json = json.dumps(
+        {
+            "scenario_name": "SSE 对话",
+            "steps": [
+                {
+                    "client_step_id": "step-sse",
+                    "endpoint_id": "apiend-sse",
+                    "order": 1,
+                    "extractors": [
+                        {
+                            "name": "answer",
+                            "source": "sse_event_json",
+                            "path": "/data/answer",
+                            "value_type": "string",
+                        }
+                    ],
+                }
+            ],
+        },
+        ensure_ascii=False,
+    )
+    model = FakeModel([proposal_json])
+    planner = ApiScenarioPlanner(model)
+
+    proposal = await planner.plan(
+        {"goal": "发起 SSE 对话", "endpoint_catalog": [{"endpoint_id": "apiend-sse"}]}
+    )
+
+    assert proposal.steps[0].extractors[0].event == ""
+    assert planner.model_call_count == 1
+
+
+@pytest.mark.anyio
 async def test_planner_repairs_invalid_json_once() -> None:
     model = FakeModel(["not-json", _proposal_json()])
     planner = ApiScenarioPlanner(model)
@@ -80,7 +114,41 @@ async def test_planner_repairs_invalid_json_once() -> None:
 
     assert proposal.scenario_name == "查询资料"
     assert planner.model_call_count == 2
-    assert "修复" in model.calls[1][-1]["content"]
+    assert "JSON Schema" in model.calls[1][-1]["content"]
+    assert '"fields"' in model.calls[1][-1]["content"]
+
+
+@pytest.mark.anyio
+async def test_planner_repairs_legacy_request_shape_with_current_schema() -> None:
+    legacy = json.dumps(
+        {
+            "scenario_name": "生成并使用 SegmentCode",
+            "steps": [
+                {
+                    "client_step_id": "step-generate",
+                    "endpoint_id": "apiend-generate",
+                    "order": 1,
+                    "request": {"json": {"message_source": "openai-ws"}},
+                    "extractors": [
+                        {"name": "segment_code", "source": "response", "target": "scenario.segment_code"}
+                    ],
+                }
+            ],
+        },
+        ensure_ascii=False,
+    )
+    model = FakeModel([legacy, _proposal_json()])
+    planner = ApiScenarioPlanner(model)
+
+    proposal = await planner.plan(
+        {"goal": "编排两个接口", "endpoint_catalog": [{"endpoint_id": "apiend-generate"}]}
+    )
+
+    assert proposal.steps[0].endpoint_id == "apiend-selected"
+    correction = model.calls[1][-1]["content"]
+    assert "steps.0.request" in correction
+    assert '"fields"' in correction
+    assert '"json_body"' in correction
 
 
 @pytest.mark.anyio
@@ -102,7 +170,7 @@ async def test_planner_times_out_single_model_call() -> None:
         return {"content": _proposal_json()}
 
     model = FakeModel([slow_response])
-    planner = ApiScenarioPlanner(model, request_timeout_seconds=0.01, total_deadline_seconds=0.02)
+    planner = ApiScenarioPlanner(model, total_deadline_seconds=0.02)
 
     with pytest.raises(PlannerTimeoutError):
         await planner.plan({"goal": "查询资料", "endpoint_catalog": [{"endpoint_id": "apiend-selected"}]})
@@ -122,6 +190,7 @@ async def test_planner_prompt_contains_only_supplied_endpoint_catalog() -> None:
         }
     )
 
-    prompt = model.calls[0][-1]["content"]
+    prompt = "\n".join(message["content"] for message in model.calls[0])
     assert "apiend-selected" in prompt
     assert "apiend-unselected" not in prompt
+    assert "不得猜测 event" in prompt

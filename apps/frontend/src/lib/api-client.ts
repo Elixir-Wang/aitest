@@ -100,12 +100,32 @@ export type ApiProject = {
   status: "active" | "archived";
   created_at: string;
   updated_at: string;
+  current_version: ApiProjectVersionSummary | null;
   available_actions: string[];
+};
+
+export type ApiProjectVersionSummary = {
+  id: string;
+  version: string;
+  name: string;
+  is_default: boolean;
+};
+
+export type ApiProjectVersion = ApiProjectVersionSummary & {
+  project_id: string;
+  description: string;
+  planned_release_at: string | null;
+  requirement_count: number;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
 };
 
 export type ApiRequirementDocument = {
   id: string;
   project_id: string;
+  project_version_id: string | null;
+  project_version: ApiProjectVersionSummary | null;
   name: string;
   document_type: string;
   status: string;
@@ -356,6 +376,59 @@ export type UiAutomationLiveView = {
   stream_path: string;
   width: number;
   height: number;
+};
+
+export type UiAutomationStepArtifact = {
+  artifact_id: string;
+  kind: string;
+  mime_type: string;
+  step_id: string;
+};
+
+export type UiAutomationStepResult = {
+  step_id: string;
+  title: string;
+  visible: boolean;
+  operation_ids: string[];
+  status: string;
+  started_at: string | null;
+  finished_at: string | null;
+  duration_ms: number | null;
+  error: { type?: string; message?: string; traceback?: string } | null;
+  artifacts: UiAutomationStepArtifact[];
+};
+
+export type UiAutomationIterationResult = {
+  iteration_id: string;
+  pytest_node_id: string;
+  index: number;
+  parameters: Record<string, unknown>;
+  attempt: number;
+  status: string;
+  started_at: string | null;
+  finished_at: string | null;
+  duration_ms: number | null;
+  current_step_id: string;
+  failed_step_id: string;
+  error: { type?: string; message?: string; traceback?: string } | null;
+  steps: UiAutomationStepResult[];
+};
+
+export type UiAutomationRunDetail = {
+  schema_version: string;
+  detail_available: boolean;
+  run_id: string;
+  run_status: string;
+  incomplete: boolean;
+  last_sequence: number;
+  summary: Record<string, number>;
+  iterations: UiAutomationIterationResult[];
+};
+
+export type UiAutomationRunEvents = {
+  items: Record<string, unknown>[];
+  next_cursor: number;
+  has_more: boolean;
 };
 
 export type ApiTestPoint = {
@@ -1096,16 +1169,6 @@ export type ApiScenarioAiReviewSaveInput = {
   }>;
 };
 
-export type ApiScenarioAiPlanBinding = {
-  target: {
-    location: "path" | "query" | "header" | "cookie" | "json_body" | "form" | "multipart" | "raw_body";
-    path: string;
-  };
-  source: ApiScenarioAiPlanValueSource;
-  required?: boolean;
-  transform?: "string" | "integer" | "number" | "boolean" | "json_encode" | "url_encode" | null;
-};
-
 export type ApiAutomationScenarioExtractor = {
   name: string;
   source?: "response.body" | "response.header" | "response.status" | "sse_event_json";
@@ -1188,50 +1251,17 @@ export type ApiAutomationScenarioValidation = {
   warnings: string[];
 };
 
-export type ApiScenarioAiPlanNode = Omit<Partial<ApiAutomationScenarioStep>, "bindings"> & {
-  id: string;
-  type: ApiAutomationScenarioStepType;
-  endpoint_id: string | null;
-  phase?: "setup" | "main" | "verify" | "cleanup";
-  bindings?: ApiScenarioAiPlanBinding[];
-};
-
 export type ApiScenarioAiPlanAccepted = {
   plan_id: string;
   scenario_id: string | null;
   lifecycle_status: "generating" | "completed" | "failed" | "expired";
+  error?: {
+    stage: string;
+    code: string;
+    message: string;
+  } | null;
 };
-export type ApiScenarioAiPlanResponse = ApiScenarioAiReviewPlan | ApiScenarioAiPlan | ApiScenarioAiPlanAccepted;
-export type ApiScenarioAiPlan = {
-  plan_id: string;
-  plan_version: number;
-  status: "preview" | "applied" | "discarded" | "expired";
-  compiler_version: number;
-  asset_fingerprint: string;
-  environment_schema: Record<string, unknown>;
-  graph_version: number;
-  scenario_name: string;
-  description: string;
-  inputs: Array<{
-    name: string;
-    label: string;
-    value_type: string;
-    required: boolean;
-    sensitive: boolean;
-    description: string;
-    default_value?: unknown;
-    enum?: unknown[];
-  }>;
-  nodes: ApiScenarioAiPlanNode[];
-  edges: Array<{ source: string; target: string; condition: string }>;
-  assumptions: string[];
-  warnings: string[];
-  unresolved_items: string[];
-  confidence: number;
-  validation: ApiAutomationScenarioValidation;
-  expected_revision: number | null;
-  expires_at: string;
-};
+export type ApiScenarioAiPlanResponse = ApiScenarioAiReviewPlan | ApiScenarioAiPlanAccepted;
 
 export type ApiAutomationScenarioRevision = {
   revision: number;
@@ -1257,25 +1287,25 @@ export type ApiAutomationScenarioRevision = {
 export type ApiAutomationScenarioStepResult = {
   step_id: string;
   name: string;
-  step_type: ApiAutomationScenarioStepType;
+  step_type?: ApiAutomationScenarioStepType;
   status: "pending" | "passed" | "failed" | "skipped";
-  duration_ms: number;
-  request: Record<string, unknown>;
-  response: Record<string, unknown>;
-  inputs: Record<string, unknown>;
-  outputs: Record<string, unknown>;
-  assertions: Array<Record<string, unknown>>;
-  attempts: Array<Record<string, unknown>>;
-  error: string;
-  skip_reason: string;
+  duration_ms?: number | null;
+  request?: Record<string, unknown>;
+  response?: Record<string, unknown>;
+  inputs?: Record<string, unknown>;
+  outputs?: Record<string, unknown>;
+  assertions?: Array<Record<string, unknown>>;
+  attempts?: Array<Record<string, unknown>>;
+  error?: string;
+  skip_reason?: string;
 };
 
 export type ApiAutomationScenarioRunResult = {
   scenario_id: string;
   status: "passed" | "failed";
-  started_at: string;
-  finished_at: string;
-  duration_ms: number;
+  started_at?: string;
+  finished_at?: string;
+  duration_ms?: number | null;
   steps: ApiAutomationScenarioStepResult[];
 };
 
@@ -1595,13 +1625,31 @@ export type PerformanceMetricSnapshot = {
     status?: "complete" | "partial" | "invalid";
     coverage?: number;
     issues?: string[];
+    warnings?: string[];
     diagnostic_missing_evidence?: string[];
+    request_sample_count?: number;
+    timeseries_sample_count?: number;
     sample_count?: number;
     termination_reason?: string;
     termination_label?: string;
     actual_duration_seconds?: number | null;
     configured_duration_seconds?: number | null;
     duration_complete?: boolean | null;
+  };
+  test_scope?: {
+    test_name?: string;
+    environment_name?: string;
+    load_mode?: "fixed" | "gradient" | "stress" | "spike" | "endurance" | string;
+    users?: number | null;
+    spawn_rate?: number | null;
+    duration_seconds?: number | null;
+    actual_duration_seconds?: number | null;
+    warmup_seconds?: number | null;
+    wait_time_min_seconds?: number | null;
+    wait_time_max_seconds?: number | null;
+    stage_count?: number;
+    endpoint_method?: string;
+    endpoint_path?: string;
   };
   aggregate?: {
     request_count?: number;
@@ -1613,6 +1661,19 @@ export type PerformanceMetricSnapshot = {
     p95_response_time_ms?: number | null;
     p99_response_time_ms?: number | null;
   };
+  endpoint_metrics?: Array<{
+    method: string;
+    name: string;
+    request_share?: number;
+    request_count?: number;
+    failure_count?: number;
+    failure_rate?: number;
+    requests_per_second?: number;
+    average_response_time_ms?: number;
+    p50_response_time_ms?: number | null;
+    p95_response_time_ms?: number | null;
+    p99_response_time_ms?: number | null;
+  }>;
   capacity?: {
     observed_peak_throughput?: number;
     stable_throughput?: number | null;
@@ -1636,7 +1697,12 @@ export type PerformanceMetricSnapshot = {
     failure_rate?: number;
     status?: string;
   }>;
-  latency_analysis?: Record<string, number | null>;
+  latency_analysis?: {
+    sample_count?: number;
+    sampling_semantics?: "cumulative_locust_snapshot" | string;
+    can_claim_direction?: boolean;
+    tail_amplification?: number | null;
+  };
   capacity_analysis?: {
     observed_stable_capacity?: {
       users?: number;
@@ -2146,8 +2212,22 @@ export function getUiAutomationAsset(projectId: string, assetId: string) {
   return apiRequest<UiAutomationAsset>(`/projects/${projectId}/ui-automation/assets/${assetId}`);
 }
 
+export function deleteUiAutomationAsset(projectId: string, assetId: string) {
+  return apiRequest<void>(`/projects/${projectId}/ui-automation/assets/${assetId}`, { method: "DELETE" });
+}
+
 export function getUiAutomationRunLogs(projectId: string, runId: string) {
   return apiRequest<UiAutomationRunLogs>(`/projects/${projectId}/ui-automation/runs/${runId}/logs`);
+}
+
+export function getUiAutomationRunDetail(projectId: string, runId: string) {
+  return apiRequest<UiAutomationRunDetail>(`/projects/${projectId}/ui-automation/runs/${runId}/result-detail`);
+}
+
+export function getUiAutomationRunEvents(projectId: string, runId: string, after = 0, limit = 200) {
+  return apiRequest<UiAutomationRunEvents>(
+    `/projects/${projectId}/ui-automation/runs/${runId}/events?after=${after}&limit=${limit}`,
+  );
 }
 
 export function getUiAutomationLiveView(projectId: string, runId: string) {
@@ -2338,7 +2418,7 @@ export function createApiScenarioAiPlan(
 export function applyApiScenarioAiPlan(
   projectId: string,
   planId: string,
-  payload: { scenario_id: string; confirmation: "overwrite_draft"; expected_review_revision: number },
+  payload: { scenario_id: string; confirmation: "create_version"; expected_review_revision: number },
 ) {
   return apiRequest<ApiAutomationScenario>(`/projects/${projectId}/api-scenarios/ai-plans/${planId}/apply`, {
     method: "POST",
@@ -2413,19 +2493,6 @@ export function saveApiAutomationScenarioVersion(
   });
 }
 
-export function validateApiAutomationScenario(projectId: string, scenarioId: string) {
-  return apiRequest<ApiAutomationScenarioValidation>(`/projects/${projectId}/api-scenarios/${scenarioId}/validate`, {
-    method: "POST",
-  });
-}
-
-export function publishApiAutomationScenario(projectId: string, scenarioId: string, confirmAssetChanges = false) {
-  return apiRequest<ApiAutomationScenario>(`/projects/${projectId}/api-scenarios/${scenarioId}/publish`, {
-    method: "POST",
-    body: JSON.stringify({ confirm_asset_changes: confirmAssetChanges }),
-  });
-}
-
 export function listApiAutomationScenarioRevisions(projectId: string, scenarioId: string) {
   return apiRequest<ApiAutomationScenarioRevision[]>(`/projects/${projectId}/api-scenarios/${scenarioId}/revisions`);
 }
@@ -2437,15 +2504,10 @@ export function restoreApiAutomationScenarioRevision(projectId: string, scenario
   );
 }
 
-export function executeApiAutomationScenario(
-  projectId: string,
-  scenarioId: string,
-  apiEnvironmentId: string,
-  source: "published" | "draft" = "published",
-) {
+export function executeApiAutomationScenario(projectId: string, scenarioId: string, apiEnvironmentId: string) {
   return apiRequest<ApiAutomationRun>(`/projects/${projectId}/api-scenarios/${scenarioId}/execute`, {
     method: "POST",
-    body: JSON.stringify({ api_environment_id: apiEnvironmentId, source }),
+    body: JSON.stringify({ api_environment_id: apiEnvironmentId }),
   });
 }
 

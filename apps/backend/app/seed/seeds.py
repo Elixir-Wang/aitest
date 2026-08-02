@@ -1,3 +1,4 @@
+import hashlib
 import re
 import sqlite3
 
@@ -5,6 +6,7 @@ from app.core.security import hash_secret
 
 
 def seed_system_defaults(db: sqlite3.Connection) -> None:
+    _ensure_project_version_structure(db)
     _repair_legacy_exploration_run_foreign_keys(db)
     _ensure_exploration_loop_mode(db)
     _repair_exploration_run_foreign_keys(db)
@@ -31,6 +33,99 @@ def seed_system_defaults(db: sqlite3.Connection) -> None:
     _seed_operation_log_retention_policy(db)
     _ensure_all_projects_conversation_scope(db)
     _assert_foreign_key_integrity(db)
+
+
+def _ensure_project_version_structure(db: sqlite3.Connection) -> None:
+    if db.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'projects'").fetchone() is None:
+        return
+    db.execute(
+        """
+        CREATE TABLE IF NOT EXISTS project_versions (
+          id TEXT PRIMARY KEY,
+          project_id TEXT NOT NULL,
+          version TEXT NOT NULL,
+          version_major INTEGER NOT NULL CHECK(version_major >= 0),
+          version_minor INTEGER NOT NULL CHECK(version_minor >= 0),
+          version_patch INTEGER NOT NULL CHECK(version_patch >= 0),
+          name TEXT NOT NULL DEFAULT '',
+          description TEXT NOT NULL DEFAULT '',
+          planned_release_at TEXT,
+          created_by TEXT NOT NULL,
+          created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE,
+          UNIQUE(project_id, version)
+        )
+        """
+    )
+    project_columns = {str(row["name"]) for row in db.execute("PRAGMA table_info(projects)")}
+    if "default_version_id" not in project_columns:
+        db.execute("ALTER TABLE projects ADD COLUMN default_version_id TEXT")
+
+    has_source_documents = (
+        db.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'source_documents'").fetchone()
+        is not None
+    )
+    if has_source_documents:
+        document_columns = {str(row["name"]) for row in db.execute("PRAGMA table_info(source_documents)")}
+        if "project_version_id" not in document_columns:
+            db.execute(
+                "ALTER TABLE source_documents ADD COLUMN project_version_id TEXT "
+                "REFERENCES project_versions(id) ON DELETE RESTRICT"
+            )
+
+    db.execute(
+        "CREATE INDEX IF NOT EXISTS idx_project_versions_project_semver "
+        "ON project_versions(project_id, version_major DESC, version_minor DESC, version_patch DESC)"
+    )
+    if has_source_documents:
+        db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_source_documents_project_version "
+            "ON source_documents(project_id, project_version_id)"
+        )
+
+    projects = db.execute(
+        "SELECT id, created_by FROM projects WHERE id != '__all_projects__' ORDER BY created_at, id"
+    ).fetchall()
+    for project in projects:
+        project_id = str(project["id"])
+        initial = db.execute(
+            "SELECT id FROM project_versions WHERE project_id = ? AND version = '1.0.0'",
+            (project_id,),
+        ).fetchone()
+        if initial is None:
+            digest = hashlib.sha256(f"{project_id}:1.0.0".encode("utf-8")).hexdigest()[:16]
+            version_id = f"pver-{digest}"
+            db.execute(
+                """
+                INSERT INTO project_versions (
+                  id, project_id, version, version_major, version_minor, version_patch,
+                  name, description, created_by
+                ) VALUES (?, ?, '1.0.0', 1, 0, 0, '初始版本', '', ?)
+                """,
+                (version_id, project_id, project["created_by"] or "system"),
+            )
+        else:
+            version_id = str(initial["id"])
+
+        current = db.execute(
+            """
+            SELECT pv.id
+            FROM projects p
+            LEFT JOIN project_versions pv
+              ON pv.id = p.default_version_id AND pv.project_id = p.id
+            WHERE p.id = ?
+            """,
+            (project_id,),
+        ).fetchone()
+        if current is None or current["id"] is None:
+            db.execute("UPDATE projects SET default_version_id = ? WHERE id = ?", (version_id, project_id))
+        if has_source_documents:
+            db.execute(
+                "UPDATE source_documents SET project_version_id = ? "
+                "WHERE project_id = ? AND project_version_id IS NULL",
+                (version_id, project_id),
+            )
 
 
 def _repair_legacy_exploration_run_foreign_keys(db: sqlite3.Connection) -> None:

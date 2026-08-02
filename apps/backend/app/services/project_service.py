@@ -10,7 +10,7 @@ from app.repositories import project_repo
 from app.repositories.project_repo import SYSTEM_RESERVED_PROJECT_IDS
 from app.schemas.project import ProjectCreateIn, ProjectUpdateIn
 from app.presentation.serializers import serialize_project
-from app.services import operation_log_service
+from app.services import operation_log_service, project_version_service
 
 STATUSES = {"active", "archived"}
 
@@ -25,7 +25,12 @@ def list_projects(actor) -> list[dict]:
         else:
             rows = project_repo.list_visible(db, actor)
         return [
-            serialize_project(row, actor["role"], project_repo.has_project_assets(db, row["id"]))
+            serialize_project(
+                row,
+                actor["role"],
+                project_repo.has_project_assets(db, row["id"]),
+                _current_version_summary(db, row),
+            )
             for row in rows
             if row["id"] not in SYSTEM_RESERVED_PROJECT_IDS
         ]
@@ -43,10 +48,11 @@ def create_project(payload: ProjectCreateIn, actor) -> dict:
                 status=payload.status,
                 description=payload.description.strip(),
             )
+            project_version_service.create_initial_version(db, project_id, actor["id"])
         except Exception as exc:
             raise api_error(409, "PROJECT_CONFLICT", "项目名称已存在。") from exc
         row = project_repo.find_by_id(db, project_id)
-        result = serialize_project(row, actor["role"], False)
+        result = serialize_project(row, actor["role"], False, _current_version_summary(db, row))
     operation_log_service.record_success(
         module="project",
         action="create",
@@ -82,7 +88,12 @@ def update_project(project_id: str, payload: ProjectUpdateIn, actor) -> dict:
             except Exception as exc:
                 raise api_error(409, "PROJECT_CONFLICT", "项目名称已存在。") from exc
         row = project_repo.find_by_id(db, project_id)
-        result = serialize_project(row, actor["role"], project_repo.has_project_assets(db, project_id))
+        result = serialize_project(
+            row,
+            actor["role"],
+            project_repo.has_project_assets(db, project_id),
+            _current_version_summary(db, row),
+        )
         before = {"name": existing["name"], "description": existing["description"], "status": existing["status"]}
         after = {"name": result["name"], "description": result["description"], "status": result["status"]}
     operation_log_service.record_change(
@@ -156,6 +167,15 @@ def _build_update_assignments(updates: dict) -> tuple[list[str], list[object]]:
 
 def _actor_display_name(actor) -> str:
     return operation_log_service.actor_display_name(actor)
+
+
+def _current_version_summary(db, project) -> dict | None:
+    if not project or not project["default_version_id"]:
+        return None
+    from app.repositories import project_version_repo
+
+    row = project_version_repo.find_by_project_and_id(db, project["id"], project["default_version_id"])
+    return project_version_service.version_summary(row) if row else None
 
 
 def optimize_exploration_goal(project_id: str, goal: str, actor) -> dict:

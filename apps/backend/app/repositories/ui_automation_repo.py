@@ -249,6 +249,11 @@ def list_assets(db: Connection, project_id: str) -> list[Row]:
     ).fetchall()
 
 
+def delete_asset(db: Connection, asset_id: str) -> None:
+    db.execute("DELETE FROM ui_automation_execution_runs WHERE asset_id = ?", (asset_id,))
+    db.execute("DELETE FROM ui_automation_assets WHERE id = ?", (asset_id,))
+
+
 def create_execution_run(
     db: Connection,
     *,

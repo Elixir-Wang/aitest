@@ -15,6 +15,7 @@ import {
   type ApiScenarioAiPlanAccepted,
   type ApiScenarioAiPlanValueSource,
   type ApiScenarioAiReviewPlan,
+  type ApiScenarioAiReviewStep,
   applyApiScenarioAiPlan,
   createApiAutomationScenario,
   createApiScenarioAiPlan,
@@ -29,7 +30,6 @@ import {
   restoreApiAutomationScenarioRevision,
   saveApiAutomationScenarioVersion,
   saveApiScenarioAiPlanReview,
-  validateApiAutomationScenario,
 } from "@/lib/api-client";
 import { toast } from "@/lib/toast";
 
@@ -50,10 +50,123 @@ type ScenarioDraft = {
 
 const emptyDraft: ScenarioDraft = { name: "", description: "", variables: {}, steps: [] };
 
+function pointerParts(path: string) {
+  return path
+    .split("/")
+    .slice(1)
+    .map((part) => part.replaceAll("~1", "/").replaceAll("~0", "~"));
+}
+
+function isDescendantPath(path: string, parentPath: string) {
+  return path.startsWith(`${parentPath}/`);
+}
+
+function nestedSource(source: ApiScenarioAiPlanValueSource, relativePath: string): ApiScenarioAiPlanValueSource | null {
+  let current: ApiScenarioAiPlanValueSource | undefined = source;
+  for (const part of pointerParts(relativePath)) {
+    current = current?.type === "object" ? current.properties?.[part] : undefined;
+  }
+  return current ?? null;
+}
+
+function setNestedSource(
+  source: ApiScenarioAiPlanValueSource,
+  relativePath: string,
+  value: ApiScenarioAiPlanValueSource,
+) {
+  const next = structuredClone(source);
+  if (next.type !== "object") return next;
+  const properties = next.properties ?? {};
+  next.properties = properties;
+  let current: { type: "object"; properties: Record<string, ApiScenarioAiPlanValueSource> } = {
+    type: "object",
+    properties,
+  };
+  for (const part of pointerParts(relativePath).slice(0, -1)) {
+    const child = current.properties[part];
+    if (child?.type !== "object") current.properties[part] = { type: "object", properties: {} };
+    current = current.properties[part] as { type: "object"; properties: Record<string, ApiScenarioAiPlanValueSource> };
+  }
+  const leaf = pointerParts(relativePath).at(-1);
+  if (leaf) current.properties[leaf] = value;
+  return next;
+}
+
+function synchronizeReviewField(
+  step: ApiScenarioAiReviewStep,
+  fieldId: string,
+  resolved: ApiScenarioAiPlanValueSource,
+  status: "pending" | "resolved" | "confirmed",
+): ApiScenarioAiReviewStep {
+  const fields = step.field_groups.flatMap((group) => group.fields);
+  const target = fields.find((field) => field.field_id === fieldId);
+  if (!target) return step;
+
+  let nextFields = fields.map((field) => (field.field_id === fieldId ? { ...field, resolved, status } : field));
+  const parent = fields
+    .filter((field) => {
+      const parentSource = field.resolved ?? field.proposal;
+      return (
+        parentSource.type === "object" &&
+        field.path !== target.path &&
+        field.path.startsWith(`${target.path}/`) === false &&
+        isDescendantPath(target.path, field.path)
+      );
+    })
+    .sort((left, right) => right.path.length - left.path.length)[0];
+
+  if (parent) {
+    const parentSource = parent.resolved ?? parent.proposal;
+    const relativePath = target.path.slice(parent.path.length);
+    const nextParentSource = setNestedSource(parentSource, relativePath, resolved);
+    const descendants = fields.filter(
+      (field) => field.field_id !== parent.field_id && isDescendantPath(field.path, parent.path),
+    );
+    const nextDescendants = nextFields.filter((field) => descendants.some((item) => item.field_id === field.field_id));
+    const parentStatus = nextDescendants.every((field) => field.status === "confirmed")
+      ? "confirmed"
+      : nextDescendants.every((field) => field.status !== "pending")
+        ? "resolved"
+        : "pending";
+    nextFields = nextFields.map((field) =>
+      field.field_id === parent.field_id ? { ...field, resolved: nextParentSource, status: parentStatus } : field,
+    );
+  } else if (resolved.type === "object") {
+    const descendants = fields.filter(
+      (field) => field.field_id !== target.field_id && isDescendantPath(field.path, target.path),
+    );
+    nextFields = nextFields.map((field) => {
+      if (!descendants.some((item) => item.field_id === field.field_id)) return field;
+      const child = nestedSource(resolved, field.path.slice(target.path.length));
+      return child ? { ...field, resolved: child, status } : field;
+    });
+  }
+
+  return {
+    ...step,
+    field_groups: step.field_groups.map((group) => ({
+      ...group,
+      fields: group.fields.map((field) => nextFields.find((item) => item.field_id === field.field_id) ?? field),
+    })),
+  };
+}
+
+function synchronizeConfirmedObjectFields(step: ApiScenarioAiReviewStep) {
+  return step.field_groups
+    .flatMap((group) => group.fields)
+    .filter((field) => field.status !== "pending" && (field.resolved ?? field.proposal).type === "object")
+    .reduce(
+      (current, field) =>
+        synchronizeReviewField(current, field.field_id, field.resolved ?? field.proposal, field.status),
+      step,
+    );
+}
+
 function summarizeAiReviewPlan(plan: ApiScenarioAiReviewPlan): ApiScenarioAiReviewPlan {
   const steps = [...plan.steps]
     .sort((left, right) => left.order - right.order)
-    .map((step, index) => {
+    .map((rawStep, index) => {
+      const step = synchronizeConfirmedObjectFields(rawStep);
       const fieldGroups = step.field_groups.map((group) => ({
         ...group,
         pending_count: group.fields.filter((field) => field.status === "pending").length,
@@ -93,7 +206,6 @@ export function useApiScenarioEditor(projectId: string, scenarioId?: string) {
   const [environments, setEnvironments] = useState<ApiAutomationEnvironment[]>([]);
   const [selectedEnvironmentId, setSelectedEnvironmentId] = useState("");
   const [activeStepId, setActiveStepId] = useState("");
-  const [validation, setValidation] = useState<{ errors: string[]; warnings: string[] } | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -181,7 +293,7 @@ export function useApiScenarioEditor(projectId: string, scenarioId?: string) {
           response.schema_version === 3 &&
           response.lifecycle_status === "completed"
         ) {
-          setAiPlan(response);
+          setAiPlan(summarizeAiReviewPlan(response));
           setActiveAiPlanId("");
           setAiLifecycleStatus("completed");
           return;
@@ -190,6 +302,13 @@ export function useApiScenarioEditor(projectId: string, scenarioId?: string) {
           setAiLifecycleStatus("generating");
           timer = window.setTimeout(() => void recover(), 3000);
           return;
+        }
+        if ("lifecycle_status" in response && response.lifecycle_status === "failed") {
+          setAiLifecycleStatus("failed");
+          toast.error(("error" in response && response.error?.message) || "AI 编排失败");
+        } else if ("lifecycle_status" in response && response.lifecycle_status === "expired") {
+          setAiLifecycleStatus("expired");
+          toast.error("AI 编排任务已过期，请重新提交");
         }
         window.sessionStorage.removeItem(storageKey);
         setActiveAiPlanId("");
@@ -312,7 +431,6 @@ export function useApiScenarioEditor(projectId: string, scenarioId?: string) {
       } else {
         setScenario((current) => current ?? saved);
       }
-      setValidation(null);
       if (creating) router.replace(`/projects/${projectId}/automation/api/scenarios/${saved.id}`);
       await refreshRevisions(saved.id);
       if (showToast) toast.success(`版本 v${saved.revision} 已保存`);
@@ -332,21 +450,6 @@ export function useApiScenarioEditor(projectId: string, scenarioId?: string) {
     }
   }
 
-  async function handleSave() {
-    await withBusy(async () => {
-      await saveScenario(true);
-    });
-  }
-
-  async function handleValidate() {
-    await withBusy(async () => {
-      const saved = await saveScenario(false);
-      const result = await validateApiAutomationScenario(projectId, saved.id);
-      setValidation({ errors: result.errors, warnings: result.warnings });
-      toast[result.valid ? "success" : "error"](result.valid ? "场景检查通过" : `发现 ${result.errors.length} 个问题`);
-    });
-  }
-
   async function handleRestoreRevision(revision: number) {
     if (!scenario) return;
     if (!window.confirm(`确认以版本 v${revision} 的编排生成一个新版本？`)) return;
@@ -354,7 +457,6 @@ export function useApiScenarioEditor(projectId: string, scenarioId?: string) {
       const restored = await restoreApiAutomationScenarioRevision(projectId, scenario.id, revision);
       applyScenario(restored);
       await refreshRevisions(scenario.id);
-      setValidation(null);
       toast.success(`已从 v${revision} 生成版本 v${restored.revision}`);
     });
   }
@@ -366,7 +468,7 @@ export function useApiScenarioEditor(projectId: string, scenarioId?: string) {
     }
     await withBusy(async () => {
       const saved = await saveScenario(false);
-      const run = await executeApiAutomationScenario(projectId, saved.id, selectedEnvironmentId, "published");
+      const run = await executeApiAutomationScenario(projectId, saved.id, selectedEnvironmentId);
       setLatestRunId(run.id);
       setLatestRunStatus(run.status);
       setScenarioRunResult(null);
@@ -428,17 +530,7 @@ export function useApiScenarioEditor(projectId: string, scenarioId?: string) {
       return summarizeAiReviewPlan({
         ...current,
         steps: current.steps.map((step) =>
-          step.step_id === stepId
-            ? {
-                ...step,
-                field_groups: step.field_groups.map((group) => ({
-                  ...group,
-                  fields: group.fields.map((field) =>
-                    field.field_id === fieldId ? { ...field, resolved, status } : field,
-                  ),
-                })),
-              }
-            : step,
+          step.step_id === stepId ? synchronizeReviewField(step, fieldId, resolved, status) : step,
         ),
       });
     });
@@ -451,17 +543,15 @@ export function useApiScenarioEditor(projectId: string, scenarioId?: string) {
         ...current,
         steps: current.steps.map((step) =>
           step.step_id === stepId
-            ? {
-                ...step,
-                field_groups: step.field_groups.map((group) => ({
-                  ...group,
-                  fields: group.fields.map((field) =>
-                    field.field_id === fieldId
-                      ? { ...field, resolved: field.resolved ?? field.proposal, status: "confirmed" }
-                      : field,
-                  ),
-                })),
-              }
+            ? synchronizeReviewField(
+                step,
+                fieldId,
+                step.field_groups.flatMap((group) => group.fields).find((field) => field.field_id === fieldId)
+                  ?.resolved ??
+                  step.field_groups.flatMap((group) => group.fields).find((field) => field.field_id === fieldId)
+                    ?.proposal ?? { type: "literal", value: "" },
+                "confirmed",
+              )
             : step,
         ),
       });
@@ -524,7 +614,7 @@ export function useApiScenarioEditor(projectId: string, scenarioId?: string) {
     });
   }
 
-  async function saveAiPlanReview(plan: ApiScenarioAiReviewPlan | null = aiPlan) {
+  async function persistAiPlanReviewForApply(plan: ApiScenarioAiReviewPlan | null = aiPlan) {
     if (!plan) return null;
     const saved = await saveApiScenarioAiPlanReview(projectId, plan.plan_id, {
       expected_review_revision: plan.review_revision,
@@ -544,44 +634,31 @@ export function useApiScenarioEditor(projectId: string, scenarioId?: string) {
     return saved;
   }
 
-  async function handleSaveAiPlanReview() {
-    setAiBusy(true);
-    try {
-      const saved = await saveAiPlanReview();
-      if (saved) toast.success(`审核已保存（版本 ${saved.review_revision}）`);
-      return saved;
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "审核保存失败");
-      return null;
-    } finally {
-      setAiBusy(false);
-    }
-  }
-
   async function applyAiPlan() {
-    if (!aiPlan || !scenario) return;
+    if (!aiPlan || !scenario) return false;
     setAiBusy(true);
     try {
-      const savedPlan = await saveAiPlanReview();
+      const savedPlan = await persistAiPlanReviewForApply();
       if (savedPlan?.review_status !== "ready") {
         toast.error("仍有字段待确认，请完成审核后再应用");
-        return;
+        return false;
       }
       const aiPlan = savedPlan;
       const applied = await applyApiScenarioAiPlan(projectId, aiPlan.plan_id, {
         expected_review_revision: aiPlan.review_revision,
         scenario_id: scenario.id,
-        confirmation: "overwrite_draft",
+        confirmation: "create_version",
       });
       applyScenario(applied);
       await refreshRevisions(scenario.id);
       setAiPlan(null);
       setAiLifecycleStatus(null);
       window.sessionStorage.removeItem(aiPlanStorageKey(projectId, scenario.id));
-      setValidation(null);
       toast.success(`AI 编排已生成版本 v${applied.revision}`);
+      return true;
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "AI 编排应用失败");
+      return false;
     } finally {
       setAiBusy(false);
     }
@@ -611,7 +688,6 @@ export function useApiScenarioEditor(projectId: string, scenarioId?: string) {
     selectedEnvironmentId,
     activeStep,
     activeStepId,
-    validation,
     localValidation,
     latestRunId,
     latestRunStatus,
@@ -635,12 +711,10 @@ export function useApiScenarioEditor(projectId: string, scenarioId?: string) {
       updateStep,
       removeStep,
       reorderSteps,
-      saveScenario: handleSave,
-      validateScenario: handleValidate,
+      saveScenario: () => withBusy(async () => void (await saveScenario())),
       executeScenario: handleExecute,
       restoreRevision: handleRestoreRevision,
       generateAiPlan,
-      saveAiPlanReview: handleSaveAiPlanReview,
       updateAiReviewField,
       confirmAiReviewField,
       confirmAiReviewStep,

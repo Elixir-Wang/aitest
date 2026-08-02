@@ -4,10 +4,9 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { useParams, useRouter } from "next/navigation";
 
-import { ClipboardCheck, FileText, Gauge } from "lucide-react";
+import { ClipboardCheck, FileText, Gauge, Tags } from "lucide-react";
 
 import { MetricCard, PageShell, ShellSection } from "@/components/ai-testing/page-shell";
-import { moduleBreadcrumbs } from "@/navigation/breadcrumbs";
 import { Button } from "@/components/ui/button";
 import {
   type ApiDashboardOverview,
@@ -16,6 +15,7 @@ import {
   apiRequest,
   formatDateTime,
 } from "@/lib/api-client";
+import { moduleBreadcrumbs } from "@/navigation/breadcrumbs";
 import { useProjectContextStore } from "@/stores/project-context-store";
 
 const statusToLabel = (status: ApiProject["status"]) => (status === "archived" ? "归档" : "活跃");
@@ -120,6 +120,7 @@ export default function Page() {
             <p>项目名称：{project?.name ?? "-"}</p>
             <p>项目描述：{project?.description || "-"}</p>
             <p>状态：{project ? statusToLabel(project.status) : "-"}</p>
+            <p>当前版本：{project?.current_version?.version ?? "-"}</p>
             <p>创建时间：{formatDateTime(project?.created_at ?? null)}</p>
             <p>最近更新：{formatDateTime(project?.updated_at ?? null)}</p>
           </div>
@@ -135,6 +136,10 @@ export default function Page() {
             </Button>
             <Button variant="outline" onClick={() => goToModule(`/projects/${projectId}/logs`)}>
               项目日志
+            </Button>
+            <Button variant="outline" onClick={() => goToModule(`/projects/${projectId}/versions`)}>
+              <Tags className="size-4" />
+              版本管理
             </Button>
             <Button onClick={() => goToModule("/test-cases")}>进入测试用例</Button>
           </div>

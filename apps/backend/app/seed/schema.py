@@ -53,12 +53,33 @@ CREATE TABLE IF NOT EXISTS projects (
   name TEXT NOT NULL UNIQUE,
   code TEXT NOT NULL DEFAULT '',
   default_site_url TEXT NOT NULL DEFAULT '',
+  default_version_id TEXT,
   status TEXT NOT NULL CHECK(status IN ('active', 'archived')),
   description TEXT NOT NULL DEFAULT '',
   created_by TEXT NOT NULL DEFAULT 'system',
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS project_versions (
+  id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL,
+  version TEXT NOT NULL,
+  version_major INTEGER NOT NULL CHECK(version_major >= 0),
+  version_minor INTEGER NOT NULL CHECK(version_minor >= 0),
+  version_patch INTEGER NOT NULL CHECK(version_patch >= 0),
+  name TEXT NOT NULL DEFAULT '',
+  description TEXT NOT NULL DEFAULT '',
+  planned_release_at TEXT,
+  created_by TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE,
+  UNIQUE(project_id, version)
+);
+
+CREATE INDEX IF NOT EXISTS idx_project_versions_project_semver
+  ON project_versions(project_id, version_major DESC, version_minor DESC, version_patch DESC);
 
 CREATE TABLE IF NOT EXISTS knowledge_search_source_settings (
   scope_key TEXT NOT NULL,
@@ -74,6 +95,7 @@ CREATE TABLE IF NOT EXISTS knowledge_search_source_settings (
 CREATE TABLE IF NOT EXISTS source_documents (
   id TEXT PRIMARY KEY,
   project_id TEXT NOT NULL,
+  project_version_id TEXT,
   name TEXT NOT NULL,
   document_type TEXT NOT NULL,
   current_version_id TEXT,
@@ -82,6 +104,7 @@ CREATE TABLE IF NOT EXISTS source_documents (
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE,
+  FOREIGN KEY(project_version_id) REFERENCES project_versions(id) ON DELETE RESTRICT,
   UNIQUE(project_id, name)
 );
 

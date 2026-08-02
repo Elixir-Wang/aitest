@@ -68,6 +68,7 @@ def create_session(project_id: str, payload: RequirementUploadSessionCreateIn, a
         "mode": payload.mode,
         "document_name": payload.document_name.strip(),
         "existing_document_id": payload.existing_document_id.strip(),
+        "project_version_id": payload.project_version_id.strip(),
         "created_at": now,
         "expires_at": now + settings.REQUIREMENT_UPLOAD_SESSION_TTL_HOURS * 3600,
         "chunk_size_bytes": chunk_size_bytes,
@@ -178,6 +179,7 @@ async def complete_session(project_id: str, upload_id: str, actor) -> dict:
             mode=metadata["mode"],
             document_name=metadata["document_name"],
             existing_document_id=metadata["existing_document_id"],
+            project_version_id=metadata.get("project_version_id", ""),
         )
         result["_upload_mode"] = metadata["mode"]
     except Exception:
@@ -223,6 +225,9 @@ def _validate_session_request(project_id: str, payload: RequirementUploadSession
     with connect() as db:
         file_service.ensure_project_accepts_upload(db, project_id)
         if payload.mode == "new":
+            from app.services import project_version_service
+
+            project_version_service.resolve_requirement_version(db, project_id, payload.project_version_id)
             name = payload.document_name.strip()
             if not name:
                 raise api_error(400, "DOCUMENT_NAME_REQUIRED", "请填写需求名称。")

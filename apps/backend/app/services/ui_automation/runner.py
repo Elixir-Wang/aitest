@@ -11,7 +11,7 @@ import threading
 import time
 from pathlib import Path
 
-from . import live_view
+from . import execution_events, live_view
 
 
 _PROCESSES: dict[str, subprocess.Popen[str]] = {}
@@ -31,6 +31,7 @@ def run_case(
     run_dir: Path,
     pytest_node_id: str,
     environment: dict,
+    parameter_names: list[str] | None = None,
     timeout: int = 600,
 ) -> dict:
     suite_path = suite_path.resolve()
@@ -43,8 +44,16 @@ def run_case(
     stdout_path = run_dir / "stdout.txt"
     stderr_path = run_dir / "stderr.txt"
     result_path = run_dir / "result.json"
+    events_path = run_dir / "events.jsonl"
+    detail_path = run_dir / "result-detail.json"
+    step_artifact_dir = run_dir / "step-artifacts"
     process_env = _build_environment(environment, result_path)
     process_env["UI_ARTIFACT_DIR"] = str(browser_output)
+    process_env["UI_RUN_ID"] = run_id
+    process_env["UI_RUN_DIR"] = str(run_dir)
+    process_env["UI_RUN_EVENT_PATH"] = str(events_path)
+    process_env["UI_RUN_ARTIFACT_DIR"] = str(step_artifact_dir)
+    process_env["UI_BUSINESS_PARAMETERS"] = json.dumps(parameter_names or [], ensure_ascii=False)
     process_env["UI_RUNNER_PARENT_PID"] = str(os.getpid())
     process_env["UI_VIEWPORT_WIDTH"] = str(live_view.VIEWPORT_WIDTH)
     process_env["UI_VIEWPORT_HEIGHT"] = str(live_view.VIEWPORT_HEIGHT)
@@ -58,11 +67,11 @@ def run_case(
         pytest_node_id,
     ]
     live_session = live_view.start_session(run_id)
+    backend_root = str(Path(__file__).resolve().parents[3])
+    existing_pythonpath = process_env.get("PYTHONPATH", "")
+    process_env["PYTHONPATH"] = os.pathsep.join(filter(None, [backend_root, existing_pythonpath]))
     if live_session.cdp_port is not None:
         process_env["UI_LIVE_CDP_PORT"] = str(live_session.cdp_port)
-        backend_root = str(Path(__file__).resolve().parents[3])
-        existing_pythonpath = process_env.get("PYTHONPATH", "")
-        process_env["PYTHONPATH"] = os.pathsep.join(filter(None, [backend_root, existing_pythonpath]))
     if os.getenv("UI_HEADED", "0").lower() in {"1", "true", "yes", "on"}:
         command.insert(-1, "--headed")
         xvfb_run = shutil.which("xvfb-run")
@@ -109,6 +118,12 @@ def run_case(
     }
     if timed_out:
         result["error_message"] = f"UI 自动化执行超过 {timeout} 秒，已终止。"
+    detail = execution_events.build_detail(events_path, run_id=run_id, run_status=status)
+    result["detail_available"] = detail["detail_available"]
+    result["detail_summary"] = detail["summary"]
+    if events_path.exists():
+        execution_events.write_detail(detail_path, detail)
+        result["detail_path"] = str(detail_path)
     result_path.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
     screenshots = sorted(browser_output.rglob("*.png"))
     return {
@@ -117,6 +132,8 @@ def run_case(
         "stdout_path": str(stdout_path),
         "stderr_path": str(stderr_path),
         "screenshot_paths": [str(path) for path in screenshots],
+        "events_path": str(events_path) if events_path.exists() else "",
+        "detail_path": str(detail_path) if detail_path.exists() else "",
     }
 
 

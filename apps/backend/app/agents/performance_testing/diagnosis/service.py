@@ -12,7 +12,7 @@ from app.schemas.performance_analysis import PerformanceDiagnosis
 
 
 CAPABILITY_ID = "performance_report_analysis"
-PROMPT_VERSION = "v3-evidence-contract"
+PROMPT_VERSION = "v4-report-contract"
 
 _ANALYSIS_SECTION_KEYS = (
     "test_validity",
@@ -39,7 +39,15 @@ def diagnose_performance(
         extra_body=thinking_disabled_extra_body(selection),
     )
     agent = agent_factory(model)
-    input_payload = {**evidence, "evidence_contract": _evidence_contract(evidence)}
+    input_payload = {
+        **evidence,
+        "evidence_contract": _evidence_contract(evidence),
+        "report_policy": {
+            "server_resource_monitoring_in_scope": False,
+            "cumulative_percentiles_can_claim_direction": False,
+            "capacity_retest_must_find_knee_point": False,
+        },
+    }
     content = _prompt_content(input_payload, repair_context)
     result = agent.invoke(
         {

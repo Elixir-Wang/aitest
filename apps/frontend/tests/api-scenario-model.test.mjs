@@ -6,6 +6,7 @@ import {
   formatValueSource,
   moveScenarioStep,
   normalizeRequestLifecycleConfig,
+  resolveRequestFieldValue,
   toScenarioStepInput,
   validateScenarioDraft,
 } from "../src/components/ai-testing/api-automation/api-scenario-model.mjs";
@@ -307,6 +308,43 @@ test("serializes literal bindings as request overrides without losing their valu
       source: { type: "secret", key: "robot_key" },
     },
   ]);
+});
+
+test("strips assertion UI ids from persistence payloads without mutating editor state", () => {
+  const step = {
+    ...createEndpointStep(endpoint, "project-1", "scenario-1", "step-1"),
+    assertions: [
+      { id: "assertion-status", type: "status_code", expected: 200 },
+      { id: "assertion-body", type: "jsonpath_exists", path: "/data/segment_code" },
+    ],
+  };
+
+  const serialized = toScenarioStepInput(step, 0);
+
+  assert.deepEqual(serialized.assertions, [
+    { type: "status_code", expected: 200 },
+    { type: "jsonpath_exists", path: "/data/segment_code" },
+  ]);
+  assert.equal(step.assertions[0].id, "assertion-status");
+  assert.equal(step.assertions[1].id, "assertion-body");
+});
+
+test("resolves persisted request override values before endpoint defaults", () => {
+  const overrides = {
+    request: {
+      headers: { "cybertron-app-id": "multi-agent-server", "x-enabled": false, "x-optional": null },
+      json: { message_source: "openai-ws" },
+    },
+  };
+
+  assert.equal(
+    resolveRequestFieldValue(overrides, "/request/headers/cybertron-app-id", "schema-default"),
+    "multi-agent-server",
+  );
+  assert.equal(resolveRequestFieldValue(overrides, "/request/json/message_source"), "openai-ws");
+  assert.equal(resolveRequestFieldValue(overrides, "/request/headers/x-enabled", true), false);
+  assert.equal(resolveRequestFieldValue(overrides, "/request/headers/x-optional", "schema-default"), null);
+  assert.equal(resolveRequestFieldValue(overrides, "/request/query/missing", "schema-default"), "schema-default");
 });
 
 test("rejects forward output references nested in object sources", () => {

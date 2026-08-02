@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import type { ApiScenarioAiPlanValueSource, ApiScenarioAiReviewStep } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
 
-import { ApiScenarioAiReviewFieldRow } from "./api-scenario-ai-review-field";
+import { ApiScenarioAiReviewFieldRow, type ApiScenarioAiReviewSourceOptions } from "./api-scenario-ai-review-field";
 
 const methodTone: Record<string, string> = {
   GET: "border-emerald-300 bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-200",
@@ -25,6 +25,7 @@ export function ApiScenarioAiReviewStepCard({
   onChangeField,
   onConfirmField,
   onConfirmStep,
+  sourceOptions,
 }: {
   step: ApiScenarioAiReviewStep;
   canMoveUp: boolean;
@@ -33,6 +34,7 @@ export function ApiScenarioAiReviewStepCard({
   onChangeField: (fieldId: string, source: ApiScenarioAiPlanValueSource) => void;
   onConfirmField: (fieldId: string) => void;
   onConfirmStep: () => void;
+  sourceOptions: ApiScenarioAiReviewSourceOptions;
 }) {
   const pendingGroups = step.field_groups
     .map((group) => ({ ...group, fields: group.fields.filter((field) => field.status === "pending") }))
@@ -90,9 +92,8 @@ export function ApiScenarioAiReviewStepCard({
             <h4 className="font-semibold text-xs">{group.label}</h4>
             <span className="text-[11px] text-muted-foreground">{group.fields.length} 项待确认</span>
           </div>
-          <div className="hidden grid-cols-[minmax(130px,1fr)_minmax(150px,1fr)_minmax(260px,1.6fr)_110px] gap-3 border-b bg-muted/10 px-3 py-2 text-[10px] text-muted-foreground md:grid">
+          <div className="hidden grid-cols-[minmax(160px,1fr)_minmax(340px,1.8fr)_110px] gap-3 border-b bg-muted/10 px-3 py-2 text-[10px] text-muted-foreground md:grid">
             <span>字段</span>
-            <span>AI 建议</span>
             <span>最终值</span>
             <span className="text-right">状态</span>
           </div>
@@ -102,6 +103,7 @@ export function ApiScenarioAiReviewStepCard({
               key={field.field_id}
               onChange={(source) => onChangeField(field.field_id, source)}
               onConfirm={() => onConfirmField(field.field_id)}
+              sourceOptions={sourceOptions}
             />
           ))}
         </section>
@@ -119,6 +121,7 @@ export function ApiScenarioAiReviewStepCard({
                   key={field.field_id}
                   onChange={(source) => onChangeField(field.field_id, source)}
                   onConfirm={() => onConfirmField(field.field_id)}
+                  sourceOptions={sourceOptions}
                 />
               ))}
             </section>

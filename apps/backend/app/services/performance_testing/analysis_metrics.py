@@ -83,16 +83,19 @@ def _stage_analysis(stats: list[dict[str, Any]], stages: list[dict[str, Any]]) -
 
 def _latency_analysis(stats: list[dict[str, Any]]) -> dict[str, Any]:
     if not stats:
-        return {"sample_count": 0, "p95_growth_percent": None, "tail_amplification": None}
-    first = _first_nonzero(stats, "p95_response_time_ms")
-    last = _last_nonzero(stats, "p95_response_time_ms")
+        return {
+            "sample_count": 0,
+            "sampling_semantics": "cumulative_locust_snapshot",
+            "can_claim_direction": False,
+            "tail_amplification": None,
+        }
     p50 = _last_nonzero(stats, "p50_response_time_ms")
+    p99 = _last_nonzero(stats, "p99_response_time_ms")
     return {
         "sample_count": len(stats),
-        "first_p95_response_time_ms": first,
-        "last_p95_response_time_ms": last,
-        "p95_growth_percent": _growth_percent(first, last),
-        "tail_amplification": round(last / p50, 4) if last and p50 else None,
+        "sampling_semantics": "cumulative_locust_snapshot",
+        "can_claim_direction": False,
+        "tail_amplification": round(p99 / p50, 4) if p99 and p50 else None,
     }
 
 
@@ -236,12 +239,6 @@ def _last_nonzero(items: list[dict[str, Any]], key: str) -> float | None:
         if value > 0:
             return value
     return None
-
-
-def _growth_percent(first: float | None, last: float | None) -> float | None:
-    if first in (None, 0) or last is None:
-        return None
-    return round((last - first) / first * 100, 2)
 
 
 __all__ = ["build_analysis_metrics"]

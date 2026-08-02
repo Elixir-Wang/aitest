@@ -11,28 +11,28 @@ class OrchestrationJobRunner:
         self._lock = threading.Lock()
         self._futures: dict[str, Future[Any]] = {}
 
-    def submit(self, plan_id: str, work: Callable[..., Any], *args: Any, **kwargs: Any) -> bool:
+    def submit(self, job_id: str, work: Callable[..., Any], *args: Any, **kwargs: Any) -> bool:
         with self._lock:
-            current = self._futures.get(plan_id)
+            current = self._futures.get(job_id)
             if current is not None and not current.done():
                 return False
             future = self._executor.submit(work, *args, **kwargs)
-            self._futures[plan_id] = future
-            future.add_done_callback(lambda _future: self._forget(plan_id, _future))
-            return True
+            self._futures[job_id] = future
+        future.add_done_callback(lambda _future: self._forget(job_id, _future))
+        return True
 
-    def cancel(self, plan_id: str) -> bool:
+    def cancel(self, job_id: str) -> bool:
         with self._lock:
-            future = self._futures.get(plan_id)
+            future = self._futures.get(job_id)
             return bool(future and future.cancel())
 
     def shutdown(self) -> None:
         self._executor.shutdown(wait=False, cancel_futures=True)
 
-    def _forget(self, plan_id: str, future: Future[Any]) -> None:
+    def _forget(self, job_id: str, future: Future[Any]) -> None:
         with self._lock:
-            if self._futures.get(plan_id) is future:
-                self._futures.pop(plan_id, None)
+            if self._futures.get(job_id) is future:
+                self._futures.pop(job_id, None)
 
 
 job_runner = OrchestrationJobRunner()

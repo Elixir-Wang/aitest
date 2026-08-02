@@ -63,12 +63,14 @@ def test_runner_cleans_stale_outputs_writes_env_and_parses_report(monkeypatch, t
             "variables": {"tenant_id": "t1"},
         },
         timeout=30,
+        scenario_file="scenarios/apiscn-1/scenario.json",
     )
 
     assert calls[0][0][:3] == [runner.sys.executable, "-m", "pytest"]
     assert calls[0][2]["API_BASE_URL"] == "https://api.example.test"
     assert calls[0][2]["API_AUTH_BEARER"] == "secret-token"
     assert calls[0][2]["API_SCENARIO_RESULT_PATH"] == str(run_dir / "scenario-result.json")
+    assert calls[0][2]["API_SCENARIO_FILE"] == "scenarios/apiscn-1/scenario.json"
     assert json.loads((run_dir / "runtime" / "env.json").read_text(encoding="utf-8"))["auth"] == {"bearer_saved": True}
     assert "secret-token" not in (run_dir / "stdout.txt").read_text(encoding="utf-8")
     assert result["summary"]["passed"] == 1

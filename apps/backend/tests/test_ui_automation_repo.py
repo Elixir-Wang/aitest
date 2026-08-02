@@ -71,3 +71,47 @@ def test_delete_execution_run_removes_record():
     ui_automation_repo.delete_execution_run(db, "uirun-1")
 
     assert ui_automation_repo.find_execution_run(db, "uirun-1") is None
+
+
+def test_delete_asset_removes_asset_and_execution_runs():
+    db = _db()
+    ui_automation_repo.create_generation_run(
+        db,
+        run_id="uigen-1",
+        project_id="project-1",
+        test_case_id="case-1",
+        manual_test_case_id=None,
+        environment_id="env-1",
+        exploration_run_id="",
+        created_by="user-1",
+    )
+    ui_automation_repo.upsert_asset(
+        db,
+        asset_id="uiasset-1",
+        project_id="project-1",
+        test_case_id="case-1",
+        manual_test_case_id=None,
+        source_version=1,
+        generation_run_id="uigen-1",
+        status="ready",
+        pytest_node_id="tests/test_case.py::test_case",
+        suite_path="suite",
+        test_file_path="tests/test_case.py",
+        data_file_path="data/case.yaml",
+        plan_file_path="data/case.plan.json",
+        source_hash="hash-1",
+        created_by="user-1",
+    )
+    ui_automation_repo.create_execution_run(
+        db,
+        run_id="uirun-1",
+        project_id="project-1",
+        asset_id="uiasset-1",
+        environment_id="env-1",
+        created_by="user-1",
+    )
+
+    ui_automation_repo.delete_asset(db, "uiasset-1")
+
+    assert ui_automation_repo.find_asset(db, "uiasset-1") is None
+    assert ui_automation_repo.find_execution_run(db, "uirun-1") is None

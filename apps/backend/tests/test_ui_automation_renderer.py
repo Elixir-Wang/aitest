@@ -1,3 +1,4 @@
+import ast
 import json
 
 from app.agents.ui_automation.pytest_playwright.renderer import (
@@ -164,8 +165,59 @@ def test_render_plan_parameterizes_dynamic_text_selection(tmp_path):
 
     assert '@pytest.mark.parametrize(' in source
     assert 'CASE_DATA["parameters"]["target_model"]["values"]' in source
-    assert "def test_uiauto_1(page, target_model):" in source
+    assert "def test_uiauto_1(page, ui_case, target_model):" in source
     assert "login_page.visible_text(str(target_model)).click()" in source
+
+
+def test_render_plan_groups_explicit_business_steps(tmp_path):
+    initialize_suite(tmp_path)
+    payload = _plan().model_dump(mode="json")
+    payload["steps"][1].update(
+        business_step_id="business-login",
+        title="填写并提交登录",
+    )
+    payload["steps"][2].update(
+        business_step_id="business-login",
+        title="填写并提交登录",
+    )
+
+    source = render_automation_plan(tmp_path, AutomationPlan.model_validate(payload))[
+        "test_file"
+    ].read_text(encoding="utf-8")
+
+    assert source.count('with ui_case.step("business-login"') == 1
+    assert 'ui_case.define_steps([' in source
+    assert 'operation_ids=["step-2", "step-3"]' in source
+    assert source.index("username_input.fill") < source.index("submit_button.click")
+
+
+def test_rendered_step_definitions_are_valid_python_literals(tmp_path):
+    initialize_suite(tmp_path)
+    source = render_automation_plan(tmp_path, _plan())["test_file"].read_text(encoding="utf-8")
+    module = ast.parse(source)
+    define_call = next(
+        node
+        for node in ast.walk(module)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "define_steps"
+    )
+
+    definitions = ast.literal_eval(define_call.args[0])
+
+    assert definitions[0]["visible"] is True
+    assert '"visible": true' not in source
+    assert "UI_AUTOMATION_INSTRUMENTATION_VERSION = 2" in source
+
+
+def test_render_plan_does_not_guess_business_step_for_v1_plan(tmp_path):
+    initialize_suite(tmp_path)
+
+    source = render_automation_plan(tmp_path, _plan())["test_file"].read_text(encoding="utf-8")
+
+    assert 'with ui_case.step("step-1", "step-1"' in source
+    assert 'with ui_case.step("step-2", "step-2"' in source
+    assert 'with ui_case.step("step-3", "step-3"' in source
 
 
 def test_render_plan_waits_for_new_stable_response_without_welcome_message(tmp_path):

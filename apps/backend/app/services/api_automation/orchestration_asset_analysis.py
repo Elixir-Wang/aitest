@@ -200,7 +200,17 @@ def _schema_slots(schema: dict[str, Any], location: str, *, content_type: str = 
     if prefix and encoded_schema:
         name = prefix.rsplit("/", 1)[-1].replace("~1", "/").replace("~0", "~")
         return [
-            AssetSlot(name, location, prefix, _schema_type(schema), required, _is_sensitive(name, schema), response_status, content_type),
+            AssetSlot(
+                name,
+                location,
+                prefix,
+                _schema_type(schema),
+                required,
+                _is_sensitive(name, schema),
+                response_status,
+                content_type,
+                nested_schema=encoded_schema,
+            ),
             *_schema_slots(
                 encoded_schema,
                 location,

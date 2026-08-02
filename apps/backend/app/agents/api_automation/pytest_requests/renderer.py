@@ -7,7 +7,9 @@ from textwrap import dedent
 from typing import Any
 
 
-RENDERER_VERSION = 1
+RENDERER_VERSION = 2
+
+SCENARIO_TEST_FILE = "testcases/scenarios/test_scenario.py"
 
 
 def render_scenario_files(scenario_key: str, snapshot: dict[str, Any]) -> dict[str, str]:
@@ -15,8 +17,14 @@ def render_scenario_files(scenario_key: str, snapshot: dict[str, Any]) -> dict[s
     return {
         "support/scenario.py": _scenario_py(),
         f"{scenario_dir}/scenario.json": json.dumps(snapshot, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
-        f"{scenario_dir}/scenario.py": _scenario_py(),
-        f"{scenario_dir}/test_scenario.py": _test_scenario_py(),
+        **render_scenario_entrypoint_files(),
+    }
+
+
+def render_scenario_entrypoint_files() -> dict[str, str]:
+    return {
+        "testcases/scenarios/__init__.py": "",
+        SCENARIO_TEST_FILE: _test_scenario_py(),
     }
 
 
@@ -24,13 +32,29 @@ def _test_scenario_py() -> str:
     return dedent(
         """
         import json
+        import os
         from pathlib import Path
 
-        from scenario import run_scenario
+        import pytest
+
+        from support.scenario import run_scenario
+
+
+        pytestmark = pytest.mark.skipif(
+            not os.environ.get("API_SCENARIO_FILE", "").strip(),
+            reason="API_SCENARIO_FILE is not set",
+        )
 
 
         def test_scenario(api_client):
-            scenario = json.loads((Path(__file__).parent / "scenario.json").read_text(encoding="utf-8"))
+            suite_root = Path(__file__).resolve().parents[2]
+            scenario_file = os.environ.get("API_SCENARIO_FILE", "").strip()
+            scenario_path = (suite_root / scenario_file).resolve()
+            try:
+                scenario_path.relative_to(suite_root)
+            except ValueError as exc:
+                raise RuntimeError("API_SCENARIO_FILE must be inside the pytest suite") from exc
+            scenario = json.loads(scenario_path.read_text(encoding="utf-8"))
             run_scenario(api_client, scenario)
         """
     ).lstrip()
@@ -62,6 +86,8 @@ def _scenario_py() -> str:
 
 
         def run_scenario(api_client, scenario):
+            run_started_at = datetime.now(timezone.utc)
+            run_started = time.monotonic()
             variables = dict(scenario.get("variables") or {})
             outputs = {}
             result_steps = []
@@ -69,26 +95,29 @@ def _scenario_py() -> str:
             steps = list(scenario.get("steps") or [])
             for step in steps:
                 if not step.get("enabled", True):
-                    result_steps.append(_step_result(step, "skipped"))
+                    result_steps.append(_step_result(step, "skipped", skip_reason="步骤已禁用"))
                     continue
                 if failure is not None and step.get("on_failure") != "always_run":
-                    result_steps.append(_step_result(step, "skipped"))
+                    result_steps.append(_step_result(step, "skipped", skip_reason="前序步骤失败，执行链路已停止。"))
                     continue
+                evidence = {}
+                step_started = time.monotonic()
                 try:
-                    outputs[step.get("id", "")] = _run_step(api_client, step, variables, outputs)
-                    result_steps.append(_step_result(step, "passed", outputs[step.get("id", "")]))
+                    outputs[step.get("id", "")] = _run_step(api_client, step, variables, outputs, evidence)
+                    result_steps.append(_step_result(step, "passed", outputs[step.get("id", "")], evidence=evidence, duration_ms=(time.monotonic() - step_started) * 1000))
                 except Exception as exc:
-                    result_steps.append(_step_result(step, "failed", error=str(exc)))
+                    result_steps.append(_step_result(step, "failed", error=str(exc), evidence=evidence, duration_ms=(time.monotonic() - step_started) * 1000))
                     if failure is None:
                         failure = exc
-            _write_result(scenario, result_steps, "failed" if failure else "passed")
+            _write_result(scenario, result_steps, "failed" if failure else "passed", run_started_at, (time.monotonic() - run_started) * 1000)
             if failure:
                 raise failure
             return outputs
 
 
-        def _run_step(api_client, step, variables, outputs):
+        def _run_step(api_client, step, variables, outputs, evidence):
             step_type = step.get("step_type") or step.get("type") or "api_request"
+            evidence["inputs"] = _redact({"variables": variables, "preceding_outputs": outputs})
             if step_type == "assign":
                 config = step.get("control_config") or {}
                 value = _resolve_source(config.get("source") or {}, variables, outputs)
@@ -102,10 +131,10 @@ def _scenario_py() -> str:
             if step_type == "wait":
                 time.sleep(float((step.get("control_config") or {}).get("duration_ms", 0)) / 1000)
                 return {}
-            return _request_with_lifecycle(api_client, step, variables, outputs)
+            return _request_with_lifecycle(api_client, step, variables, outputs, evidence)
 
 
-        def _request_with_lifecycle(api_client, step, variables, outputs):
+        def _request_with_lifecycle(api_client, step, variables, outputs, evidence):
             config = step.get("control_config") or {}
             pre_request = config.get("pre_request") or {}
             post_response = config.get("post_response") or {}
@@ -113,11 +142,14 @@ def _scenario_py() -> str:
             retries = max(0, int(config.get("retries", 0) or 0))
             retry_interval = max(0, float(config.get("retry_interval_ms", 1000) or 0)) / 1000
             for attempt in range(retries + 1):
+                attempt_started = time.monotonic()
                 try:
-                    result = _request(api_client, step, variables, outputs)
+                    result = _request(api_client, step, variables, outputs, evidence)
+                    evidence.setdefault("attempts", []).append({"attempt": attempt + 1, "status": "passed", "duration_ms": round((time.monotonic() - attempt_started) * 1000, 3)})
                     _apply_variable_actions(post_response.get("actions") or [], result, variables, outputs)
                     return result
-                except Exception:
+                except Exception as exc:
+                    evidence.setdefault("attempts", []).append({"attempt": attempt + 1, "status": "failed", "duration_ms": round((time.monotonic() - attempt_started) * 1000, 3), "error": _redact(str(exc))})
                     if attempt >= retries:
                         raise
                     if retry_interval:
@@ -134,7 +166,7 @@ def _scenario_py() -> str:
                 target[name] = _resolve_source(action.get("source") or {}, variables, outputs)
 
 
-        def _request(api_client, step, variables, outputs):
+        def _request(api_client, step, variables, outputs, evidence):
             case = copy.deepcopy(step.get("case") or {})
             endpoint = step.get("endpoint") or {}
             request = copy.deepcopy(case.get("request") or {"method": endpoint.get("method"), "path": endpoint.get("path")})
@@ -152,9 +184,28 @@ def _scenario_py() -> str:
                     _set_pointer(request, target.removeprefix("/request"), value)
                 elif target.startswith("/test_data/"):
                     _set_pointer(test_data, target.removeprefix("/test_data"), value)
+            evidence["request"] = _redact({"request": request, "test_data": test_data})
+            evidence["assertions"] = _redact(step.get("assertions") or case.get("assertions") or [])
             response = _dispatch_request(api_client, request, test_data, endpoint)
-            assert_response_assertions(response, step.get("assertions") or case.get("assertions") or [])
+            evidence["response"] = _response_snapshot(response, endpoint)
+            _assert_response_assertions(response, step.get("assertions") or case.get("assertions") or [])
             return _extract(response, step.get("extractors") or [])
+
+
+        def _response_snapshot(response, endpoint):
+            snapshot = {
+                "status_code": getattr(response, "status_code", None),
+                "headers": dict(getattr(response, "headers", {}) or {}),
+            }
+            if _is_sse_endpoint(endpoint):
+                snapshot["body"] = {"streaming": True, "captured": False}
+                return _redact(snapshot)
+            try:
+                snapshot["body"] = response.json()
+            except Exception:
+                text = str(getattr(response, "text", "") or "")
+                snapshot["body"] = text[:20000] + ("…" if len(text) > 20000 else "")
+            return _redact(snapshot)
 
 
         def _dispatch_request(api_client, request, test_data, endpoint):
@@ -377,6 +428,23 @@ def _scenario_py() -> str:
             return current
 
 
+        def _assert_response_assertions(response, assertions):
+            for assertion in assertions:
+                runtime_assertion = copy.deepcopy(assertion)
+                original_path = str(runtime_assertion.get("path") or "")
+                if runtime_assertion.get("type") in {"jsonpath_equals", "jsonpath_exists", "jsonpath_type"} and original_path.startswith("/"):
+                    tokens = [part.replace("~1", "/").replace("~0", "~") for part in original_path.strip("/").split("/") if part]
+                    runtime_assertion["path"] = "$" + "".join("." + token for token in tokens)
+                try:
+                    assert_response_assertions(response, [runtime_assertion])
+                except AssertionError as exc:
+                    runtime_path = str(runtime_assertion.get("path") or "")
+                    message = str(exc)
+                    if original_path and runtime_path != original_path:
+                        message = message.replace(runtime_path, original_path)
+                    raise AssertionError(message) from exc
+
+
         def _header(headers, name):
             for key, value in dict(headers or {}).items():
                 if key.lower() == name.lstrip("/").lower(): return value
@@ -410,8 +478,23 @@ def _scenario_py() -> str:
             return {"equals": actual == expected, "not_equals": actual != expected, "contains": expected in actual if actual is not None else False, "not_contains": expected not in actual if actual is not None else True, "truthy": bool(actual), "falsy": not bool(actual), "gt": actual > expected, "gte": actual >= expected, "lt": actual < expected, "lte": actual <= expected}.get(operator, False)
 
 
-        def _step_result(step, status, outputs=None, error=""):
-            return {"step_id": step.get("id", ""), "name": step.get("name", ""), "status": status, "outputs": _redact(outputs or {}), "error": _redact(error)}
+        def _step_result(step, status, outputs=None, error="", evidence=None, duration_ms=0, skip_reason=""):
+            evidence = evidence or {}
+            return {
+                "step_id": step.get("id", ""),
+                "name": step.get("name", ""),
+                "step_type": step.get("step_type") or step.get("type") or "api_request",
+                "status": status,
+                "duration_ms": round(float(duration_ms or 0), 3),
+                "request": _redact(evidence.get("request") or {}),
+                "response": _redact(evidence.get("response") or {}),
+                "inputs": _redact(evidence.get("inputs") or {}),
+                "outputs": _redact(outputs or {}),
+                "assertions": _redact(evidence.get("assertions") or step.get("assertions") or []),
+                "attempts": _redact(evidence.get("attempts") or []),
+                "error": _redact(error),
+                "skip_reason": skip_reason,
+            }
 
 
         def _redact(value):
@@ -421,8 +504,10 @@ def _scenario_py() -> str:
             return value
 
 
-        def _write_result(scenario, steps, status):
+        def _write_result(scenario, steps, status, started_at, duration_ms):
             path = os.getenv("API_SCENARIO_RESULT_PATH")
-            if path: Path(path).write_text(json.dumps({"scenario_id": scenario.get("id", ""), "status": status, "steps": steps}, ensure_ascii=False), encoding="utf-8")
+            if path:
+                finished_at = datetime.now(timezone.utc)
+                Path(path).write_text(json.dumps({"scenario_id": scenario.get("id", ""), "status": status, "started_at": started_at.isoformat(), "finished_at": finished_at.isoformat(), "duration_ms": round(float(duration_ms or 0), 3), "steps": steps}, ensure_ascii=False), encoding="utf-8")
         '''
     ).lstrip()

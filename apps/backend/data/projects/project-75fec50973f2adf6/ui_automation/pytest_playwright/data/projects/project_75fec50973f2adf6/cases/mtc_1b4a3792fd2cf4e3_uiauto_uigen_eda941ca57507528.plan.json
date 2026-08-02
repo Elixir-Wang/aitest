@@ -316,6 +316,9 @@
   "steps": [
     {
       "source_step_id": "step-1",
+      "business_step_id": "",
+      "title": "",
+      "visible": true,
       "kind": "navigate",
       "page_key": "workspace_page",
       "element_key": "",
@@ -324,6 +327,9 @@
     },
     {
       "source_step_id": "step-2",
+      "business_step_id": "",
+      "title": "",
+      "visible": true,
       "kind": "click",
       "page_key": "workspace_page",
       "element_key": "agent_name_link",
@@ -332,6 +338,9 @@
     },
     {
       "source_step_id": "step-3",
+      "business_step_id": "",
+      "title": "",
+      "visible": true,
       "kind": "click",
       "page_key": "bot_settings_page",
       "element_key": "model_selector",
@@ -340,6 +349,9 @@
     },
     {
       "source_step_id": "step-4",
+      "business_step_id": "",
+      "title": "",
+      "visible": true,
       "kind": "click_parameter_text",
       "page_key": "bot_settings_page",
       "element_key": "",
@@ -348,6 +360,9 @@
     },
     {
       "source_step_id": "step-5",
+      "business_step_id": "",
+      "title": "",
+      "visible": true,
       "kind": "click",
       "page_key": "bot_settings_page",
       "element_key": "history_sessions_btn",
@@ -356,6 +371,9 @@
     },
     {
       "source_step_id": "step-6",
+      "business_step_id": "",
+      "title": "",
+      "visible": true,
       "kind": "click",
       "page_key": "bot_settings_page",
       "element_key": "new_session_btn",
@@ -364,6 +382,9 @@
     },
     {
       "source_step_id": "step-6-close-history",
+      "business_step_id": "",
+      "title": "",
+      "visible": true,
       "kind": "click",
       "page_key": "bot_settings_page",
       "element_key": "history_sessions_btn",
@@ -372,6 +393,9 @@
     },
     {
       "source_step_id": "step-7",
+      "business_step_id": "",
+      "title": "",
+      "visible": true,
       "kind": "fill",
       "page_key": "bot_settings_page",
       "element_key": "chat_input",
@@ -380,6 +404,9 @@
     },
     {
       "source_step_id": "step-7-send",
+      "business_step_id": "",
+      "title": "",
+      "visible": true,
       "kind": "click",
       "page_key": "bot_settings_page",
       "element_key": "send_btn",
@@ -388,6 +415,9 @@
     },
     {
       "source_step_id": "step-8",
+      "business_step_id": "",
+      "title": "",
+      "visible": true,
       "kind": "wait_for_response",
       "page_key": "bot_settings_page",
       "element_key": "last_response",
@@ -396,6 +426,9 @@
     },
     {
       "source_step_id": "step-9",
+      "business_step_id": "",
+      "title": "",
+      "visible": true,
       "kind": "fill",
       "page_key": "bot_settings_page",
       "element_key": "chat_input",
@@ -404,6 +437,9 @@
     },
     {
       "source_step_id": "step-9-send",
+      "business_step_id": "",
+      "title": "",
+      "visible": true,
       "kind": "click",
       "page_key": "bot_settings_page",
       "element_key": "send_btn",
@@ -412,6 +448,9 @@
     },
     {
       "source_step_id": "step-10",
+      "business_step_id": "",
+      "title": "",
+      "visible": true,
       "kind": "wait_for_response",
       "page_key": "bot_settings_page",
       "element_key": "last_response",
@@ -420,6 +459,9 @@
     },
     {
       "source_step_id": "step-13",
+      "business_step_id": "",
+      "title": "",
+      "visible": true,
       "kind": "click",
       "page_key": "bot_settings_page",
       "element_key": "publish_btn",
@@ -428,6 +470,9 @@
     },
     {
       "source_step_id": "step-14",
+      "business_step_id": "",
+      "title": "",
+      "visible": true,
       "kind": "commit_value",
       "page_key": "publish_dialog",
       "element_key": "version_input",
@@ -436,6 +481,9 @@
     },
     {
       "source_step_id": "step-15",
+      "business_step_id": "",
+      "title": "",
+      "visible": true,
       "kind": "fill",
       "page_key": "publish_dialog",
       "element_key": "log_input",
@@ -444,6 +492,9 @@
     },
     {
       "source_step_id": "step-16",
+      "business_step_id": "",
+      "title": "",
+      "visible": true,
       "kind": "click",
       "page_key": "publish_dialog",
       "element_key": "publish_confirm_btn",
@@ -452,6 +503,9 @@
     },
     {
       "source_step_id": "step-17",
+      "business_step_id": "",
+      "title": "",
+      "visible": true,
       "kind": "click",
       "page_key": "publish_dialog",
       "element_key": "confirm_btn",
@@ -460,6 +514,9 @@
     },
     {
       "source_step_id": "step-18",
+      "business_step_id": "",
+      "title": "",
+      "visible": true,
       "kind": "wait_visible",
       "page_key": "publish_dialog",
       "element_key": "publishing_status",
@@ -468,6 +525,9 @@
     },
     {
       "source_step_id": "step-19",
+      "business_step_id": "",
+      "title": "",
+      "visible": true,
       "kind": "navigate",
       "page_key": "workspace_page",
       "element_key": "",
@@ -476,6 +536,9 @@
     },
     {
       "source_step_id": "step-19-use",
+      "business_step_id": "",
+      "title": "",
+      "visible": true,
       "kind": "click",
       "page_key": "workspace_page",
       "element_key": "use_button",
@@ -484,6 +547,9 @@
     },
     {
       "source_step_id": "step-20-history",
+      "business_step_id": "",
+      "title": "",
+      "visible": true,
       "kind": "click",
       "page_key": "bot_settings_page",
       "element_key": "published_history_sessions_btn",
@@ -492,6 +558,9 @@
     },
     {
       "source_step_id": "step-20",
+      "business_step_id": "",
+      "title": "",
+      "visible": true,
       "kind": "click",
       "page_key": "bot_settings_page",
       "element_key": "new_session_btn",
@@ -500,6 +569,9 @@
     },
     {
       "source_step_id": "step-20-close-history",
+      "business_step_id": "",
+      "title": "",
+      "visible": true,
       "kind": "click",
       "page_key": "bot_settings_page",
       "element_key": "published_history_sessions_btn",
@@ -508,6 +580,9 @@
     },
     {
       "source_step_id": "step-21",
+      "business_step_id": "",
+      "title": "",
+      "visible": true,
       "kind": "fill",
       "page_key": "bot_settings_page",
       "element_key": "chat_input",
@@ -516,6 +591,9 @@
     },
     {
       "source_step_id": "step-21-send",
+      "business_step_id": "",
+      "title": "",
+      "visible": true,
       "kind": "click",
       "page_key": "bot_settings_page",
       "element_key": "send_btn",
@@ -524,6 +602,9 @@
     },
     {
       "source_step_id": "step-22",
+      "business_step_id": "",
+      "title": "",
+      "visible": true,
       "kind": "wait_for_response",
       "page_key": "bot_settings_page",
       "element_key": "last_response",
@@ -532,6 +613,9 @@
     },
     {
       "source_step_id": "step-23",
+      "business_step_id": "",
+      "title": "",
+      "visible": true,
       "kind": "fill",
       "page_key": "bot_settings_page",
       "element_key": "chat_input",
@@ -540,6 +624,9 @@
     },
     {
       "source_step_id": "step-23-send",
+      "business_step_id": "",
+      "title": "",
+      "visible": true,
       "kind": "click",
       "page_key": "bot_settings_page",
       "element_key": "send_btn",
@@ -548,6 +635,9 @@
     },
     {
       "source_step_id": "step-24",
+      "business_step_id": "",
+      "title": "",
+      "visible": true,
       "kind": "wait_for_response",
       "page_key": "bot_settings_page",
       "element_key": "last_response",

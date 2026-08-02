@@ -41,6 +41,7 @@ import { StandardMarkdownEditor } from "@/components/ai-testing/standard-markdow
 import { TestPointsPanel } from "@/components/ai-testing/test-points-panel";
 import { useLocalTableSelection } from "@/components/ai-testing/use-local-table-selection";
 import { AiEditInput } from "@/components/ui/ai-input";
+import { Select, SelectOption } from "@/components/ui/animated-select-1";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -71,6 +72,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { notifyAiTaskStarted } from "@/lib/ai-task-events";
 import {
   ApiRequestError,
+  type ApiProjectVersion,
   type ApiTaskItem,
   type ApiTestPointOverview,
   apiBlobRequest,
@@ -292,6 +294,13 @@ type RequirementOverviewResponse = {
     status: string;
     updated_at: string;
     current_version_id: string | null;
+    project_version_id: string | null;
+    project_version: {
+      id: string;
+      version: string;
+      name: string;
+      is_default: boolean;
+    } | null;
     latest_requirement_analysis_run: {
       id: string;
       status: string;
@@ -512,6 +521,8 @@ export default function DocumentDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [overview, setOverview] = useState<RequirementOverviewResponse | null>(null);
+  const [projectVersions, setProjectVersions] = useState<ApiProjectVersion[]>([]);
+  const [movingProjectVersion, setMovingProjectVersion] = useState(false);
   const [testPointOverview, setTestPointOverview] = useState<ApiTestPointOverview | null>(null);
   const [testPointActionsContainer, setTestPointActionsContainer] = useState<HTMLDivElement | null>(null);
   const [activeTab, setActiveTab] = useState("overview");
@@ -758,6 +769,42 @@ export default function DocumentDetailPage() {
       setTestPointOverview(null);
     }
   }, [documentId, projectId]);
+
+  useEffect(() => {
+    let ignore = false;
+    void apiRequest<ApiProjectVersion[]>(`/projects/${projectId}/versions`)
+      .then((versions) => {
+        if (!ignore) setProjectVersions(versions);
+      })
+      .catch(() => {
+        if (!ignore) setProjectVersions([]);
+      });
+    return () => {
+      ignore = true;
+    };
+  }, [projectId]);
+
+  async function moveProjectVersion(projectVersionId: string) {
+    if (!overview || projectVersionId === overview.document.project_version_id) return;
+    setMovingProjectVersion(true);
+    try {
+      await apiRequest(`/projects/${projectId}/requirements/${documentId}/project-version`, {
+        method: "PATCH",
+        body: JSON.stringify({ project_version_id: projectVersionId }),
+      });
+      toast.success("需求所属版本已更新");
+      await loadOverview({ silent: true });
+    } catch (requestError) {
+      reportError(requestError, {
+        fallbackMessage: "需求版本迁移失败",
+        actionLabel: "迁移需求所属版本",
+        method: "PATCH",
+        path: `/projects/${projectId}/requirements/${documentId}/project-version`,
+      });
+    } finally {
+      setMovingProjectVersion(false);
+    }
+  }
 
   const loadLatestAnalysis = useCallback(async () => {
     try {
@@ -1648,6 +1695,7 @@ export default function DocumentDetailPage() {
         mode: "append",
         documentName: "",
         existingDocumentId: documentId,
+        projectVersionId: "",
         onProgress: (file, progress) => {
           setUploadStates((current) => ({
             ...current,
@@ -1756,6 +1804,29 @@ export default function DocumentDetailPage() {
               ref={setTestPointActionsContainer}
             />
           ) : null}
+          <div className="flex min-w-56 items-center gap-2 text-sm">
+            <span className="shrink-0 text-muted-foreground">所属版本</span>
+            {authUser?.role === "admin" ? (
+              <Select
+                disabled={movingProjectVersion}
+                placeholder="选择项目版本"
+                setValue={moveProjectVersion}
+                value={overview.document.project_version_id ?? ""}
+              >
+                {projectVersions.map((version) => (
+                  <SelectOption key={version.id} value={version.id}>
+                    {`${version.version}${version.name ? ` · ${version.name}` : ""}${version.is_default ? "（当前）" : ""}`}
+                  </SelectOption>
+                ))}
+              </Select>
+            ) : (
+              <span className="font-medium">
+                {overview.document.project_version
+                  ? `${overview.document.project_version.version}${overview.document.project_version.name ? ` · ${overview.document.project_version.name}` : ""}`
+                  : "-"}
+              </span>
+            )}
+          </div>
         </div>
 
         <TabsContent value="overview">

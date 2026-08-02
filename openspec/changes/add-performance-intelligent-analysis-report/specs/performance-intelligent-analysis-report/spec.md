@@ -269,6 +269,117 @@
 - **THEN** 章节、图表、长路径和表格 SHALL 重排或受控滚动
 - **AND** SHALL NOT 相互遮挡或超出主要操作区域
 
+### Requirement: Concise professional report structure
+
+系统 SHALL 使用结论优先、证据递进的固定信息结构展示性能报告，并 SHALL NOT 使用独立的运行信息模块打断主要阅读流程。
+
+可见报告的默认章节顺序 SHALL 为：
+
+1. 性能结论
+2. 核心指标
+3. 性能目标
+4. 接口表现
+5. 运行趋势
+6. 风险与边界（通过或有条件通过）/ 诊断发现（不通过或无法判断）
+7. 优化与复测建议
+
+#### Scenario: User opens a completed report
+
+- **GIVEN** 性能报告已经完成
+- **WHEN** 用户打开报告详情
+- **THEN** 页面首屏 SHALL 展示总体结论、结论适用的测试范围、核心指标和性能目标
+- **AND** 测试范围 SHALL 紧邻总体结论展示环境名称、应用版本、负载模型、用户数、启动速率、测试时长和预热窗口中的可用字段
+- **AND** 测试范围 SHALL 使用紧凑摘要而不是独立的环境或运行信息章节
+- **AND** 未采集的可选字段 SHALL 被省略或标记为未提供，不得由系统推测
+
+#### Scenario: Report displays data quality
+
+- **WHEN** 报告存在可计算的基础指标
+- **THEN** 页面 SHALL 在总体结论附近展示 complete、partial 或 invalid 的紧凑数据质量状态
+- **AND** 影响结论的能力边界 SHALL 在诊断发现中表达，不得再通过独立数据限制章节重复展示
+- **AND** 页面 SHALL NOT 使用独立的大型数据质量模块重复展示相同信息
+- **AND** 未接入服务端资源监控 SHALL NOT 单独导致基础指标被标记为 invalid
+
+#### Scenario: Advisory limitation does not invalidate evaluated objectives
+
+- **GIVEN** 正式统计窗口内的请求数、失败率和目标所需指标完整
+- **AND** P99 因请求样本量有限而仅可作为观察指标
+- **WHEN** 系统计算数据质量和总体结论
+- **THEN** P99 样本限制 SHALL 作为非阻断 warning 展示
+- **AND** 系统 SHALL 分别记录请求样本数和时序采样点数，不得混用
+- **AND** 该 warning SHALL NOT 将基础数据质量从 complete 降为 partial
+- **AND** 该 warning SHALL NOT 将已通过的已配置目标从 pass 降为 conditional_pass
+
+#### Scenario: Report displays core metrics
+
+- **WHEN** 确定性指标快照包含对应指标
+- **THEN** 核心指标 SHALL 优先展示请求总数、观测吞吐、失败率、P95 和 P99
+- **AND** 页面 SHALL NOT 在核心指标旁展示独立的统计窗口或预热说明行
+- **AND** 当统计窗口或预热状态影响结论时，系统 SHALL 在诊断发现中说明其影响
+- **AND** 不可用的 P95 或 P99 SHALL 显示为不可用，不得根据平均值估算
+
+#### Scenario: Observed metric has no configured objective
+
+- **GIVEN** 报告展示了吞吐量、P95、P99 或其他观察指标
+- **AND** 对应指标没有配置性能目标
+- **WHEN** 用户查看性能目标章节
+- **THEN** 页面 SHALL 明确区分已参与判定的目标和仅供观察的指标
+- **AND** 未配置目标的指标 SHALL NOT 被表述为已通过
+
+#### Scenario: Endpoint metrics are available
+
+- **GIVEN** 快照包含按归一化请求名称聚合的接口指标
+- **WHEN** 页面展示接口表现
+- **THEN** 每个接口 SHALL 展示请求方法、归一化名称、请求占比、请求数、失败率、平均响应时间、P95 和 P99 中的可用字段
+- **AND** 失败接口 SHALL 优先于无失败接口展示，其余接口默认按 P95 从高到低排序
+- **AND** 接口数量较多时页面 SHALL 默认展示有限条目并提供查看全部能力
+- **AND** 接口指标 SHALL 来源于 Locust 按请求名称聚合的 `result_stats.csv` 请求行
+- **AND** 系统 SHALL 排除 `Aggregated` 汇总行，且不得使用全局汇总指标代替接口请求行
+
+#### Scenario: Endpoint metrics are unavailable
+
+- **WHEN** 快照不包含可信接口级指标
+- **THEN** 接口表现章节 SHALL 明确标记接口明细不可用
+- **AND** 系统 SHALL NOT 使用全局指标推算接口级结果
+- **AND** 接口表现章节 SHALL 说明接口统计不可用，不得增加重复的数据限制章节
+- **AND** 执行脚本中的请求方法和路径 MAY 用于展示测试范围，但 SHALL NOT 单独作为接口统计指标来源
+
+#### Scenario: Report displays time trends
+
+- **WHEN** 报告展示响应延迟和吞吐趋势
+- **THEN** 趋势 SHALL 使用明确标注粒度的独立时间窗口
+- **AND** 延迟趋势 SHALL 优先展示 P50、P95 和 P99
+- **AND** 吞吐趋势 SHALL 展示 RPS，并在失败率序列可用时同时展示失败率
+- **AND** 系统 SHALL NOT 根据累计分位数的下降宣称延迟正在改善或已经收敛
+- **AND** 当采样数据为 Locust 累计快照时，系统 SHALL 标记 `can_claim_direction=false`
+- **AND** 确定性分析和 AI finding SHALL NOT 根据累计快照的首末值宣称延迟上升、下降、改善、恶化或收敛
+
+#### Scenario: Report displays findings and recommendations
+
+- **WHEN** 页面展示风险与边界或诊断发现
+- **THEN** finding SHALL 只包含异常、风险、能力边界或需要关注的观察
+- **AND** 已在顶部表达的“目标通过、目标满足、目标达成、目标合格或均 passed” SHALL NOT 作为 finding 重复展示
+- **AND** pass 或 conditional_pass 报告 SHALL 使用“风险与边界”标题，fail 或 indeterminate 报告 SHALL 使用“诊断发现”标题
+- **AND** 当吞吐量不是验收目标时，固定单阶段负载的容量边界 SHALL 显示为 LOW，对应阶梯加压复测建议 SHALL 显示为 P2
+- **AND** finding 和 recommendation SHALL 恢复为上下排列的两个独立章节，并使用与运行趋势一致的卡片、标题字号和间距
+- **AND** finding 标题和 recommendation 动作 SHALL 使用紧凑正文级字号，不得使用大号展示文字
+- **AND** 用户可见的 finding 和 recommendation SHALL 使用业务可读的中文，不得直接展示 `load.mode`、`stages`、`can_claim_stable_capacity`、`knee_point`、`false` 或 `null` 等内部字段及原始取值
+- **AND** 固定负载的容量边界 SHALL 说明已验证负载范围、未进行分阶段加压以及不能得出的容量结论
+- **AND** 每条建议 SHALL 引用对应 finding，并包含可执行动作和复测验证标准
+- **AND** 在未接入服务端资源证据时，建议 SHALL NOT 声称已定位 CPU、数据库、连接池或下游依赖瓶颈
+- **AND** 当前阶段未纳入服务端资源监控，页面 SHALL NOT 建议接入 CPU、内存、数据库连接池或调用链监控
+- **AND** 阶梯加压建议的验收 SHALL 允许识别容量拐点或明确已验证负载上界，不得要求 `knee_point` 必须非空
+
+#### Scenario: Report avoids duplicate limitations
+
+- **WHEN** 报告存在样本量、测试时长、负载模型、目标配置、接口覆盖或诊断证据限制
+- **THEN** 影响结论的限制 SHALL 作为诊断发现表达
+- **AND** 页面 SHALL NOT 展示独立的数据限制章节重复相同内容
+- **AND** 固定单阶段负载 MAY 在诊断发现中说明不能确认容量上限或性能拐点
+- **AND** 页面 SHALL NOT 展示独立的运行信息模块
+- **AND** 分析版本、来源指纹和计算器版本等审计元数据 SHALL 保留在冻结快照或导出元数据中，但不作为默认报告主流程中的独立可见章节
+- **AND** 页面 SHALL NOT 直接展开 AI finding 的原始 `missing_evidence`
+
 ### Requirement: Report center archive
 
 系统 SHALL 将性能智能分析报告统一归档到报告中心，并基于冻结分析快照提供只读索引，不得复制或重新生成报告正文。

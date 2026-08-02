@@ -60,6 +60,7 @@ type UploadOptions = {
   mode: UploadMode;
   documentName: string;
   existingDocumentId: string;
+  projectVersionId: string;
   onProgress: (file: File, progress: number) => void;
 };
 
@@ -93,6 +94,7 @@ export async function uploadRequirementFiles(options: UploadOptions): Promise<Re
         mode: options.mode,
         document_name: options.mode === "new" ? options.documentName.trim() : "",
         existing_document_id: options.mode === "append" ? options.existingDocumentId : "",
+        project_version_id: options.mode === "new" ? options.projectVersionId : "",
         files: options.files.map((file) => ({
           filename: file.name,
           size: file.size,
@@ -283,6 +285,7 @@ function uploadSignature(options: UploadOptions) {
   return JSON.stringify({
     mode: options.mode,
     documentName: options.mode === "new" ? options.documentName.trim() : "",
+    projectVersionId: options.mode === "new" ? options.projectVersionId : "",
     existingDocumentId: options.mode === "append" ? options.existingDocumentId : "",
     files: options.files.map((file) => [file.name, file.size, file.lastModified]),
   });

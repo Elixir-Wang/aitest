@@ -56,9 +56,11 @@ def test_structured_output_uses_compact_tool_schema_and_validates_arguments() ->
         ]
     )
 
-    result = asyncio.run(structured_output_runnable(model, _Decision).ainvoke([{"role": "user", "content": "decide"}]))
+    output = structured_output_runnable(model, _Decision)
+    result = asyncio.run(output.ainvoke([{"role": "user", "content": "decide"}]))
 
     assert result == _Decision(action_type="skip", reason="covered")
+    assert output.model_call_count == 1
     serialized_tools = json.dumps(model.bound_tools, ensure_ascii=False)
     assert '"title"' not in serialized_tools
     assert '"default"' not in serialized_tools
@@ -105,3 +107,18 @@ def test_structured_output_retries_invalid_json_once() -> None:
     assert result.reason == "corrected"
     assert len(model.text.messages) == 2
     assert "上一次输出无法通过结构校验" in model.text.messages[1][-1]["content"]
+
+
+def test_structured_output_repairs_invalid_tool_response_in_one_fallback_call() -> None:
+    model = _Model(
+        tool_responses=[AIMessage(content='{"unexpected":true}')],
+        text_responses=[AIMessage(content='{"action_type":"skip","reason":"corrected"}')],
+    )
+    output = structured_output_runnable(model, _Decision)
+
+    result = asyncio.run(output.ainvoke([{"role": "user", "content": "decide"}]))
+
+    assert result.reason == "corrected"
+    assert output.model_call_count == 2
+    assert len(model.text.messages) == 1
+    assert "上一次输出无法通过结构校验" in model.text.messages[0][-1]["content"]

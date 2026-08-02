@@ -3,7 +3,12 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from app.agents.api_automation.orchestration.schemas import PlannerProposal, ValueSource
+from app.agents.api_automation.orchestration.schemas import (
+    PlannerExtractorProposal,
+    PlannerProposal,
+    ScenarioExtractor,
+    ValueSource,
+)
 from app.schemas.api_automation import (
     ApiScenarioAiReviewField,
     ApiScenarioAiReviewFieldGroup,
@@ -49,6 +54,7 @@ def build_review_plan(
         if isinstance(item, dict) and item.get("key") and item.get("configured", True)
     }
     review_steps: list[ApiScenarioAiReviewStep] = []
+    review_warnings: list[str] = []
     for step in sorted(proposal.steps, key=lambda item: item.order):
         endpoint = endpoint_by_id.get(step.endpoint_id, {})
         slot_by_target = {(slot.location, slot.path): slot for slot in request_slots(endpoint)}
@@ -97,7 +103,7 @@ def build_review_plan(
                 path=str(endpoint.get("path") or ""),
                 depends_on=list(step.depends_on),
                 field_groups=field_groups,
-                extractors=step.extractors,
+                extractors=_executable_extractors(step.extractors, step.client_step_id, review_warnings),
                 assertions=step.assertions,
                 on_failure=step.on_failure,
                 enabled=step.enabled,
@@ -116,9 +122,26 @@ def build_review_plan(
     from app.services.api_automation.orchestration_validator import validate_review_plan
 
     validation = validate_review_plan(plan, endpoints)
+    validation["warnings"] = list(dict.fromkeys([*validation["warnings"], *review_warnings]))
     data = plan.model_dump()
     data["validation"] = validation
     return ApiScenarioAiReviewPlan.model_validate(data)
+
+
+def _executable_extractors(
+    extractors: list[PlannerExtractorProposal],
+    step_id: str,
+    warnings: list[str],
+) -> list[ScenarioExtractor]:
+    executable: list[ScenarioExtractor] = []
+    for extractor in extractors:
+        if extractor.source == "sse_event_json" and not extractor.event:
+            warnings.append(
+                f"步骤 {step_id} 的 SSE 提取器 {extractor.name} 缺少资产明确提供的 event，已忽略该提取器建议。"
+            )
+            continue
+        executable.append(ScenarioExtractor.model_validate(extractor.model_dump(exclude_none=True)))
+    return executable
 
 
 def _initial_status(

@@ -15,6 +15,7 @@ class SourceDocumentVersionOut(BaseModel):
 class SourceDocumentOut(BaseModel):
     id: str
     project_id: str
+    project_version_id: str | None = None
     name: str
     document_type: str
     file_count: int
@@ -25,6 +26,10 @@ class SourceDocumentOut(BaseModel):
     updated_at: str
     current_version: SourceDocumentVersionOut | None = None
     available_actions: list[str]
+
+
+class SourceDocumentProjectVersionUpdateIn(BaseModel):
+    project_version_id: str = Field(min_length=1)
 
 
 class SourceDocumentUpdateIn(BaseModel):

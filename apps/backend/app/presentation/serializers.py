@@ -111,7 +111,7 @@ def serialize_model_provider(row: Row, actor_role: str) -> dict:
     }
 
 
-def serialize_project(row: Row, actor_role: str, has_assets: bool = False) -> dict:
+def serialize_project(row: Row, actor_role: str, has_assets: bool = False, current_version: dict | None = None) -> dict:
     return {
         "id": row["id"],
         "name": row["name"],
@@ -119,6 +119,7 @@ def serialize_project(row: Row, actor_role: str, has_assets: bool = False) -> di
         "status": row["status"],
         "created_at": row["created_at"],
         "updated_at": row["updated_at"],
+        "current_version": current_version,
         "available_actions": project_actions(actor_role, has_assets),
     }
 
