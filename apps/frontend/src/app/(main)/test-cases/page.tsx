@@ -5,7 +5,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 
 import { ClipboardCheck, Loader2, Plus, RefreshCw, Sparkles, Trash2 } from "lucide-react";
-import { toast } from "@/lib/toast";
 
 import { ListToolbar, PageShell, RowActions, ShellSection } from "@/components/ai-testing/page-shell";
 import { ProcessingState, TableLoadingRow } from "@/components/ai-testing/table-loading-row";
@@ -52,6 +51,7 @@ import {
   apiRequest,
   formatDateTime,
 } from "@/lib/api-client";
+import { toast } from "@/lib/toast";
 import { moduleBreadcrumbs } from "@/navigation/breadcrumbs";
 import { useProjectContextStore } from "@/stores/project-context-store";
 

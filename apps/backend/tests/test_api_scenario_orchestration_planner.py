@@ -116,6 +116,77 @@ async def test_planner_repairs_invalid_json_once() -> None:
     assert planner.model_call_count == 2
     assert "JSON Schema" in model.calls[1][-1]["content"]
     assert '"fields"' in model.calls[1][-1]["content"]
+    assert any(
+        message.get("role") == "assistant" and message.get("content") == "not-json"
+        for message in model.calls[1]
+    )
+
+
+@pytest.mark.anyio
+async def test_planner_uses_plain_json_without_binding_provider_tools() -> None:
+    class PlainJsonOnlyModel(FakeModel):
+        def bind_tools(self, _tools):
+            raise AssertionError("Planner must not bind provider tools")
+
+    model = PlainJsonOnlyModel([_proposal_json()])
+    planner = ApiScenarioPlanner(model)
+
+    proposal = await planner.plan(
+        {"goal": "查询资料", "endpoint_catalog": [{"endpoint_id": "apiend-selected"}]}
+    )
+
+    assert proposal.scenario_name == "查询资料"
+    assert planner.model_call_count == 1
+
+
+@pytest.mark.anyio
+async def test_planner_repairs_long_json_with_missing_comma_using_previous_output() -> None:
+    proposal_data = json.loads(_proposal_json())
+    proposal_data["description"] = "x" * 1800
+    proposal_data["steps"][0]["fields"].extend(
+        {
+            "target": {"location": "query", "path": f"/field_{index}"},
+            "display_name": f"field_{index}_" + "y" * 80,
+            "required": False,
+            "value_type": "string",
+            "proposal": {"type": "environment", "key": f"field_{index}"},
+        }
+        for index in range(8)
+    )
+    proposal_data["steps"][0]["enabled"] = True
+    valid_json = json.dumps(proposal_data, ensure_ascii=False, separators=(",", ":"))
+    malformed_json = valid_json.replace(',"enabled":true', '"enabled":true', 1)
+    assert len(malformed_json) > 3384
+
+    class RepairAwareModel:
+        def __init__(self):
+            self.calls = []
+
+        def bind_tools(self, _tools):
+            raise AssertionError("Planner must not bind provider tools")
+
+        async def ainvoke(self, messages):
+            self.calls.append(messages)
+            if len(self.calls) == 1:
+                return {"content": malformed_json}
+            has_previous_output = any(
+                message.get("role") == "assistant" and message.get("content") == malformed_json
+                for message in messages
+            )
+            has_syntax_error = "json_invalid" in messages[-1]["content"]
+            return {"content": valid_json if has_previous_output and has_syntax_error else "still-bad"}
+
+    model = RepairAwareModel()
+    planner = ApiScenarioPlanner(model)
+
+    proposal = await planner.plan(
+        {"goal": "查询资料", "endpoint_catalog": [{"endpoint_id": "apiend-selected"}]}
+    )
+
+    assert proposal.description == "x" * 1800
+    assert planner.model_call_count == 2
+    assert planner.attempt_metrics[0]["error_type"] == "invalid_json"
+    assert "error_type" not in planner.attempt_metrics[1]
 
 
 @pytest.mark.anyio

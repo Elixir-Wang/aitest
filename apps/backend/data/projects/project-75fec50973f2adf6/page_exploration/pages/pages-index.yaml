@@ -4,5 +4,12 @@ pages:
     breadcrumb:
     - agentStore
     structure_summary: 发现 0 个元素
-    run_id: exp_0x7w65xtPTAv4HxCNvZ8zA
-    captured_at: '2026-08-01T09:19:16.486520Z'
+    run_id: exp_tfmqXB7Lgb__EMYsEgEG-A
+    captured_at: '2026-08-02T16:14:54.765603Z'
+  page-workspace.yaml:
+    display_name: workspace
+    breadcrumb:
+    - workspace
+    structure_summary: 发现 0 个元素
+    run_id: exp_tfmqXB7Lgb__EMYsEgEG-A
+    captured_at: '2026-08-02T16:14:54.774123Z'

@@ -3,10 +3,8 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { Eye, EyeOff, Pencil, TestTube, Trash2 } from "lucide-react";
-import { toast } from "@/lib/toast";
 
 import { ListToolbar, PageShell, RowActions, ShellSection } from "@/components/ai-testing/page-shell";
-import { moduleBreadcrumbs } from "@/navigation/breadcrumbs";
 import { ProcessingState, TableLoadingRow } from "@/components/ai-testing/table-loading-row";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -25,6 +23,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { type ApiModelProvider, apiRequest, formatDateTime, healthStatusToLabel } from "@/lib/api-client";
 import { reportError } from "@/lib/error-feedback";
+import { toast } from "@/lib/toast";
+import { moduleBreadcrumbs } from "@/navigation/breadcrumbs";
 import { useAuthStore } from "@/stores/auth-store";
 
 type ModelRow = ApiModelProvider;

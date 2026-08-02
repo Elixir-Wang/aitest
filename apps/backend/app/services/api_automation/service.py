@@ -2356,6 +2356,9 @@ def enqueue_api_scenario_ai_plan(project_id: str, payload: ApiScenarioAiPlanIn, 
 
         plan_id = f"aiplan-{secrets.token_hex(8)}"
         expires_at = datetime.now(UTC) + timedelta(minutes=30)
+        redacted_goal = _redact_orchestration_text(payload.goal)
+        persisted_request = payload.model_dump(mode="json")
+        persisted_request["goal"] = redacted_goal
         db.execute(
             """
             INSERT INTO api_scenario_ai_plans
@@ -2368,8 +2371,8 @@ def enqueue_api_scenario_ai_plan(project_id: str, payload: ApiScenarioAiPlanIn, 
                 project_id,
                 payload.scenario_id,
                 int(scenario["revision"]) if scenario else None,
-                _redact_orchestration_text(payload.goal),
-                api_automation_repo.dumps_json(payload.model_dump()),
+                redacted_goal,
+                api_automation_repo.dumps_json(persisted_request),
                 actor["id"],
                 expires_at.isoformat(),
             ),
@@ -2407,6 +2410,8 @@ def execute_api_scenario_ai_plan(
     plan_id: str,
 ) -> dict | None:
     started_at = time.monotonic()
+    selection = None
+    planner = None
     try:
         with connect() as db:
             _require_visible_project(db, project_id, actor)
@@ -2480,6 +2485,7 @@ def execute_api_scenario_ai_plan(
         generation_meta = {
             "stage": "completed",
             "model_call_count": planner.model_call_count,
+            "attempts": list(getattr(planner, "attempt_metrics", [])),
             "total_duration_ms": round((time.monotonic() - started_at) * 1000),
         }
         with connect() as db:
@@ -2505,21 +2511,25 @@ def execute_api_scenario_ai_plan(
             )
         return review.model_dump(mode="json") if cursor.rowcount else None
     except Exception as exc:
+        generation_meta = {
+            "stage": "failed",
+            "model_call_count": int(getattr(planner, "model_call_count", 0)),
+            "attempts": list(getattr(planner, "attempt_metrics", [])),
+            "total_duration_ms": round((time.monotonic() - started_at) * 1000),
+        }
         with connect() as db:
             db.execute(
                 """
                 UPDATE api_scenario_ai_plans
-                SET lifecycle_status = 'failed', error_message = ?, generation_meta_json = ?, updated_at = CURRENT_TIMESTAMP
+                SET lifecycle_status = 'failed', error_message = ?, generation_meta_json = ?,
+                    model_provider = ?, model_name = ?, updated_at = CURRENT_TIMESTAMP
                 WHERE id = ? AND lifecycle_status = 'generating'
                 """,
                 (
                     str(exc),
-                    api_automation_repo.dumps_json(
-                        {
-                            "stage": "failed",
-                            "total_duration_ms": round((time.monotonic() - started_at) * 1000),
-                        }
-                    ),
+                    api_automation_repo.dumps_json(generation_meta),
+                    str(getattr(selection, "provider", "")),
+                    str(getattr(selection, "model", "")),
                     plan_id,
                 ),
             )
@@ -2749,13 +2759,17 @@ def _redact_orchestration_assets(endpoints: list[dict]) -> list[dict]:
 def _redact_orchestration_text(value: str) -> str:
     """Keep intent while ensuring header-like credentials do not enter model or plan storage."""
     patterns = (
-        r"(?i)(authorization\s*[:=]\s*(?:bearer\s+)?)\S+",
-        r"(?i)(cookie\s*[:=]\s*)\S+",
-        r"(?i)((?:token|secret|password|api[_-]?key)\s*[:=]\s*)\S+",
+        (
+            r"(?i)((?:--header|-H)\s+['\"]?[^:'\"\r\n]*(?:authorization|cookie|token|secret|password|(?:api|robot)[_-]?key)[^:'\"\r\n]*\s*:\s*)[^'\"\r\n\\]*",
+            r"\1[REDACTED]",
+        ),
+        (r"(?i)(authorization\s*[:=]\s*(?:bearer\s+)?)\S+", r"\1[REDACTED]"),
+        (r"(?i)(cookie\s*[:=]\s*)\S+", r"\1[REDACTED]"),
+        (r"(?i)((?:token|secret|password|(?:api|robot)[_-]?key)\s*[:=]\s*)\S+", r"\1[REDACTED]"),
     )
     redacted = value
-    for pattern in patterns:
-        redacted = re.sub(pattern, r"\1[REDACTED]", redacted)
+    for pattern, replacement in patterns:
+        redacted = re.sub(pattern, replacement, redacted)
     return redacted
 
 

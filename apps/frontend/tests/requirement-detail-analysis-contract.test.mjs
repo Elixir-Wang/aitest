@@ -108,11 +108,20 @@ test("version history tab renders the table without a duplicate section heading 
 });
 
 test("overview tracks the test point generation stage through the existing test points endpoint", () => {
-  assert.match(pageSource, /const \[testPointOverview, setTestPointOverview\] = useState<ApiTestPointOverview \| null>\(null\)/);
+  assert.match(
+    pageSource,
+    /const \[testPointOverview, setTestPointOverview\] = useState<ApiTestPointOverview \| null>\(null\)/,
+  );
   assert.match(pageSource, /`\/projects\/\$\{projectId\}\/requirements\/\$\{documentId\}\/test-points`/);
   assert.match(pageSource, /<TestPointsPanel[\s\S]*onOverviewChange=\{setTestPointOverview\}/);
-  assert.match(pageSource, /const testPointGenerationRunning = \["queued", "running"\]\.includes\(testPointRunStatus\)/);
-  assert.match(pageSource, /status: testPointGenerationRunning \? "running" : hasGeneratedTestPoints \? "completed" : "upcoming"/);
+  assert.match(
+    pageSource,
+    /const testPointGenerationRunning = \["queued", "running"\]\.includes\(testPointRunStatus\)/,
+  );
+  assert.match(
+    pageSource,
+    /status: testPointGenerationRunning \? "running" : hasGeneratedTestPoints \? "completed" : "upcoming"/,
+  );
   assert.match(pageSource, /toast\.success\("已转为最终需求"\)[\s\S]*await loadTestPointOverview\(\)/);
 });
 
@@ -272,7 +281,10 @@ test("handled clarification answers move behind the managed handled menu", () =>
 
 test("handled clarification item heading stays aligned under the number column", () => {
   assert.match(pageSource, /className="absolute flex h-7 w-\[10\.5rem\] items-center gap-2"/);
-  assert.match(pageSource, /className="block min-w-0 break-words text-foreground text-sm leading-6 indent-\[10\.5rem\]"/);
+  assert.match(
+    pageSource,
+    /className="block min-w-0 break-words indent-\[10\.5rem\] text-foreground text-sm leading-6"/,
+  );
 });
 
 test("legacy query tabs route into requirement analysis", () => {

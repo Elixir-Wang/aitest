@@ -83,10 +83,6 @@ export function OperationLogView({ endpoint, showProjectFilter = false }: Operat
   const moduleOptions = useMemo(() => ["", ...(filterOptions?.modules ?? [])], [filterOptions?.modules]);
   const actionOptions = useMemo(() => ["", ...(filterOptions?.actions ?? [])], [filterOptions?.actions]);
   const resultOptions = useMemo(() => ["", ...(filterOptions?.results ?? [])], [filterOptions?.results]);
-  const resultLabels = useMemo(
-    () => Object.fromEntries(resultOptions.map((v) => [v, v ? operationLogResultToLabel(v) : "全部结果"])),
-    [resultOptions],
-  );
 
   const query = useMemo(() => {
     const params = new URLSearchParams({ page: String(page), page_size: String(pageSize) });

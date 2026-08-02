@@ -17,11 +17,10 @@ import {
 } from "@/components/ai-testing/page-shell";
 import { ProcessingState, TableLoadingRow } from "@/components/ai-testing/table-loading-row";
 import { useLocalTableSelection } from "@/components/ai-testing/use-local-table-selection";
-import { Select, SelectOption } from "@/components/ui/animated-select-1";
 import { Checkbox } from "@/components/ui/checkbox";
 import { requirementAnalysisStatusTone, StatusBadge } from "@/components/ui/status-badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { type ApiProjectVersion, apiRequest, formatDateTime } from "@/lib/api-client";
+import { apiRequest, formatDateTime } from "@/lib/api-client";
 import { reportError } from "@/lib/error-feedback";
 
 type RequirementRow = {
@@ -147,8 +146,6 @@ export function RequirementsPage({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [searchText, setSearchText] = useState("");
-  const [projectVersions, setProjectVersions] = useState<ApiProjectVersion[]>([]);
-  const [projectVersionId, setProjectVersionId] = useState("all");
   const {
     allSelected,
     clearSelection,
@@ -170,12 +167,7 @@ export function RequirementsPage({
       setLoading(true);
       setError("");
       try {
-        const versionQuery =
-          projectVersionId !== "all" ? `?project_version_id=${encodeURIComponent(projectVersionId)}` : "";
-        const path =
-          projectScope === "project" && projectId
-            ? `/projects/${projectId}/requirements${versionQuery}`
-            : "/requirements";
+        const path = projectScope === "project" && projectId ? `/projects/${projectId}/requirements` : "/requirements";
         const data = await apiRequest<RequirementRow[]>(path);
         if (!ignore) {
           setRows(data);
@@ -202,33 +194,7 @@ export function RequirementsPage({
     return () => {
       ignore = true;
     };
-  }, [projectId, projectScope, projectVersionId, setRows]);
-
-  useEffect(() => {
-    let ignore = false;
-    if (projectScope !== "project" || !projectId) {
-      setProjectVersions([]);
-      setProjectVersionId("all");
-      return;
-    }
-    void apiRequest<ApiProjectVersion[]>(`/projects/${projectId}/versions`)
-      .then((versions) => {
-        if (!ignore) setProjectVersions(versions);
-      })
-      .catch((requestError) => {
-        if (ignore) return;
-        setProjectVersions([]);
-        reportError(requestError, {
-          fallbackMessage: "项目版本加载失败",
-          actionLabel: "加载需求版本筛选",
-          method: "GET",
-          path: `/projects/${projectId}/versions`,
-        });
-      });
-    return () => {
-      ignore = true;
-    };
-  }, [projectId, projectScope]);
+  }, [projectId, projectScope, setRows]);
 
   const filteredRows = useMemo(
     () =>
@@ -238,7 +204,6 @@ export function RequirementsPage({
           item.name,
           item.project_name ?? "",
           item.project_version?.version ?? "",
-          item.project_version?.name ?? "",
           String(item.file_count),
           item.status,
           displayStatus.label,
@@ -305,18 +270,6 @@ export function RequirementsPage({
           selectedCount={selectedCount}
           title="需求列表"
         />
-        {projectScope === "project" ? (
-          <div className="mb-3 w-full max-w-xs">
-            <Select placeholder="筛选所属版本" setValue={setProjectVersionId} value={projectVersionId}>
-              <SelectOption value="all">全部版本</SelectOption>
-              {projectVersions.map((version) => (
-                <SelectOption key={version.id} value={version.id}>
-                  {`${version.version}${version.name ? ` · ${version.name}` : ""}${version.is_default ? "（当前）" : ""}`}
-                </SelectOption>
-              ))}
-            </Select>
-          </div>
-        ) : null}
         <div className="overflow-hidden rounded-lg border">
           <Table>
             <TableHeader>
@@ -362,11 +315,7 @@ export function RequirementsPage({
                     {showProjectColumn ? (
                       <TableCell className="text-muted-foreground">{item.project_name || "-"}</TableCell>
                     ) : null}
-                    <TableCell>
-                      {item.project_version
-                        ? `${item.project_version.version}${item.project_version.name ? ` · ${item.project_version.name}` : ""}`
-                        : "-"}
-                    </TableCell>
+                    <TableCell>{item.project_version?.version ?? "-"}</TableCell>
                     <TableCell>{item.file_count}</TableCell>
                     <TableCell>
                       <StatusBadge tone={displayStatus.tone}>

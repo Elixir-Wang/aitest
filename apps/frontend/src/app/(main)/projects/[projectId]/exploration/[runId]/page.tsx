@@ -25,11 +25,11 @@ import { notifyAiTaskStarted } from "@/lib/ai-task-events";
 import { API_BASE_URL, apiAuthHeaders, apiRequest } from "@/lib/api-client";
 import { reportError as reportApiError } from "@/lib/error-feedback";
 import type {
+  ExplorationCoverageView,
   ExplorationMonitorEvent,
   ExplorationMonitorPlanStep,
   ExplorationMonitorState,
   ExplorationMonitorStep,
-  ExplorationCoverageView,
   ExplorationReport,
   ExplorationRun,
   ExplorationRunDetail,
@@ -1288,7 +1288,12 @@ export default function Page() {
           {activeTab === "探索概览" ? (
             <>
               {canStart ? (
-                <Button disabled={starting} onClick={() => void startExploration()} size="sm" variant={canResume ? "outline" : "default"}>
+                <Button
+                  disabled={starting}
+                  onClick={() => void startExploration()}
+                  size="sm"
+                  variant={canResume ? "outline" : "default"}
+                >
                   <Play className="size-4" />
                   {run && hasExplorationStarted(run) ? "重新探索" : "开始探索"}
                 </Button>
@@ -1420,7 +1425,11 @@ function ExplorationCoveragePanel({
 
         <div className="space-y-2">
           {coverage.pages.map((page) => (
-            <details className="rounded-lg border bg-background" key={page.page_id} open={page.actions.some((action) => action.status === "pending")}>
+            <details
+              className="rounded-lg border bg-background"
+              key={page.page_id}
+              open={page.actions.some((action) => action.status === "pending")}
+            >
               <summary className="cursor-pointer px-4 py-3 font-medium text-sm">
                 {page.page_id} · {page.path} · {page.actions.filter((action) => action.status === "completed").length}/
                 {page.actions.length} 动作
@@ -1428,8 +1437,13 @@ function ExplorationCoveragePanel({
               <div className="border-t px-4 py-3">
                 <div className="grid gap-2">
                   {page.actions.map((action) => (
-                    <div className="flex items-center justify-between gap-3 text-sm" key={`${action.state_key}:${action.element_key}:${action.action_type}`}>
-                      <span className="min-w-0 truncate">{action.action_type}：{action.element_key}</span>
+                    <div
+                      className="flex items-center justify-between gap-3 text-sm"
+                      key={`${action.state_key}:${action.element_key}:${action.action_type}`}
+                    >
+                      <span className="min-w-0 truncate">
+                        {action.action_type}：{action.element_key}
+                      </span>
                       <span className="shrink-0 text-muted-foreground">{coverageActionLabel(action.status)}</span>
                     </div>
                   ))}

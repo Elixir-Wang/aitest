@@ -733,7 +733,7 @@ function isCapacityBoundaryFinding(finding: { title: string; statement: string; 
 
 function displayFindingStatement(
   finding: { title: string; statement: string; evidence_refs?: string[] },
-  users?: number,
+  users?: number | null,
 ) {
   const exposesInternalCapacityFields =
     /load\.mode|stages|capacity_analysis|can_claim_stable_capacity|knee_point|\b(?:false|null)\b/i.test(

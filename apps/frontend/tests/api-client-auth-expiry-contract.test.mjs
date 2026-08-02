@@ -21,7 +21,7 @@ test("api client does not redirect while already on an auth page", () => {
 
 test("all api request helpers use the shared unauthorized response handling", () => {
   const throwApiErrorCalls = apiClientSource.match(/throwApiError\(response, payload\);/g) ?? [];
-  assert.equal(throwApiErrorCalls.length, 2);
+  assert.equal(throwApiErrorCalls.length, 3);
   assert.match(apiClientSource, /function throwApiError\(response: Response, payload: unknown\): never/);
   assert.match(apiClientSource, /if \(isAuthRequiredError\(error\)\) {\s*redirectToLoginAfterAuthExpired\(\);\s*}/);
 });

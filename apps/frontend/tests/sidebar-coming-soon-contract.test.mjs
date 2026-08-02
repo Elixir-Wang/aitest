@@ -4,10 +4,11 @@ import { test } from "node:test";
 
 const sidebarSource = readFileSync(new URL("../src/navigation/sidebar/sidebar-items.ts", import.meta.url), "utf8");
 
-test("sidebar marks UI automation and model evaluation as coming soon", () => {
-  assert.match(
+test("sidebar enables UI automation and keeps model evaluation coming soon", () => {
+  assert.match(sidebarSource, /title: "UI 自动化",\s*url: "\/automation\/ui",\s*icon: PlaySquare,/);
+  assert.doesNotMatch(
     sidebarSource,
-    /title: "UI 自动化",\s*url: "\/automation\/ui",\s*icon: PlaySquare,\s*comingSoon: true,\s*disabled: true,/,
+    /title: "UI 自动化",[\s\S]*?comingSoon: true,[\s\S]*?disabled: true,[\s\S]*?title: "接口自动化"/,
   );
   assert.match(
     sidebarSource,

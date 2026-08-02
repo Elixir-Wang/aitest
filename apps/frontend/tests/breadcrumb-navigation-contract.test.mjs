@@ -1,13 +1,9 @@
+import { moduleBreadcrumbs } from "../src/navigation/breadcrumbs.ts";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { moduleBreadcrumbs } from "../src/navigation/breadcrumbs.ts";
-
 test("module breadcrumb builder owns navigation group and module links", () => {
-  assert.deepEqual(moduleBreadcrumbs("requirements"), [
-    { label: "项目工作区" },
-    { label: "需求" },
-  ]);
+  assert.deepEqual(moduleBreadcrumbs("requirements"), [{ label: "项目工作区" }, { label: "需求" }]);
   assert.deepEqual(moduleBreadcrumbs("requirements", { label: "新建需求" }), [
     { label: "项目工作区" },
     { label: "需求", href: "/requirements" },

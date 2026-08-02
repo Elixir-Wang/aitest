@@ -9,8 +9,8 @@ const scenarioModelSource = readFileSync(
   new URL("../src/components/ai-testing/api-automation/api-scenario-model.mjs", import.meta.url),
   "utf8",
 );
-const apiAutomationPageSource = readFileSync(
-  new URL("../src/app/(main)/projects/[projectId]/automation/api/page.tsx", import.meta.url),
+const scenarioStepConfigSource = readFileSync(
+  new URL("../src/components/ai-testing/api-automation/api-scenario-step-config.tsx", import.meta.url),
   "utf8",
 );
 
@@ -28,7 +28,7 @@ test("knowledge chat uses the shared client id generator", () => {
 
 test("api scenarios use the shared client id generator", () => {
   assert.match(scenarioModelSource, /createId\(\)/);
-  assert.match(apiAutomationPageSource, /createId\(\)/);
+  assert.match(scenarioStepConfigSource, /createId\(\)/);
   assert.doesNotMatch(scenarioModelSource, /crypto\.randomUUID\(\)/);
-  assert.doesNotMatch(apiAutomationPageSource, /crypto\.randomUUID\(\)/);
+  assert.doesNotMatch(scenarioStepConfigSource, /crypto\.randomUUID\(\)/);
 });

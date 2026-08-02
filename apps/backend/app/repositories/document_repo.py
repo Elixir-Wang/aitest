@@ -64,17 +64,15 @@ def find_by_project_and_name(db: Connection, project_id: str, name: str, exclude
     ).fetchone()
 
 
-def list_by_project(db: Connection, project_id: str, project_version_id: str = "") -> list[Row]:
-    version_filter = " AND d.project_version_id = ?" if project_version_id else ""
-    params = (project_id, project_version_id) if project_version_id else (project_id,)
+def list_by_project(db: Connection, project_id: str) -> list[Row]:
     return db.execute(
         f"""
         {_DOCUMENT_LIST_SELECT}
-        WHERE d.project_id = ?{version_filter}
+        WHERE d.project_id = ?
         GROUP BY d.id
         ORDER BY d.created_at DESC
         """,
-        params,
+        (project_id,),
     ).fetchall()
 
 

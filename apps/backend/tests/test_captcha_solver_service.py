@@ -6,6 +6,7 @@ from app.services import captcha_solver_service
 
 
 def test_solve_letter_captcha_returns_normalized_uppercase(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(captcha_solver_service, "_DDDDOCR_AVAILABLE", False)
     image_path = tmp_path / "captcha.png"
     image_path.write_bytes(b"fake-png")
 
@@ -24,6 +25,7 @@ def test_solve_letter_captcha_returns_normalized_uppercase(monkeypatch: pytest.M
 
 
 def test_solve_letter_captcha_strips_non_alphanumeric(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(captcha_solver_service, "_DDDDOCR_AVAILABLE", False)
     image_path = tmp_path / "captcha.png"
     image_path.write_bytes(b"fake-png")
 
@@ -40,6 +42,7 @@ def test_solve_letter_captcha_strips_non_alphanumeric(monkeypatch: pytest.Monkey
 
 
 def test_solve_letter_captcha_uses_expected_length_in_prompt(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(captcha_solver_service, "_DDDDOCR_AVAILABLE", False)
     image_path = tmp_path / "captcha.png"
     image_path.write_bytes(b"fake-png")
     captured: dict[str, str] = {}
@@ -64,6 +67,7 @@ def test_extract_captcha_code_rejects_unexpected_length() -> None:
 
 
 def test_solve_letter_captcha_rejects_empty_model_output(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(captcha_solver_service, "_DDDDOCR_AVAILABLE", False)
     image_path = tmp_path / "captcha.png"
     image_path.write_bytes(b"fake-png")
 

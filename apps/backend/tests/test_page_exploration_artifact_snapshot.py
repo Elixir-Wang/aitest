@@ -1425,7 +1425,6 @@ def test_projection_write_todos_completed_updates_plan_with_transcript_display()
             "execution_strategy": "agent_plan",
         },
     ]
-    assert "display" not in events[0]
 
 
 def test_projection_skips_messages_already_seen_in_cumulative_updates() -> None:

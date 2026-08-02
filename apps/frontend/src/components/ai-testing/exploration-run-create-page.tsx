@@ -485,9 +485,7 @@ export function ExplorationRunCreatePage({
     <PageShell
       breadcrumbs={pageBreadcrumbs}
       description={
-        isEditing
-          ? "调整页面探索任务的目标、范围和运行环境。"
-          : "配置目标、范围和运行环境后创建页面探索任务。"
+        isEditing ? "调整页面探索任务的目标、范围和运行环境。" : "配置目标、范围和运行环境后创建页面探索任务。"
       }
       projectScope={projectScope}
       title={isEditing ? "编辑探索任务" : "新建探索任务"}

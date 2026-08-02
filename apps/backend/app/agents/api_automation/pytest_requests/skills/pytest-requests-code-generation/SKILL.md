@@ -23,6 +23,7 @@ description: 在当前业务项目的 pytest_requests 目录中生成或更新 p
 - 只处理当前请求选中的 endpoint，保留未选中的 endpoint 文件。
 - 先确保公共框架完整，再生成接口测试文件。
 - 不生成输入中不存在的路径、字段、状态码、业务规则或断言。
+- 必须保留用例中已明确的响应契约断言，不得删除、修改或弱化。
 - 不嵌入 base URL、token、cookie、密码和本机绝对路径。
 - 环境鉴权由共享 client 和运行时环境变量注入。
 - 普通环境变量占位符沿用 `${API_VAR_<UPPER_SNAKE_NAME>}`。

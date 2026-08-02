@@ -67,7 +67,8 @@ test("performance run page hosts the Locust-native console", () => {
     /router\.push\(`\/projects\/\$\{projectId\}\/performance-tests\/\$\{testId\}\/runs\/\$\{nextRun\.id\}`\)/,
   );
   assert.match(consoleSource, /const canReset = Boolean\(run && !\["created", "stopping"\]\.includes\(run\.status\)\)/);
-  assert.match(consoleSource, /border-b px-4 py-4 sm:px-5/);
+  assert.match(consoleSource, /<header className="space-y-6">/);
+  assert.match(consoleSource, /flex flex-wrap items-start justify-between gap-4/);
 });
 
 test("performance test detail is removed and run controls use project APIs", () => {

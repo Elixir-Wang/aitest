@@ -1,5 +1,3 @@
-import sqlite3
-
 import pytest
 from fastapi import HTTPException
 
@@ -10,6 +8,7 @@ from app.schemas.project_version import ProjectVersionCreateIn
 from app.seed.init_db import init_db
 from app.seed.seeds import seed_system_defaults
 from app.services import project_service, project_version_service
+from app.services.document import documents as document_service
 
 
 ACTOR = {
@@ -125,3 +124,40 @@ def test_invalid_version_format_is_rejected(monkeypatch: pytest.MonkeyPatch, tmp
         )
 
     assert caught.value.detail["code"] == "PROJECT_VERSION_INVALID"
+
+
+def test_requirement_can_be_reassigned_by_project_version(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    project = project_service.create_project(ProjectCreateIn(name="筛选项目"), ACTOR)
+    initial = project_version_service.list_versions(project["id"], ACTOR)[0]
+    next_version = project_version_service.create_version(
+        project["id"],
+        ProjectVersionCreateIn(version="1.1.0"),
+        ACTOR,
+    )
+    with core_db.connect() as db:
+        document_repo.create_document(
+            db,
+            document_id="doc-filter",
+            project_id=project["id"],
+            project_version_id=initial["id"],
+            name="筛选需求",
+            document_type="PRD",
+            status="pending_merge",
+            created_by=ACTOR["id"],
+        )
+
+    updated = document_service.update_document_project_version(
+        project["id"],
+        "doc-filter",
+        next_version["id"],
+        ACTOR,
+    )
+
+    assert updated["document"]["project_version"]["version"] == "1.1.0"
+    documents = document_service.list_documents(project["id"], ACTOR)
+    assert len(documents) == 1
+    assert documents[0]["project_version"]["version"] == "1.1.0"

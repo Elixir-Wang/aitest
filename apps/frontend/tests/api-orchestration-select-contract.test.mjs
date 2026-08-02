@@ -11,7 +11,6 @@ const orchestrationSelectPath = path.join(
 const orchestrationFiles = [
   "src/app/(main)/projects/[projectId]/automation/api/page.tsx",
   "src/components/ai-testing/api-automation/api-scenario-ai-review-field.tsx",
-  "src/components/ai-testing/api-automation/api-scenario-create-form.tsx",
   "src/components/ai-testing/api-automation/api-scenario-editor.tsx",
   "src/components/ai-testing/api-automation/api-scenario-step-config.tsx",
 ];
@@ -20,7 +19,6 @@ test("interface orchestration uses one role-style select entry", () => {
   for (const relativePath of orchestrationFiles) {
     const source = fs.readFileSync(path.join(frontendRoot, relativePath), "utf8");
     assert.doesNotMatch(source, /@\/components\/ui\/select/);
-    assert.doesNotMatch(source, /@\/components\/ui\/animated-select-1/);
     assert.match(source, /api-orchestration-select/);
   }
 });

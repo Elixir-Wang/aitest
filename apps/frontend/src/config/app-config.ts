@@ -8,7 +8,6 @@ export const APP_CONFIG = {
   copyright: `© ${currentYear}, AI 测试系统.`,
   meta: {
     title: "AI 测试系统",
-    description:
-      "AI 测试系统用于需求分析、站点探索、知识库生成、测试用例生成、UI 自动化执行和报告闭环。",
+    description: "AI 测试系统用于需求分析、站点探索、知识库生成、测试用例生成、UI 自动化执行和报告闭环。",
   },
 };

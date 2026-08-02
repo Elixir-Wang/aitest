@@ -4,7 +4,6 @@ import { useRouter, useSearchParams } from "next/navigation";
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Controller, useForm } from "react-hook-form";
-import { toast } from "sonner";
 import { z } from "zod";
 
 import { Button } from "@/components/ui/button";
@@ -13,6 +12,7 @@ import { Field, FieldContent, FieldError, FieldGroup, FieldLabel } from "@/compo
 import { Input } from "@/components/ui/input";
 import { type ApiUser, apiRequest, roleToLabel } from "@/lib/api-client";
 import { reportError } from "@/lib/error-feedback";
+import { toast } from "@/lib/toast";
 import { useAuthStore } from "@/stores/auth-store";
 
 const formSchema = z.object({

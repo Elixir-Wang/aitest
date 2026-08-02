@@ -5,7 +5,6 @@ import { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 
 import { Pencil, Plus, Star, Trash2 } from "lucide-react";
-import { toast } from "sonner";
 
 import { PageShell, RowActions, ShellSection } from "@/components/ai-testing/page-shell";
 import { TableLoadingRow } from "@/components/ai-testing/table-loading-row";
@@ -36,6 +35,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { type ApiProject, type ApiProjectVersion, apiRequest, formatDateTime } from "@/lib/api-client";
 import { reportError } from "@/lib/error-feedback";
+import { toast } from "@/lib/toast";
 import { moduleBreadcrumbs } from "@/navigation/breadcrumbs";
 import { useAuthStore } from "@/stores/auth-store";
 
@@ -195,7 +195,6 @@ export default function Page() {
       tabs={[
         { label: "项目概览", href: `/projects/${projectId}` },
         { label: "版本管理", href: `/projects/${projectId}/versions` },
-        { label: "项目设置", href: `/projects/${projectId}/settings` },
       ]}
       title="版本管理"
     >

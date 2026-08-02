@@ -53,12 +53,12 @@ test("lifecycle editor preserves structured response extraction and scripts", ()
   assert.match(source, /变量动作/);
 });
 
-test("response extractors use a two-row labeled card layout", () => {
+test("response extractors use a labeled stacked layout", () => {
   assert.match(source, /保存为/);
   assert.match(source, /来源/);
   assert.match(source, /提取路径/);
-  assert.match(source, /grid-cols-\[minmax\(0,1fr\)_minmax\(0,1fr\)_36px\]/);
-  assert.match(source, /col-span-2/);
+  assert.match(source, /relative space-y-3 border-b p-3 pr-12 last:border-b-0/);
+  assert.match(source, /aria-label=\{`删除第 \$\{index \+ 1\} 条响应提取`\}/);
 });
 
 test("response extractor path control adapts to its source", () => {
@@ -84,7 +84,8 @@ test("response extractor exposes required behavior", () => {
 
 test("assertion rows use stable identity and explicit field labels", () => {
   assert.match(source, /key=\{assertion\.id \?\? assertion\.type\}/);
-  assert.match(source, /crypto\.randomUUID\(\)/);
+  assert.match(source, /createId\(\)/);
+  assert.doesNotMatch(source, /crypto\.randomUUID\(\)/);
   assert.match(source, /响应来源/);
   assert.match(source, /目标路径/);
   assert.match(source, /判断条件/);

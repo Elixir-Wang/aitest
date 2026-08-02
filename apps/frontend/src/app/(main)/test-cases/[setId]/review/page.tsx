@@ -22,7 +22,6 @@ import {
   Sparkles,
   X,
 } from "lucide-react";
-import { toast } from "@/lib/toast";
 
 import { PageShell, ShellSection } from "@/components/ai-testing/page-shell";
 import { TestCaseMindMap } from "@/components/ai-testing/test-case-mind-map";
@@ -52,6 +51,7 @@ import {
   apiRequest,
 } from "@/lib/api-client";
 import { testCasePriorityVisual } from "@/lib/test-case-priority";
+import { toast } from "@/lib/toast";
 import { cn } from "@/lib/utils";
 import { moduleBreadcrumbs } from "@/navigation/breadcrumbs";
 import { useProjectContextStore } from "@/stores/project-context-store";
@@ -489,11 +489,7 @@ export default function TestCaseReviewPage() {
                   <>
                     <CaseDetailHeader
                       onApprove={() =>
-                        updateReview(
-                          selectedCase.id,
-                          { status: "approved", review_feedback: "" },
-                          { moveNext: true },
-                        )
+                        updateReview(selectedCase.id, { status: "approved", review_feedback: "" }, { moveNext: true })
                       }
                       onCancelEdit={() =>
                         setInlineEdit({ caseId: "", preconditions: "", steps: [], expectedResult: "" })
@@ -594,7 +590,7 @@ export default function TestCaseReviewPage() {
 }
 
 function filterChipTone(item: ReviewFilter, isActive: boolean) {
-  const activeRing = "ring-black/10 dark:ring-white/30";
+  if (!isActive) return "bg-muted text-muted-foreground ring-border";
   if (item === "rejected") return "bg-rose-500 text-white ring-rose-600/50";
   if (item === "approved") return "bg-emerald-500 text-white ring-emerald-600/50";
   if (item === "ready_for_review") return "bg-amber-500 text-white ring-amber-600/50";
@@ -627,9 +623,7 @@ function ReviewSummaryStrip({ actions, stats }: { actions: ReactNode; stats: Api
         <SummaryStatCard accent="amber" icon={Clock} label="评审进度" suffix="%" value={reviewProgress} />
         <SummaryStatCard accent="blue" icon={Sparkles} label="用例数量" value={stats.case_count} />
       </div>
-      <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 lg:self-center">
-        {actions}
-      </div>
+      <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 lg:self-center">{actions}</div>
     </div>
   );
 }
@@ -679,20 +673,13 @@ function SummaryStatCard({
     >
       <span
         aria-hidden="true"
-        className={cn(
-          "flex size-7 shrink-0 items-center justify-center rounded-md",
-          t.iconBg,
-          t.iconFg,
-        )}
+        className={cn("flex size-7 shrink-0 items-center justify-center rounded-md", t.iconBg, t.iconFg)}
       >
         <Icon className="size-3.5" />
       </span>
       <span className="truncate font-medium text-muted-foreground text-xs">{label}</span>
       <span
-        className={cn(
-          "ml-auto flex items-baseline font-mono font-semibold text-lg leading-none tabular-nums",
-          t.numFg,
-        )}
+        className={cn("ml-auto flex items-baseline font-mono font-semibold text-lg tabular-nums leading-none", t.numFg)}
       >
         <SlidingNumber value={value} />
         {suffix ? <span className="ml-0.5 text-xs">{suffix}</span> : null}
@@ -701,15 +688,7 @@ function SummaryStatCard({
   );
 }
 
-function CaseListCard({
-  testCase,
-  active,
-  onClick,
-}: {
-  testCase: ApiTestCase;
-  active: boolean;
-  onClick: () => void;
-}) {
+function CaseListCard({ testCase, active, onClick }: { testCase: ApiTestCase; active: boolean; onClick: () => void }) {
   const tone = reviewTone(testCase.status);
   return (
     <button
@@ -765,11 +744,7 @@ function CaseDetailHeader({
 }) {
   const tone = reviewTone(selectedCase.status);
   const StatusIcon =
-    selectedCase.status === "approved"
-      ? CheckCircle2
-      : selectedCase.status === "rejected"
-        ? AlertCircle
-        : Clock;
+    selectedCase.status === "approved" ? CheckCircle2 : selectedCase.status === "rejected" ? AlertCircle : Clock;
 
   return (
     <div className="border-b bg-white px-6 py-5 dark:bg-card">
@@ -777,10 +752,7 @@ function CaseDetailHeader({
         <div className="flex min-w-0 items-start gap-3">
           <span
             aria-hidden="true"
-            className={cn(
-              "mt-1 flex size-9 shrink-0 items-center justify-center rounded-md",
-              tone.iconBg,
-            )}
+            className={cn("mt-1 flex size-9 shrink-0 items-center justify-center rounded-md", tone.iconBg)}
           >
             <StatusIcon className="size-4" />
           </span>
@@ -842,11 +814,9 @@ function ModulePathInline({ moduleName }: { moduleName: string }) {
   return (
     <span className="inline-flex items-center gap-1">
       {segments.map((segment, index) => (
-        <span className="inline-flex items-center gap-1" key={`${segment}-${index}`}>
+        <span className="inline-flex items-center gap-1" key={segments.slice(0, index + 1).join("/")}>
           {index > 0 ? <ChevronRight className="size-3 text-muted-foreground/60" /> : null}
-          <span className={index === segments.length - 1 ? "text-foreground" : "text-muted-foreground"}>
-            {segment}
-          </span>
+          <span className={index === segments.length - 1 ? "text-foreground" : "text-muted-foreground"}>{segment}</span>
         </span>
       ))}
     </span>
@@ -973,10 +943,7 @@ function StepList({ testCase }: { testCase: ApiTestCase }) {
       </div>
       <ol className="flex flex-col gap-2">
         {keyedSteps.map(({ rowKey, step }, index) => (
-          <li
-            className="overflow-hidden rounded-md border bg-white dark:bg-card"
-            key={rowKey}
-          >
+          <li className="overflow-hidden rounded-md border bg-white dark:bg-card" key={rowKey}>
             <div className="flex flex-col gap-3 p-3 md:grid md:grid-cols-[2.25rem_minmax(0,1fr)_minmax(0,1fr)] md:items-start md:gap-4 md:p-3.5">
               <span
                 aria-hidden="true"
@@ -984,17 +951,15 @@ function StepList({ testCase }: { testCase: ApiTestCase }) {
               >
                 {index + 1}
               </span>
-              <div className="flex min-w-0 items-start gap-2 md:border-r md:border-slate-200/70 md:pr-4 md:dark:border-border">
+              <div className="flex min-w-0 items-start gap-2 md:border-slate-200/70 md:border-r md:pr-4 md:dark:border-border">
                 <p className="min-w-0 flex-1 text-[#101828] text-sm leading-relaxed dark:text-foreground">
-                  {stepActionText(step) || (
-                    <span className="text-muted-foreground/70 italic">未填写操作步骤</span>
-                  )}
+                  {stepActionText(step) || <span className="text-muted-foreground/70 italic">未填写操作步骤</span>}
                 </p>
               </div>
               <div className="flex min-w-0 items-start gap-2 rounded-md bg-emerald-50/70 px-2.5 py-1.5 text-emerald-800 text-xs ring-1 ring-emerald-200/50 md:leading-relaxed md:dark:bg-emerald-500/10 md:dark:ring-emerald-500/20">
                 <span className="min-w-0 flex-1">
                   {step.expected_result || testCase.expected_result || (
-                    <span className="italic text-muted-foreground/80">未填写预期结果</span>
+                    <span className="text-muted-foreground/80 italic">未填写预期结果</span>
                   )}
                 </span>
               </div>
@@ -1022,11 +987,7 @@ function InlineCaseEditor({
           value={editState.preconditions}
         />
       </ReviewBlock>
-      <ReviewBlock
-        icon={ListChecks}
-        subtitle={`${editState.steps.length} 步`}
-        title="测试步骤"
-      >
+      <ReviewBlock icon={ListChecks} subtitle={`${editState.steps.length} 步`} title="测试步骤">
         <EditableStepList editState={editState} onChange={onChange} />
       </ReviewBlock>
     </div>

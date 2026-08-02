@@ -183,13 +183,6 @@ def _validate_expected_length(value: str, expected_length: int | None) -> str:
     if actual_length == expected_length:
         return value
 
-    # 🔧 智能处理长度不匹配：尝试截取而不是直接失败
-    if actual_length > expected_length:
-        # 识别结果过长：截取前N位（通常首尾识别更准确）
-        # 优先保留前expected_length位，因为ddddocr通常在开头识别更准
-        truncated = value[:expected_length]
-        print(f"⚠️  验证码识别结果过长，从 {actual_length} 位截取到 {expected_length} 位: \"{value}\" -> \"{truncated}\"")
-        return truncated
-
-    # 识别结果过短：这种情况仍然失败，因为无法补全
-    raise CaptchaSolverError(f"验证码识别结果过短，识别出 {actual_length} 位但页面要求 {expected_length} 位。")
+    raise CaptchaSolverError(
+        f"验证码识别结果长度不符，识别出 {actual_length} 位但页面要求 {expected_length} 位。"
+    )

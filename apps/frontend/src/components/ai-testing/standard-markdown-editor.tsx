@@ -106,7 +106,9 @@ function EditableBlock({
           <EditableText
             key={getListItemKey(item, itemIndex)}
             onCommit={(text) => {
-              const items = block.items.map((currentItem, currentIndex) => (currentIndex === itemIndex ? text : currentItem));
+              const items = block.items.map((currentItem, currentIndex) =>
+                currentIndex === itemIndex ? text : currentItem,
+              );
               onChange(index, { ...block, items });
             }}
             placeholder="列表项"
@@ -166,7 +168,11 @@ function SourceBlockEditor({
   if (editing) {
     return (
       <div className="requirement-markdown-editor-source">
-        <Textarea className="min-h-44 font-mono text-sm" onChange={(event) => setDraft(event.target.value)} value={draft} />
+        <Textarea
+          className="min-h-44 font-mono text-sm"
+          onChange={(event) => setDraft(event.target.value)}
+          value={draft}
+        />
         <div className="mt-2 flex justify-end gap-2">
           <Button
             onClick={() => {
@@ -325,7 +331,9 @@ function startsNewBlock(lines: string[], index: number) {
 }
 
 function isTableStart(lines: string[], index: number) {
-  return Boolean(lines[index]?.includes("|") && /^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?\s*$/.test(lines[index + 1] ?? ""));
+  return Boolean(
+    lines[index]?.includes("|") && /^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?\s*$/.test(lines[index + 1] ?? ""),
+  );
 }
 
 function stripBlockquotePrefix(content: string) {

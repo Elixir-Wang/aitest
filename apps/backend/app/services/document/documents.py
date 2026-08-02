@@ -39,14 +39,10 @@ from . import serializer as document_serializer
 
 # === Listing ============================================================
 
-def list_documents(project_id: str, actor, *, project_version_id: str = "") -> list[dict]:
+def list_documents(project_id: str, actor) -> list[dict]:
     task_service.recover_stale_requirement_analysis_runs(project_id=project_id)
     with connect() as db:
-        if project_version_id:
-            from app.services import project_version_service
-
-            project_version_service.resolve_requirement_version(db, project_id, project_version_id)
-        rows = document_repo.list_by_project(db, project_id, project_version_id)
+        rows = document_repo.list_by_project(db, project_id)
         return [document_serializer.serialize_document(row, actor["role"]) for row in rows]
 
 

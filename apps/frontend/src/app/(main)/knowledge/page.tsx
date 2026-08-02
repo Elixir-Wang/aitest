@@ -501,36 +501,33 @@ export default function Page() {
     [],
   );
 
-  const loadProjectConversations = useCallback(
-    async (scope: "all" | "project", targetProjectId?: string) => {
-      const scopeKey = scope === "all" ? "all:" : `project:${targetProjectId ?? ""}`;
-      const conversationLoadRunId = projectConversationLoadRunIdRef.current + 1;
-      projectConversationLoadRunIdRef.current = conversationLoadRunId;
-      const isCurrentConversationLoad = () =>
-        projectConversationLoadRunIdRef.current === conversationLoadRunId &&
-        latestProjectQueryScopeRef.current === scopeKey;
-      setLoading(true);
-      setError("");
-      try {
-        const conversationsPath =
-          scope === "all" ? "/knowledge/conversations" : `/projects/${targetProjectId}/knowledge/conversations`;
-        const conversations = await apiRequest<ApiKnowledgeConversation[]>(conversationsPath);
-        if (isCurrentConversationLoad()) {
-          setProjectConversations(conversations);
-        }
-      } catch (nextError) {
-        if (isCurrentConversationLoad()) {
-          setError(nextError instanceof Error ? nextError.message : "加载项目知识库对话失败。");
-          setProjectConversations([]);
-        }
-      } finally {
-        if (isCurrentConversationLoad()) {
-          setLoading(false);
-        }
+  const loadProjectConversations = useCallback(async (scope: "all" | "project", targetProjectId?: string) => {
+    const scopeKey = scope === "all" ? "all:" : `project:${targetProjectId ?? ""}`;
+    const conversationLoadRunId = projectConversationLoadRunIdRef.current + 1;
+    projectConversationLoadRunIdRef.current = conversationLoadRunId;
+    const isCurrentConversationLoad = () =>
+      projectConversationLoadRunIdRef.current === conversationLoadRunId &&
+      latestProjectQueryScopeRef.current === scopeKey;
+    setLoading(true);
+    setError("");
+    try {
+      const conversationsPath =
+        scope === "all" ? "/knowledge/conversations" : `/projects/${targetProjectId}/knowledge/conversations`;
+      const conversations = await apiRequest<ApiKnowledgeConversation[]>(conversationsPath);
+      if (isCurrentConversationLoad()) {
+        setProjectConversations(conversations);
       }
-    },
-    [],
-  );
+    } catch (nextError) {
+      if (isCurrentConversationLoad()) {
+        setError(nextError instanceof Error ? nextError.message : "加载项目知识库对话失败。");
+        setProjectConversations([]);
+      }
+    } finally {
+      if (isCurrentConversationLoad()) {
+        setLoading(false);
+      }
+    }
+  }, []);
 
   useEffect(() => {
     if (isCompanyKnowledge || isSearchSettings) {

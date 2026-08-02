@@ -5,7 +5,6 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 
 import { Eye, FileChartColumn, Loader2, Trash2 } from "lucide-react";
-import { toast } from "sonner";
 
 import { ListToolbar, PageShell, RowActions, ShellSection } from "@/components/ai-testing/page-shell";
 import { ProcessingState, TableLoadingRow } from "@/components/ai-testing/table-loading-row";
@@ -23,6 +22,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { StatusBadge, type StatusBadgeTone } from "@/components/ui/status-badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { deleteReportCenterItem, formatDateTime, listReportCenterItems, type ReportCenterItem } from "@/lib/api-client";
+import { toast } from "@/lib/toast";
 import { moduleBreadcrumbs } from "@/navigation/breadcrumbs";
 import { useAuthStore } from "@/stores/auth-store";
 

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 
-import { apiRequest, type ApiProject } from "@/lib/api-client";
+import { type ApiProject, apiRequest } from "@/lib/api-client";
 
 export function useProjectName(projectId: string | undefined, fallback = "项目") {
   const [projectName, setProjectName] = useState(fallback);

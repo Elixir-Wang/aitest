@@ -26,9 +26,15 @@ def test_new_agents_do_not_use_old_prompt_or_runner_modules() -> None:
     forbidden = [
         *NEW_AGENTS_ROOT.glob("**/prompts.py"),
         *NEW_AGENTS_ROOT.glob("**/runner.py"),
-        *NEW_AGENTS_ROOT.glob("**/*_agent.py"),
     ]
     assert [str(path.relative_to(BACKEND_APP.parent)) for path in sorted(forbidden)] == []
+
+    specialized_agents = sorted(NEW_AGENTS_ROOT.glob("**/*_agent.py"))
+    assert [str(path.relative_to(BACKEND_APP.parent)) for path in specialized_agents] == [
+        "app/agents/api_automation/self_healing/diagnosis_agent.py",
+        "app/agents/api_automation/self_healing/repair_agent.py",
+        "app/agents/test_point_generation/obligation_agent.py",
+    ]
 
 
 def test_business_agent_packages_have_agent_entrypoint() -> None:
@@ -36,6 +42,7 @@ def test_business_agent_packages_have_agent_entrypoint() -> None:
     for package in sorted(path for path in NEW_AGENTS_ROOT.iterdir() if path.is_dir()):
         if package.name.startswith("_") or package.name in {
             "api_automation",
+            "performance_testing",
             "requirement_analysis",
             "shared",
             "site_exploration",

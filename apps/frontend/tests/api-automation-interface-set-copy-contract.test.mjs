@@ -17,6 +17,14 @@ const taskRunningIndicatorSource = readFileSync(
   new URL("../src/components/ai-testing/task-running-indicator.tsx", import.meta.url),
   "utf8",
 );
+const runDetailSource = readFileSync(
+  new URL("../src/components/ai-testing/api-automation/api-run-detail.tsx", import.meta.url),
+  "utf8",
+);
+const runDetailPageSource = readFileSync(
+  new URL("../src/app/(main)/projects/[projectId]/automation/api/runs/[runId]/page.tsx", import.meta.url),
+  "utf8",
+);
 
 test("api automation interface-set list uses requested create and count copy", () => {
   assert.match(pageSource, /createLabel="新建接口集"/);
@@ -320,11 +328,12 @@ test("project api automation run records use a persistent paged history list", (
 });
 
 test("project api automation run detail supports deep links, logs, reports, and reruns", () => {
-  assert.match(projectPageSource, /const selectedRunId = searchParams\.get\("run"\)/);
-  assert.match(projectPageSource, /getApiAutomationRunLogs\(projectId, nextRun\.id\)/);
-  assert.match(projectPageSource, /getApiAutomationRunReport\(projectId, run\.id\)/);
-  assert.match(projectPageSource, /按原配置重新执行/);
-  assert.match(projectPageSource, /handleRun\(run\.script_ids, run\.api_environment_id \?\? ""\)/);
+  assert.match(runDetailPageSource, /<ApiRunDetail projectId=\{params\.projectId\} runId=\{params\.runId\} \/>/);
+  assert.match(runDetailSource, /getApiAutomationRunLogs\(projectId, runId\)/);
+  assert.match(runDetailSource, /getApiAutomationRunReport\(projectId, runId\)/);
+  assert.match(runDetailSource, /重新执行/);
+  assert.match(runDetailSource, /script_ids: run\.script_ids/);
+  assert.match(runDetailSource, /api_environment_id: run\.api_environment_id/);
 });
 
 test("project api automation case detail shows structured QA review sections", () => {
@@ -408,9 +417,9 @@ test("project api automation generation and execution notify the top running tas
 
 test("project api automation endpoint schema detail uses compact badges and response header", () => {
   assert.match(projectPageSource, /function ContentTypeBadge/);
-  assert.match(projectPageSource, /rounded-md border bg-muted\/40 px-2 py-1 font-mono/);
+  assert.match(projectPageSource, /rounded-md border bg-muted\/40 px-2 py-1 font-mono text-muted-foreground text-xs/);
   assert.match(projectPageSource, /md:grid-cols-\[minmax\(220px,1\.1fr\)_64px_56px_minmax\(220px,1\.4fr\)\]/);
-  assert.match(projectPageSource, /border-b bg-muted\/20 px-4 py-3/);
+  assert.match(projectPageSource, /flex flex-wrap items-center justify-between gap-3 border-b pb-2/);
   assert.match(projectPageSource, /<ContentTypeBadge key=\{contentType\} value=\{contentType\} \/>/);
 });
 

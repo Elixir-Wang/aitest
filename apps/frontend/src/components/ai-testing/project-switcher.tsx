@@ -43,7 +43,11 @@ export function ProjectSwitcher({ scope: _scope }: { scope: "all" | "project" })
         if (!ignore) {
           const activeProjects = projects.filter((project) => project.status !== "archived");
           setProjectOptions(activeProjects);
-          if (currentScope === "project" && currentProjectId && !activeProjects.some((project) => project.id === currentProjectId)) {
+          if (
+            currentScope === "project" &&
+            currentProjectId &&
+            !activeProjects.some((project) => project.id === currentProjectId)
+          ) {
             selectAllProjects();
           }
         }

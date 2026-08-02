@@ -2,7 +2,8 @@
 
 import type { ApiTestCase } from "@/lib/api-client";
 import { testCasePriorityVisual } from "@/lib/test-case-priority";
-import { MindMapTree, type MindMapItemConfig, type MindMapTreeProps } from "./mind-map-tree";
+
+import { type MindMapItemConfig, MindMapTree, type MindMapTreeProps } from "./mind-map-tree";
 
 type Props = Omit<MindMapTreeProps<ApiTestCase>, "config" | "items" | "onSelect" | "selectedId"> & {
   cases: ApiTestCase[];

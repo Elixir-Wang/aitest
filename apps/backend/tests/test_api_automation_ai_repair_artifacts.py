@@ -19,7 +19,7 @@ def test_manifest_hashes_source_and_ignores_runtime_files(tmp_path: Path) -> Non
     manifest = build_manifest(suite)
 
     assert list(manifest) == ["testcases/test_api.py"]
-    assert manifest["testcases/test_api.py"]["size"] == 13
+    assert manifest["testcases/test_api.py"]["size"] == len(b"assert True\n")
     assert len(manifest["testcases/test_api.py"]["sha256"]) == 64
 
 

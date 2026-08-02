@@ -3,12 +3,19 @@
 
 使用 pytest 运行，验证完整探索流程。
 """
+import os
 import pytest
 import time
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 
 from app.services.page_exploration import service as page_exploration_service
+
+
+pytestmark = pytest.mark.skipif(
+    os.getenv("RUN_PAGE_EXPLORATION_E2E") != "1",
+    reason="requires an existing login session and external browser environment",
+)
 
 
 @pytest.fixture

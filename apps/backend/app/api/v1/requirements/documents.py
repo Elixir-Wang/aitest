@@ -8,7 +8,7 @@
 - ``DELETE /projects/{project_id}/requirements/{document_id}`` —— 删除文档
 """
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, Query, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, UploadFile
 
 from app.dependencies.auth import current_user, require_admin
 from app.schemas.document import SourceDocumentProjectVersionUpdateIn, SourceDocumentUpdateIn
@@ -19,12 +19,8 @@ router = APIRouter(prefix="/projects/{project_id}/requirements", tags=["requirem
 
 
 @router.get("")
-def list_requirements(
-    project_id: str,
-    project_version_id: str = Query(default=""),
-    actor=Depends(current_user),
-) -> list[dict]:
-    return document_documents.list_documents(project_id, actor, project_version_id=project_version_id)
+def list_requirements(project_id: str, actor=Depends(current_user)) -> list[dict]:
+    return document_documents.list_documents(project_id, actor)
 
 
 @router.post("")

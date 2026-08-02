@@ -15,10 +15,5 @@ export default function Page() {
     hydrate();
   }, [hydrate]);
 
-  return (
-    <ExplorationRunCreatePage
-      projectId={scopedProjectId ?? undefined}
-      projectScope={scope}
-    />
-  );
+  return <ExplorationRunCreatePage projectId={scopedProjectId ?? undefined} projectScope={scope} />;
 }

@@ -14,7 +14,6 @@ import {
   Sparkles,
   X,
 } from "lucide-react";
-import { toast } from "@/lib/toast";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -39,6 +38,7 @@ import {
   getApiRepairSession,
   rejectApiRepairAttempt,
 } from "@/lib/api-client";
+import { toast } from "@/lib/toast";
 
 import { ApiRepairDiffDialog } from "./api-repair-diff-dialog";
 import { ApiRepairProgress, apiRepairStatusLabel } from "./api-repair-progress";

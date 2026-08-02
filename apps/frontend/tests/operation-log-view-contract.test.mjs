@@ -34,9 +34,18 @@ test("operation log filters use dynamic options from the backend without static 
   assert.match(viewSource, /params\.set\("project_id", projectId\);/);
   assert.match(viewSource, /setProjects\(await apiRequest<ApiProject\[\]>\("\/projects"\)\);/);
   assert.doesNotMatch(viewSource, /function mergeOptions/);
-  assert.match(viewSource, /const moduleOptions = useMemo\(\(\) => \["", \.\.\.\(filterOptions\?\.modules \?\? \[\]\)\]/);
-  assert.match(viewSource, /const actionOptions = useMemo\(\(\) => \["", \.\.\.\(filterOptions\?\.actions \?\? \[\]\)\]/);
-  assert.match(viewSource, /const resultOptions = useMemo\(\(\) => \["", \.\.\.\(filterOptions\?\.results \?\? \[\]\)\]/);
+  assert.match(
+    viewSource,
+    /const moduleOptions = useMemo\(\(\) => \["", \.\.\.\(filterOptions\?\.modules \?\? \[\]\)\]/,
+  );
+  assert.match(
+    viewSource,
+    /const actionOptions = useMemo\(\(\) => \["", \.\.\.\(filterOptions\?\.actions \?\? \[\]\)\]/,
+  );
+  assert.match(
+    viewSource,
+    /const resultOptions = useMemo\(\(\) => \["", \.\.\.\(filterOptions\?\.results \?\? \[\]\)\]/,
+  );
 });
 
 test("operation log view exports the current filters as a csv download", () => {

@@ -21,7 +21,7 @@ test("requirement version detail back action returns to the requirement overview
 });
 
 test("requirement version breadcrumb uses the loaded document name without fallback", () => {
-  assert.match(pageSource, /documentName\n\s*\? \[\{ label: documentName, href:/);
+  assert.match(pageSource, /\.\.\.\(documentName \? \[\{ label: documentName, href:/);
   assert.match(pageSource, /moduleBreadcrumbs\(\s*"requirements"/);
   assert.doesNotMatch(pageSource, /\{ label: documentName \|\| "需求文档"/);
 });

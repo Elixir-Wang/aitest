@@ -1,0 +1,9 @@
+edges:
+- id: edge-612de0e25c2551c9
+  run_id: exp_tfmqXB7Lgb__EMYsEgEG-A
+  from_page_id: page-agentStore
+  to_page_id: page-workspace
+  action: click
+  from_url: /agentStore
+  to_url: /workspace
+  observed_at: '2026-08-02T16:13:07.660750+00:00'

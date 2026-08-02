@@ -2047,9 +2047,8 @@ export async function streamPerformanceRun(
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
-  while (true) {
-    const chunk = await reader.read();
-    if (chunk.done) break;
+  let chunk = await reader.read();
+  while (!chunk.done) {
     buffer += decoder.decode(chunk.value, { stream: true });
     const messages = buffer.split("\n\n");
     buffer = messages.pop() ?? "";
@@ -2058,6 +2057,7 @@ export async function streamPerformanceRun(
       const data = message.match(/^data: (.+)$/m)?.[1];
       if (event && data) onEvent(event, JSON.parse(data) as Record<string, unknown>);
     }
+    chunk = await reader.read();
   }
 }
 

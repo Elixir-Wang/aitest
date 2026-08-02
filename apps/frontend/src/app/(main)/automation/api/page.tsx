@@ -5,7 +5,6 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 
 import { ClipboardCheck, Loader2, Pencil, Plus, X } from "lucide-react";
-import { toast } from "@/lib/toast";
 
 import { ListToolbar, PageShell, RowActions, ShellSection } from "@/components/ai-testing/page-shell";
 import { TableLoadingRow } from "@/components/ai-testing/table-loading-row";
@@ -34,6 +33,7 @@ import {
   listApiAutomationCaseSets,
   updateApiAutomationCaseSet,
 } from "@/lib/api-client";
+import { toast } from "@/lib/toast";
 import { moduleBreadcrumbs } from "@/navigation/breadcrumbs";
 
 type ApiCaseSetForm = {
@@ -155,7 +155,7 @@ export default function Page() {
                 <TableHead className="w-10">
                   <Checkbox
                     aria-label="选择全部接口用例集"
-                    checked={selection.allSelected || (selection.partiallySelected ? "indeterminate" : false)}
+                    checked={selection.allSelected ? true : selection.partiallySelected ? "indeterminate" : false}
                     disabled={loading}
                     onCheckedChange={(checked) => selection.toggleAll(Boolean(checked))}
                   />

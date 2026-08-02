@@ -6,12 +6,12 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 
 import { ArrowLeft, CheckCircle2, ClipboardCheck, Code2, Loader2, RefreshCw, ShieldAlert } from "lucide-react";
-import { toast } from "@/lib/toast";
 
 import { PageShell, ShellSection } from "@/components/ai-testing/page-shell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { type ApiAutomationTestCase, getApiAutomationTestCase } from "@/lib/api-client";
+import { toast } from "@/lib/toast";
 import { cn } from "@/lib/utils";
 import { moduleBreadcrumbs } from "@/navigation/breadcrumbs";
 

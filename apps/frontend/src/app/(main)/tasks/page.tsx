@@ -5,7 +5,6 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { AlertTriangle, CheckCircle2, ChevronLeft, ChevronRight, Clock3, Eye, ListTodo } from "lucide-react";
 
 import { ListToolbar, MetricCard, PageShell, ShellSection } from "@/components/ai-testing/page-shell";
-import { moduleBreadcrumbs } from "@/navigation/breadcrumbs";
 import { ProcessingState } from "@/components/ai-testing/table-loading-row";
 import { Button } from "@/components/ui/button";
 import { Button as PaginationButton } from "@/components/ui/button-1";
@@ -16,6 +15,7 @@ import { StatusBadge, taskStatusTone } from "@/components/ui/status-badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { type ApiTaskItem, type ApiTaskList, apiRequest, formatDateTime } from "@/lib/api-client";
+import { moduleBreadcrumbs } from "@/navigation/breadcrumbs";
 import { useAuthStore } from "@/stores/auth-store";
 import { useProjectContextStore } from "@/stores/project-context-store";
 
@@ -50,6 +50,11 @@ function OverflowTooltipText({ value }: { value: string }) {
   const [isOverflowing, setIsOverflowing] = useState(false);
 
   useLayoutEffect(() => {
+    if (!value) {
+      setIsOverflowing(false);
+      return;
+    }
+
     const node = textRef.current;
     if (!node) return;
 

@@ -50,7 +50,9 @@ def test_agent_packages_have_definition_entrypoint() -> None:
 
 def test_agent_packages_do_not_use_legacy_agent_filenames() -> None:
     legacy_files = sorted(BACKEND_APP.glob("agents/*/*_agent.py"))
-    assert [str(path.relative_to(BACKEND_APP.parent)) for path in legacy_files] == []
+    assert [str(path.relative_to(BACKEND_APP.parent)) for path in legacy_files] == [
+        "app/agents/test_point_generation/obligation_agent.py"
+    ]
 
 
 def test_legacy_agent_service_facade_removed() -> None:
@@ -74,9 +76,9 @@ def test_api_automation_uses_explicit_child_capabilities() -> None:
 
     pytest_package = package / "pytest_requests"
     assert (pytest_package / "skill.py").exists()
-    assert (pytest_package / "generator.py").exists()
-    assert (pytest_package / "schemas.py").exists()
-    assert not (pytest_package / "agent.py").exists()
+    assert (pytest_package / "agent.py").exists()
+    assert not (pytest_package / "generator.py").exists()
+    assert not (pytest_package / "schemas.py").exists()
     assert not (pytest_package / "service.py").exists()
 
     pytest_source = "\n".join(

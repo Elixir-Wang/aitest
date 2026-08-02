@@ -246,28 +246,16 @@
 - **THEN** 系统 SHALL 保持需求关联不变
 - **AND** SHALL NOT 生成误导性的迁移日志
 
-### Requirement: Requirement version presentation and filtering
+### Requirement: Requirement version presentation
 
-系统 SHALL 在需求列表和详情中展示所属项目版本，并允许项目需求列表按版本进行服务端筛选。
+系统 SHALL 在需求列表和详情中展示所属项目版本。
 
 #### Scenario: Requirement list is opened
 
 - **WHEN** 用户打开项目需求列表
-- **THEN** 系统 SHALL 展示每个需求的版本号及可选版本名称
+- **THEN** 系统 SHALL 在“所属版本”列仅展示每个需求的版本号
 - **AND** 默认 SHALL 展示全部项目版本的需求
-
-#### Scenario: User filters by project version
-
-- **GIVEN** 用户选择当前项目的一个版本
-- **WHEN** 前端请求需求列表
-- **THEN** 后端 SHALL 在数据查询层只返回关联该版本的需求
-- **AND** 前端 SHALL 展示当前筛选条件
-
-#### Scenario: Invalid filter version is supplied
-
-- **WHEN** 需求列表筛选参数引用不存在或属于其他项目的版本
-- **THEN** 系统 SHALL 拒绝筛选请求
-- **AND** SHALL NOT 泄露其他项目的版本或需求数据
+- **AND** 前端 SHALL NOT 展示版本切换器或“全部版本”选择器
 
 #### Scenario: New requirement form is opened
 

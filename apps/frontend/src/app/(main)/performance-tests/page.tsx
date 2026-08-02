@@ -1,8 +1,8 @@
 "use client";
 
 import { PageShell } from "@/components/ai-testing/page-shell";
-import { moduleBreadcrumbs } from "@/navigation/breadcrumbs";
 import { AllPerformanceTestList } from "@/components/ai-testing/performance-testing/all-performance-test-list";
+import { moduleBreadcrumbs } from "@/navigation/breadcrumbs";
 
 export default function Page() {
   return (

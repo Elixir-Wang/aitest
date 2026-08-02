@@ -4,7 +4,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { List, Loader2, Network, Pencil, RefreshCw, Save, X } from "lucide-react";
 import { createPortal } from "react-dom";
-import { toast } from "@/lib/toast";
 
 import { IllustratedEmptyState } from "@/components/ai-testing/illustrated-empty-state";
 import { ListToolbar, ShellSection } from "@/components/ai-testing/page-shell";
@@ -16,6 +15,7 @@ import { AiEditInput } from "@/components/ui/ai-input";
 import { Button } from "@/components/ui/button";
 import { notifyAiTaskStarted } from "@/lib/ai-task-events";
 import { ApiRequestError, type ApiTestPointOverview, apiRequest, generateTestPoints } from "@/lib/api-client";
+import { toast } from "@/lib/toast";
 import { cn } from "@/lib/utils";
 
 const ACTIVE_STATUSES = new Set(["queued", "running"]);

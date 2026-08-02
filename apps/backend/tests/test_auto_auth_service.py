@@ -177,7 +177,7 @@ def test_failure_message_for_unreachable_login_page_mentions_connection() -> Non
 def test_run_auto_auth_writes_storage_state_on_success(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     _use_temp_db(monkeypatch, tmp_path)
     _seed_environment()
-    environment_credentials.save_credentials("project-1", "env-1", username="tester", password="secret123")
+    environment_credentials.save_credentials("env-1", username="tester", password="secret123")
 
     class FakeProcess:
         returncode = 0
@@ -198,7 +198,7 @@ def test_run_auto_auth_writes_storage_state_on_success(monkeypatch: pytest.Monke
                 json.dumps({"kind": "login_succeeded", "attempt": 1, "reasons": ["logged_in_ui_signal"]}) + "\n",
             ]
             (tmp_path / "captcha.png").write_bytes(b"png")
-            state_path = environment_auth_state.auth_state_path("project-1", "env-1")
+            state_path = environment_auth_state.auth_state_path("env-1")
             state_path.parent.mkdir(parents=True, exist_ok=True)
             state_path.write_text('{"cookies":[],"origins":[]}', encoding="utf-8")
 
@@ -237,12 +237,12 @@ def test_run_auto_auth_writes_storage_state_on_success(monkeypatch: pytest.Monke
         lambda _page_image_path, _elements: _planned_login_form_plan(),
     )
 
-    auto_auth_service._run_ai_letter_auto_auth("project-1", "env-1")
+    auto_auth_service._run_ai_letter_auto_auth("env-1")
 
-    status = auto_auth_service.get_auto_auth_status("project-1", "env-1")
+    status = auto_auth_service.get_auto_auth_status("env-1")
     assert status["status"] == "failed"
     assert status["last_error_code"] == "AUTH_STATE_INVALID"
-    assert environment_auth_state.auth_state_path("project-1", "env-1").exists()
+    assert environment_auth_state.auth_state_path("env-1").exists()
 
 
 def test_launch_ai_letter_login_process_passes_login_plan_path() -> None:
@@ -278,7 +278,7 @@ def test_launch_ai_letter_login_process_passes_login_plan_path() -> None:
 def test_run_auto_auth_marks_failed_when_solver_unavailable(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     _use_temp_db(monkeypatch, tmp_path)
     _seed_environment()
-    environment_credentials.save_credentials("project-1", "env-1", username="tester", password="secret123")
+    environment_credentials.save_credentials("env-1", username="tester", password="secret123")
 
     class FakeProcess:
         returncode = 1
@@ -337,9 +337,9 @@ def test_run_auto_auth_marks_failed_when_solver_unavailable(monkeypatch: pytest.
 
     monkeypatch.setattr(captcha_solver_service, "solve_letter_captcha", raise_solver_error)
 
-    auto_auth_service._run_ai_letter_auto_auth("project-1", "env-1")
+    auto_auth_service._run_ai_letter_auto_auth("env-1")
 
-    status = auto_auth_service.get_auto_auth_status("project-1", "env-1")
+    status = auto_auth_service.get_auto_auth_status("env-1")
     assert status["status"] == "failed"
     assert "模型" in status["message"]
 
@@ -347,7 +347,7 @@ def test_run_auto_auth_marks_failed_when_solver_unavailable(monkeypatch: pytest.
 def test_run_auto_auth_records_operation_log_on_failure(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     _use_temp_db(monkeypatch, tmp_path)
     _seed_environment()
-    environment_credentials.save_credentials("project-1", "env-1", username="tester", password="secret123")
+    environment_credentials.save_credentials("env-1", username="tester", password="secret123")
     recorded: list[dict] = []
 
     class FakeProcess:
@@ -405,7 +405,7 @@ def test_run_auto_auth_records_operation_log_on_failure(monkeypatch: pytest.Monk
         lambda **kwargs: recorded.append(kwargs) or "log-1",
     )
 
-    auto_auth_service._run_ai_letter_auto_auth("project-1", "env-1")
+    auto_auth_service._run_ai_letter_auto_auth("env-1")
 
     assert recorded
     assert recorded[0]["module"] == "environment"
@@ -424,7 +424,7 @@ def test_concurrent_schedule_skips_if_already_running(monkeypatch: pytest.Monkey
         return None
 
     monkeypatch.setattr(auto_auth_service.threading, "Thread", fake_thread)
-    auto_auth_service.schedule_ai_letter_auto_auth("project-1", "env-busy")
+    auto_auth_service.schedule_ai_letter_auto_auth("env-busy")
     assert scheduled == []
 
     with auto_auth_service._running_lock:

@@ -1,0 +1,296 @@
+schema_version: '4.0'
+page:
+  id: page-workspace
+  title: 百融百工
+  normalized_path: /workspace
+objects:
+- key: workspace
+  type: page
+  name: 百融百工
+- key: page-workspace__popover__c80197f4
+  type: popover
+  name: 创建智能体 自主规划 Agent 能够自主规划任务，适用于大部分场景 Multi-Agent 在一个智能体中设置多个Agent，以处理复杂任务 写作
+    Agent 通过创建模板，完成复杂写作内容生成 端到端语音 Agent（仅限定制） 毫秒级低延时，拟人化高表现力 任务流 Agent 面向自动化任务，通过流程编排实现任务
+  parent: workspace
+  container_locator:
+    strategy: css
+    value: .create-agent-dropdown
+- key: page-workspace__popover__b78b9378
+  type: popover
+  name: 创建智能体 智能体名称 0/50 智能体功能介绍 0/300 语种 简体中文 Embedding模型 BAAI/bge-large-zh-v1.5
+    创建
+  parent: workspace
+states:
+- id: page-workspace__root__001
+  type: root
+  object: workspace
+- id: page-workspace__popover__c80197f4
+  type: popover
+  object: page-workspace__popover__c80197f4
+  parent: page-workspace__root__001
+- id: page-workspace__popover__b78b9378
+  type: popover
+  object: page-workspace__popover__b78b9378
+  parent: page-workspace__popover__c80197f4
+elements:
+- key: button-创建智能体
+  object: page-workspace__popover__b78b9378
+  states:
+  - page-workspace__root__001
+  - page-workspace__popover__c80197f4
+  - page-workspace__popover__b78b9378
+  role: button
+  name: 创建智能体
+  actions:
+  - click
+  locator:
+    strategy: role
+    role: button
+    name: 创建智能体
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(2) > button
+- key: clickable-工作台
+  object: workspace
+  states:
+  - page-workspace__root__001
+  role: clickable
+  name: 工作台
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: body > div:nth-of-type(1) > div > div > div > div > div > div:nth-of-type(1)
+      > div > div:nth-of-type(1)
+- key: clickable-排序 按创建时间排序 | 导入 创建
+  object: page-workspace__popover__c80197f4
+  states:
+  - page-workspace__root__001
+  - page-workspace__popover__c80197f4
+  role: clickable
+  name: 排序 按创建时间排序 | 导入 创建
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: body > div:nth-of-type(1) > div > div > div > div:nth-of-type(1) > div
+      > div:nth-of-type(1) > div > div:nth-of-type(2) > div > div > div:nth-of-type(2)
+- key: clickable-按创建时间排序
+  object: page-workspace__popover__c80197f4
+  states:
+  - page-workspace__root__001
+  - page-workspace__popover__c80197f4
+  role: clickable
+  name: 按创建时间排序
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(1) > div > div:nth-of-type(2) > div > div > div:nth-of-type(2)
+      > div:nth-of-type(1) > div > div > span:nth-of-type(2)
+- key: button-创建
+  object: page-workspace__popover__c80197f4
+  states:
+  - page-workspace__root__001
+  - page-workspace__popover__c80197f4
+  role: button
+  name: 创建
+  actions:
+  - click
+  locator:
+    strategy: role
+    role: button
+    name: 创建
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(4) > button
+- key: popover-创建智能体 自主规划 Agent 能够自主规划任务，适用于大部分场景 Multi-Agent 在一个智能体中设置多个Agent，以处理复杂任务
+    写作 Agent 通过创建模板，完成复杂写作内容生成 端到端语音 Agent（仅限定制） 毫秒级低延时，拟人化高表现力 任务流 Agent 面向自动化任务，通过流程编排实现任务
+  object: page-workspace__popover__c80197f4
+  states:
+  - page-workspace__popover__c80197f4
+  role: popover
+  name: 创建智能体 自主规划 Agent 能够自主规划任务，适用于大部分场景 Multi-Agent 在一个智能体中设置多个Agent，以处理复杂任务 写作
+    Agent 通过创建模板，完成复杂写作内容生成 端到端语音 Agent（仅限定制） 毫秒级低延时，拟人化高表现力 任务流 Agent 面向自动化任务，通过流程编排实现任务
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(29) > div:nth-of-type(2)
+- key: clickable-自主规划 Agent 能够自主规划任务，适用于大部分场景
+  object: page-workspace__popover__c80197f4
+  states:
+  - page-workspace__popover__c80197f4
+  role: clickable
+  name: 自主规划 Agent 能够自主规划任务，适用于大部分场景
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(2) > div > div > ul > li:nth-of-type(1)
+- key: clickable-Multi-Agent 在一个智能体中设置多个Agent，以处理复杂任务
+  object: page-workspace__popover__c80197f4
+  states:
+  - page-workspace__popover__c80197f4
+  role: clickable
+  name: Multi-Agent 在一个智能体中设置多个Agent，以处理复杂任务
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: Multi-Agent 在一个智能体中设置多个Agent，以处理复杂任务
+    exact: true
+- key: clickable-写作 Agent 通过创建模板，完成复杂写作内容生成
+  object: page-workspace__popover__c80197f4
+  states:
+  - page-workspace__popover__c80197f4
+  role: clickable
+  name: 写作 Agent 通过创建模板，完成复杂写作内容生成
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(2) > div > div > ul > li:nth-of-type(3)
+- key: clickable-端到端语音 Agent（仅限定制） 毫秒级低延时，拟人化高表现力
+  object: page-workspace__popover__c80197f4
+  states:
+  - page-workspace__popover__c80197f4
+  role: clickable
+  name: 端到端语音 Agent（仅限定制） 毫秒级低延时，拟人化高表现力
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(2) > div > div > ul > li:nth-of-type(4)
+- key: clickable-任务流 Agent 面向自动化任务，通过流程编排实现任务自动化处理
+  object: page-workspace__popover__c80197f4
+  states:
+  - page-workspace__popover__c80197f4
+  role: clickable
+  name: 任务流 Agent 面向自动化任务，通过流程编排实现任务自动化处理
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(2) > div > div > ul > li:nth-of-type(5)
+- key: clickable-点击【⭐️收藏】 可将智能体添加到这里
+  object: page-workspace__popover__c80197f4
+  states:
+  - page-workspace__popover__c80197f4
+  role: clickable
+  name: 点击【⭐️收藏】 可将智能体添加到这里
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: aside > div > div > div:nth-of-type(5) > div:nth-of-type(3) > div
+- key: textbox-搜索智能体
+  object: page-workspace__popover__c80197f4
+  states:
+  - page-workspace__popover__c80197f4
+  role: textbox
+  name: 搜索智能体
+  actions:
+  - fill
+  locator:
+    strategy: role
+    role: textbox
+    name: 搜索智能体
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div > div:nth-of-type(1) > div:nth-of-type(2) > div > input
+- key: clickable-哈哈 已发布 分析 使用 对话历史 hongbao.wang1 编辑于 2026-07-31 20:14:15 自主规划 Agent
+  object: page-workspace__popover__b78b9378
+  states:
+  - page-workspace__popover__c80197f4
+  - page-workspace__popover__b78b9378
+  role: clickable
+  name: 哈哈 已发布 分析 使用 对话历史 hongbao.wang1 编辑于 2026-07-31 20:14:15 自主规划 Agent
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div > div:nth-of-type(3) > div > div > div > div > div:nth-of-type(2)
+- key: clickable-自主规划 Agent
+  object: page-workspace__popover__b78b9378
+  states:
+  - page-workspace__popover__c80197f4
+  - page-workspace__popover__b78b9378
+  role: clickable
+  name: 自主规划 Agent
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(3) > span:nth-of-type(2)
+- key: clickable-ExploreBot_2026 已发布 分析 使用 对话历史 hongbao.wang1 编辑于 2026-07-23 10:43:23
+    自主规划 Agent
+  object: page-workspace__popover__b78b9378
+  states:
+  - page-workspace__popover__c80197f4
+  - page-workspace__popover__b78b9378
+  role: clickable
+  name: ExploreBot_2026 已发布 分析 使用 对话历史 hongbao.wang1 编辑于 2026-07-23 10:43:23 自主规划
+    Agent
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div > div:nth-of-type(3) > div > div > div > div > div:nth-of-type(3)
+- key: clickable-对话流超长文本性能优化 已发布 分析 使用 对话历史 hongbao.wang1 编辑于 2026-07-31 20:07:07
+    自主规划 Agent
+  object: page-workspace__popover__b78b9378
+  states:
+  - page-workspace__popover__c80197f4
+  - page-workspace__popover__b78b9378
+  role: clickable
+  name: 对话流超长文本性能优化 已发布 分析 使用 对话历史 hongbao.wang1 编辑于 2026-07-31 20:07:07 自主规划 Agent
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div > div:nth-of-type(3) > div > div > div > div > div:nth-of-type(4)
+- key: textbox-请输入智能体名称
+  object: page-workspace__popover__b78b9378
+  states:
+  - page-workspace__popover__b78b9378
+  role: textbox
+  name: 请输入智能体名称
+  actions:
+  - fill
+  locator:
+    strategy: role
+    role: textbox
+    name: 请输入智能体名称
+    exact: true
+- key: textbox-请输入对该智能体的描述
+  object: page-workspace__popover__b78b9378
+  states:
+  - page-workspace__popover__b78b9378
+  role: textbox
+  name: 请输入对该智能体的描述
+  actions:
+  - fill
+  locator:
+    strategy: role
+    role: textbox
+    name: 请输入对该智能体的描述
+    exact: true
+transitions:
+- id: page-workspace__root__001--click--button-创建
+  from_state: page-workspace__root__001
+  action: click
+  target: button-创建
+  to_state: page-workspace__popover__c80197f4
+  url_changed: false
+- id: page-workspace__popover__c80197f4--click--clickable-自主规划 Agent 能够自主规划任务，适用于大部分场景
+  from_state: page-workspace__popover__c80197f4
+  action: click
+  target: clickable-自主规划 Agent 能够自主规划任务，适用于大部分场景
+  to_state: page-workspace__popover__b78b9378
+  url_changed: false
+quality:
+  status: complete

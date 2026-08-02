@@ -10,6 +10,9 @@ test("task list keeps long task names compact and reveals the full value on over
   assert.match(pageSource, /function OverflowTooltipText\(\{ value \}: \{ value: string \}\)/);
   assert.match(pageSource, /className="block min-w-0 truncate"/);
   assert.match(pageSource, /scrollWidth > node\.clientWidth \+ 1/);
-  assert.match(pageSource, /<TooltipContent className="max-w-md whitespace-normal break-words leading-5" side="top" sideOffset=\{6\}>/);
+  assert.match(
+    pageSource,
+    /<TooltipContent className="max-w-md whitespace-normal break-words leading-5" side="top" sideOffset=\{6\}>/,
+  );
   assert.match(pageSource, /<OverflowTooltipText value=\{task\.title\} \/>/);
 });

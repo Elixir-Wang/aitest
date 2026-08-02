@@ -1,9 +1,9 @@
 import { format } from "date-fns";
 import { Download, RotateCw, Settings2 } from "lucide-react";
 
+import { ShellSection, StatusBadge } from "@/components/ai-testing/page-shell";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ShellSection, StatusBadge } from "@/components/ai-testing/page-shell";
 
 import { BalanceDistributionCard } from "./_components/balance-distribution-card";
 import { FinanceNotification } from "./_components/finance-notification";
@@ -106,7 +106,12 @@ export default function Page() {
           <ShellSection>
             <h2 className="font-medium text-sm">Recent transactions</h2>
             <div className="mt-4 space-y-3 text-sm">
-              {["Stripe payout / +$2,840", "Cloud hosting / -$420", "Team subscription / -$188", "Client transfer / +$6,200"].map((item) => (
+              {[
+                "Stripe payout / +$2,840",
+                "Cloud hosting / -$420",
+                "Team subscription / -$188",
+                "Client transfer / +$6,200",
+              ].map((item) => (
                 <div key={item} className="flex items-center justify-between rounded-lg border p-3">
                   <span>{item.split(" / ")[0]}</span>
                   <StatusBadge>{item.split(" / ")[1]}</StatusBadge>
@@ -116,7 +121,9 @@ export default function Page() {
           </ShellSection>
           <ShellSection>
             <h2 className="font-medium text-sm">Filters</h2>
-            <p className="mt-3 text-muted-foreground text-sm">Transaction filters will keep date range, account, and category together.</p>
+            <p className="mt-3 text-muted-foreground text-sm">
+              Transaction filters will keep date range, account, and category together.
+            </p>
           </ShellSection>
         </TabsContent>
       </Tabs>

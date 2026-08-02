@@ -17,8 +17,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { apiRequest, formatDateTime } from "@/lib/api-client";
-import { moduleBreadcrumbs } from "@/navigation/breadcrumbs";
 import { reportError } from "@/lib/error-feedback";
+import { moduleBreadcrumbs } from "@/navigation/breadcrumbs";
 
 type RequirementVersionPreviewResponse = {
   document: {
@@ -144,9 +144,7 @@ export default function RequirementVersionPreviewPage() {
         }
         breadcrumbs={moduleBreadcrumbs(
           "requirements",
-          ...(documentName
-            ? [{ label: documentName, href: `/projects/${projectId}/requirements/${documentId}` }]
-            : []),
+          ...(documentName ? [{ label: documentName, href: `/projects/${projectId}/requirements/${documentId}` }] : []),
           { label: "版本记录", href: versionHistoryTabPath },
           { label: `v${version.version_no}` },
         )}

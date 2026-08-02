@@ -575,6 +575,12 @@ def test_ai_plan_failure_is_persisted_for_task_center(monkeypatch: pytest.Monkey
     accepted = service.enqueue_api_scenario_ai_plan("project-1", payload, ACTOR)
 
     class FailingPlanner:
+        model_call_count = 2
+        attempt_metrics = [
+            {"attempt": 1, "duration_ms": 10, "error_type": "invalid_json"},
+            {"attempt": 2, "duration_ms": 12, "error_type": "invalid_json"},
+        ]
+
         def __init__(self, _model):
             pass
 
@@ -595,10 +601,18 @@ def test_ai_plan_failure_is_persisted_for_task_center(monkeypatch: pytest.Monkey
 
     with connect() as db:
         row = db.execute(
-            "SELECT lifecycle_status, error_message FROM api_scenario_ai_plans ORDER BY created_at DESC LIMIT 1"
+            """
+            SELECT lifecycle_status, error_message, model_provider, model_name, generation_meta_json
+            FROM api_scenario_ai_plans ORDER BY created_at DESC LIMIT 1
+            """
         ).fetchone()
     assert row["lifecycle_status"] == "failed"
     assert row["error_message"] == "model unavailable"
+    assert row["model_provider"] == "test"
+    assert row["model_name"] == "fake"
+    generation_meta = api_automation_repo.loads_json(row["generation_meta_json"], {})
+    assert generation_meta["model_call_count"] == 2
+    assert generation_meta["attempts"] == FailingPlanner.attempt_metrics
     handle = ApiScenarioAiPlanAcceptedOut.model_validate(
         service.get_api_scenario_ai_plan("project-1", accepted["plan_id"], ACTOR)
     )
@@ -1371,6 +1385,36 @@ def test_enqueue_ai_plan_returns_generating_handle_before_worker(monkeypatch: py
             (accepted["plan_id"],),
         ).fetchone()
     assert row["lifecycle_status"] == "generating"
+
+
+def test_enqueue_ai_plan_redacts_credentials_from_all_persisted_request_fields(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    scenario_id = _setup(monkeypatch, tmp_path)
+    robot_key = "robot-key-sensitive-value"
+    robot_token = "robot-token-sensitive-value"
+    goal = (
+        "curl --request POST 'https://example.test/sse' \\\n"
+        f"--header 'cybertron-robot-key: {robot_key}' \\\n"
+        f"--header 'cybertron-robot-token: {robot_token}'"
+    )
+
+    accepted = service.enqueue_api_scenario_ai_plan(
+        "project-1",
+        ApiScenarioAiPlanIn(goal=goal, scenario_id=scenario_id),
+        ACTOR,
+    )
+
+    with connect() as db:
+        row = db.execute(
+            "SELECT goal, request_json FROM api_scenario_ai_plans WHERE id = ?",
+            (accepted["plan_id"],),
+        ).fetchone()
+    persisted = f'{row["goal"]}\n{row["request_json"]}'
+    assert robot_key not in persisted
+    assert robot_token not in persisted
+    assert persisted.count("[REDACTED]") >= 4
 
 
 def test_get_ai_plan_returns_generating_handle_before_completion(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

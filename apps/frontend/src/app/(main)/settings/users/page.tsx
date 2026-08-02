@@ -3,10 +3,8 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { Eye, EyeOff, Pencil, Trash2 } from "lucide-react";
-import { toast } from "sonner";
 
 import { ListToolbar, PageShell, RowActions, ShellSection } from "@/components/ai-testing/page-shell";
-import { moduleBreadcrumbs } from "@/navigation/breadcrumbs";
 import { TableLoadingRow } from "@/components/ai-testing/table-loading-row";
 import { Select, SelectOption } from "@/components/ui/animated-select-1";
 import { Button } from "@/components/ui/button";
@@ -34,6 +32,8 @@ import {
   statusToLabel,
 } from "@/lib/api-client";
 import { reportError } from "@/lib/error-feedback";
+import { toast } from "@/lib/toast";
+import { moduleBreadcrumbs } from "@/navigation/breadcrumbs";
 import { useAuthStore } from "@/stores/auth-store";
 import { useProjectContextStore } from "@/stores/project-context-store";
 

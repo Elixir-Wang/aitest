@@ -28,10 +28,6 @@ import {
   X,
 } from "lucide-react";
 
-import { ApiScenarioList } from "@/components/ai-testing/api-automation/api-scenario-list";
-import { IllustratedEmptyState } from "@/components/ai-testing/illustrated-empty-state";
-import { ListToolbar, PageShell, RowActions, ShellSection } from "@/components/ai-testing/page-shell";
-import { TableLoadingRow } from "@/components/ai-testing/table-loading-row";
 import {
   AnimatedSelect,
   Select,
@@ -41,6 +37,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ai-testing/api-automation/api-orchestration-select";
+import { ApiScenarioList } from "@/components/ai-testing/api-automation/api-scenario-list";
+import { IllustratedEmptyState } from "@/components/ai-testing/illustrated-empty-state";
+import { ListToolbar, PageShell, RowActions, ShellSection } from "@/components/ai-testing/page-shell";
+import { TableLoadingRow } from "@/components/ai-testing/table-loading-row";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -564,8 +564,8 @@ export default function Page() {
         );
         setActiveEndpointId(
           endpointRows.some((endpoint) => endpoint.id === requestedEndpointId)
-            ? requestedEndpointId ?? ""
-            : endpointRows[0]?.id ?? "",
+            ? (requestedEndpointId ?? "")
+            : (endpointRows[0]?.id ?? ""),
         );
         setSelectedEnvironmentId(environmentRows[0]?.id ?? "");
       })

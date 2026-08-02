@@ -9,7 +9,6 @@ import { ArrowLeft, RefreshCw } from "lucide-react";
 
 import { OperationLogDetailContent } from "@/components/ai-testing/operation-logs/operation-log-detail-content";
 import { PageShell, ShellSection } from "@/components/ai-testing/page-shell";
-import { moduleBreadcrumbs } from "@/navigation/breadcrumbs";
 import { Button } from "@/components/ui/button";
 import {
   type ApiOperationLogDetail,
@@ -17,6 +16,7 @@ import {
   operationLogActionToLabel,
   operationLogModuleToLabel,
 } from "@/lib/api-client";
+import { moduleBreadcrumbs } from "@/navigation/breadcrumbs";
 
 export default function Page() {
   const params = useParams<{ logId: string }>();

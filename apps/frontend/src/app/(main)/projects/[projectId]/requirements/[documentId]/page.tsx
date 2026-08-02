@@ -23,7 +23,6 @@ import {
   Upload,
   X,
 } from "lucide-react";
-import { toast } from "@/lib/toast";
 
 import { MarkdownPreview } from "@/components/ai-testing/markdown-preview";
 import { OriginalFilePreview } from "@/components/ai-testing/original-file-preview";
@@ -41,7 +40,6 @@ import { StandardMarkdownEditor } from "@/components/ai-testing/standard-markdow
 import { TestPointsPanel } from "@/components/ai-testing/test-points-panel";
 import { useLocalTableSelection } from "@/components/ai-testing/use-local-table-selection";
 import { AiEditInput } from "@/components/ui/ai-input";
-import { Select, SelectOption } from "@/components/ui/animated-select-1";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -52,6 +50,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Select, SelectOption } from "@/components/ui/animated-select-1";
 import { Badge } from "@/components/ui/badge";
 import { BadgeDot, Badge as RequirementRoleBadge } from "@/components/ui/badge-2";
 import { Button } from "@/components/ui/button";
@@ -71,8 +70,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { notifyAiTaskStarted } from "@/lib/ai-task-events";
 import {
-  ApiRequestError,
   type ApiProjectVersion,
+  ApiRequestError,
   type ApiTaskItem,
   type ApiTestPointOverview,
   apiBlobRequest,
@@ -87,6 +86,7 @@ import {
   requirementUploadFileKey,
   uploadRequirementFiles,
 } from "@/lib/requirement-upload-client";
+import { toast } from "@/lib/toast";
 import { cn } from "@/lib/utils";
 import { moduleBreadcrumbs } from "@/navigation/breadcrumbs";
 import { useAuthStore } from "@/stores/auth-store";

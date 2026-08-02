@@ -20,6 +20,7 @@ import type {
   ApiAutomationScenarioExtractor,
   ApiAutomationScenarioStep,
 } from "@/lib/api-client";
+import { createId } from "@/lib/create-id.mjs";
 import { cn } from "@/lib/utils";
 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./api-orchestration-select";
@@ -101,7 +102,11 @@ export function ApiScenarioStepConfig({
             </div>
           </div>
           <Button asChild disabled={!endpoint} size="sm" variant="outline">
-            <Link href={endpoint ? `/projects/${projectId}/automation/api?endpoint=${encodeURIComponent(endpoint.id)}` : "#"}>
+            <Link
+              href={
+                endpoint ? `/projects/${projectId}/automation/api?endpoint=${encodeURIComponent(endpoint.id)}` : "#"
+              }
+            >
               查看接口资产
             </Link>
           </Button>
@@ -300,7 +305,9 @@ function SourceEditor({
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="literal">{sourceType === "literal" ? displayBindingValue(source.value) : "固定值"}</SelectItem>
+            <SelectItem value="literal">
+              {sourceType === "literal" ? displayBindingValue(source.value) : "固定值"}
+            </SelectItem>
             <SelectItem value="step_output">前序步骤输出</SelectItem>
             <SelectItem value="scenario">场景变量</SelectItem>
             <SelectItem value="environment">环境变量</SelectItem>
@@ -703,7 +710,9 @@ function BindingSourceSelect({
           </SelectItem>
         ))}
         {binding && !standardValues.has(currentValue) ? (
-          <SelectItem value={currentValue}>{sourceTypeLabel(binding.source.type)} · {bindingSourceName(binding.source)}</SelectItem>
+          <SelectItem value={currentValue}>
+            {sourceTypeLabel(binding.source.type)} · {bindingSourceName(binding.source)}
+          </SelectItem>
         ) : null}
       </SelectContent>
     </Select>
@@ -749,7 +758,7 @@ function LifecyclePhaseEditor({
           updatePhase({
             actions: [
               ...phaseConfig.actions,
-              { id: crypto.randomUUID(), type: "set_variable", name: "", source: { type: "literal", value: "" } },
+              { id: createId(), type: "set_variable", name: "", source: { type: "literal", value: "" } },
             ],
           })
         }
@@ -955,18 +964,13 @@ function AssertionEditor({
   useEffect(() => {
     if (assertions.some((assertion) => !assertion.id)) {
       onChange(
-        assertions.map((assertion) =>
-          assertion.id ? assertion : { ...assertion, id: `assertion-${crypto.randomUUID()}` },
-        ),
+        assertions.map((assertion) => (assertion.id ? assertion : { ...assertion, id: `assertion-${createId()}` })),
       );
     }
   }, [assertions, onChange]);
 
   return (
-    <EditorSection
-      title="断言"
-      onAdd={() => onChange([...assertions, createAssertion("status_code")])}
-    >
+    <EditorSection title="断言" onAdd={() => onChange([...assertions, createAssertion("status_code")])}>
       {assertions.map((assertion, index) => (
         <div className="relative space-y-3 border-b p-4 pr-12 last:border-b-0" key={assertion.id ?? assertion.type}>
           <AssertionField label="响应来源 / 目标路径">
@@ -1036,7 +1040,11 @@ function AssertionPathEditor({
   if (["status_code", "response_time_max", "schema_basic"].includes(assertion.type)) {
     return (
       <div className="flex h-9 items-center rounded-md border border-dashed bg-muted/35 px-3 text-muted-foreground text-sm">
-        {assertion.type === "status_code" ? "响应状态" : assertion.type === "response_time_max" ? "响应耗时" : "响应 Body"}
+        {assertion.type === "status_code"
+          ? "响应状态"
+          : assertion.type === "response_time_max"
+            ? "响应耗时"
+            : "响应 Body"}
       </div>
     );
   }
@@ -1129,7 +1137,7 @@ function AssertionExpectedEditor({
 }
 
 function createAssertion(type: string): ApiAutomationScenarioAssertion {
-  const id = `assertion-${crypto.randomUUID()}`;
+  const id = `assertion-${createId()}`;
   if (type === "status_code") return { id, type, expected: 200 };
   if (type === "response_time_max") return { id, type, expected: 1000 };
   if (type === "jsonpath_type") return { id, type, path: "$.data", expected: "string" };

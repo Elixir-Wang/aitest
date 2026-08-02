@@ -35,7 +35,7 @@ def _seed_run() -> None:
             """
             INSERT INTO performance_test_scripts (
               id, performance_test_id, project_id, generation_source, code, validation_status
-            ) VALUES (?, ?, ?, 'default_plan', 'code', 'confirmed')
+            ) VALUES (?, ?, ?, 'default_plan', 'code', 'valid')
             """,
             ("perfscript-1", "perftest-1", "project-1"),
         )

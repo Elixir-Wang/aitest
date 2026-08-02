@@ -116,7 +116,9 @@ test("test points list does not expose point details", () => {
   assert.match(apiTestPointType, /title: string;/);
   assert.match(apiTestPointType, /module: string;/);
   assert.match(apiTestPointType, /priority: string;/);
-  assert.doesNotMatch(apiTestPointType, /description|preconditions|verification_points|source_refs|notes|category/);
+  assert.match(apiTestPointType, /description: string;/);
+  assert.match(apiTestPointType, /preconditions: string\[\];/);
+  assert.match(apiTestPointType, /verification_points: string\[\];/);
 });
 
 test("selecting a test point in the mind map keeps the mind map visible", () => {

@@ -13,6 +13,10 @@ const mindMapSource = readFileSync(
   new URL("../src/components/ai-testing/test-case-mind-map.tsx", import.meta.url),
   "utf8",
 );
+const mindMapTreeSource = readFileSync(
+  new URL("../src/components/ai-testing/mind-map-tree.tsx", import.meta.url),
+  "utf8",
+);
 
 test("test case set list exposes the dedicated review entry", () => {
   assert.match(listPageSource, /label: "查看"/);
@@ -44,8 +48,8 @@ test("review page includes adoption metrics and review filters", () => {
   assert.match(reviewPageSource, /评审进度/);
   assert.match(reviewPageSource, /用例数量/);
   assert.doesNotMatch(reviewPageSource, /用例总数/);
-  assert.match(reviewPageSource, /lg:flex-row lg:items-center lg:justify-between/);
-  assert.match(reviewPageSource, /lg:max-w-2xl/);
+  assert.match(reviewPageSource, /lg:flex-row lg:items-stretch lg:justify-between/);
+  assert.match(reviewPageSource, /sm:grid-cols-3/);
   assert.match(reviewPageSource, /type ReviewFilter = "all" \| "ready_for_review" \| "approved" \| "rejected"/);
   assert.match(
     reviewPageSource,
@@ -116,9 +120,9 @@ test("review page can edit case content from the review actions", () => {
   assert.match(reviewPageSource, /action: stepActionText\(step\)/);
   assert.match(reviewPageSource, /expected_result: step\.expected_result \|\| testCase\.expected_result/);
   assert.match(reviewPageSource, /\{ action: "", expected_result: "", editKey:/);
-  assert.match(reviewPageSource, /function EditableStepTable/);
+  assert.match(reviewPageSource, /function EditableStepList/);
   assert.match(reviewPageSource, /min-h-\[72px\] resize-y bg-white py-2 leading-5/);
-  assert.match(reviewPageSource, /min-h-\[52px\] resize-y bg-white py-2 leading-5/);
+  assert.match(reviewPageSource, /min-h-\[44px\] resize-y bg-white py-1\.5 text-sm leading-5/);
   assert.match(reviewPageSource, /新增步骤/);
   assert.match(reviewPageSource, /删除/);
   assert.match(
@@ -132,7 +136,7 @@ test("review page can edit case content from the review actions", () => {
 
 test("review page aligns the list toolbar and detail header separators", () => {
   assert.match(reviewPageSource, /<div className="flex flex-col gap-3 border-b p-4">/);
-  assert.match(reviewPageSource, /<div className="border-b p-4">/);
+  assert.match(reviewPageSource, /<div className="border-b bg-white px-6 py-5 dark:bg-card">/);
   assert.doesNotMatch(reviewPageSource, /min-h-\[124px\]/);
 });
 
@@ -146,35 +150,36 @@ test("review page keeps the list and mind map switch in the summary actions", ()
 });
 
 test("mind map exposes corner controls for navigation", () => {
-  assert.match(mindMapSource, /aria-label="脑图缩放工具"/);
-  assert.match(mindMapSource, /label="缩小"/);
-  assert.match(mindMapSource, /label="放大"/);
-  assert.match(mindMapSource, /label="适应画布"/);
-  assert.match(mindMapSource, /fullscreen \? "退出全屏" : "全屏查看"/);
-  assert.match(mindMapSource, /Math\.round\(scale \* 100\)/);
+  assert.match(mindMapSource, /<MindMapTree<ApiTestCase>/);
+  assert.match(mindMapTreeSource, /aria-label="脑图缩放工具"/);
+  assert.match(mindMapTreeSource, /label="缩小"/);
+  assert.match(mindMapTreeSource, /label="放大"/);
+  assert.match(mindMapTreeSource, /label="适应画布"/);
+  assert.match(mindMapTreeSource, /fullscreen \? "退出全屏" : "全屏查看"/);
+  assert.match(mindMapTreeSource, /Math\.round\(scale \* 100\)/);
 });
 
 test("mind map uses trackpad gestures and only fits a live visible instance", () => {
-  assert.match(mindMapSource, /mousewheelAction: "move"/);
-  assert.doesNotMatch(mindMapSource, /mousewheelAction: "zoom"/);
-  assert.match(mindMapSource, /双指移动 · 捏合缩放 · 拖动画布/);
-  assert.match(mindMapSource, /if \(!active\) return;/);
-  assert.match(mindMapSource, /fit: false/);
-  assert.match(mindMapSource, /container\.isConnected/);
-  assert.match(mindMapSource, /container\.clientWidth > 0/);
-  assert.match(mindMapSource, /if \(initialRenderPending\) \{/);
-  assert.match(mindMapSource, /initialRenderPending = false;\s+mindMap\.resize\(\);\s+mindMap\.view\.fit\(\);/);
-  assert.match(mindMapSource, /cancelAnimationFrame\(frameId\)/);
-  assert.match(mindMapSource, /mindMap\?\.off\("node_tree_render_end", handleRenderEnd\)/);
+  assert.match(mindMapTreeSource, /mousewheelAction: "move"/);
+  assert.doesNotMatch(mindMapTreeSource, /mousewheelAction: "zoom"/);
+  assert.match(mindMapTreeSource, /双指移动 · 捏合缩放 · 拖动画布/);
+  assert.match(mindMapTreeSource, /if \(!active\) return;/);
+  assert.match(mindMapTreeSource, /fit: false/);
+  assert.match(mindMapTreeSource, /container\.isConnected/);
+  assert.match(mindMapTreeSource, /container\.clientWidth > 0/);
+  assert.match(mindMapTreeSource, /if \(initialRenderPending\) \{/);
+  assert.match(mindMapTreeSource, /initialRenderPending = false;\s+mindMap\.resize\(\);\s+mindMap\.view\.fit\(\);/);
+  assert.match(mindMapTreeSource, /cancelAnimationFrame\(frameId\)/);
+  assert.match(mindMapTreeSource, /mindMap\?\.off\("node_tree_render_end", handleRenderEnd\)/);
 });
 
 test("mind map follows the workspace dark theme and colors top-level branches", () => {
-  assert.match(mindMapSource, /usePreferencesStore\(\(state\) => state\.themeMode === "dark"\)/);
-  assert.match(mindMapSource, /import\("simple-mind-map\/src\/plugins\/RainbowLines\.js"\)/);
-  assert.match(mindMapSource, /const registerPlugin = MindMap\.usePlugin/);
-  assert.match(mindMapSource, /registerPlugin\(RainbowLines\)/);
-  assert.match(mindMapSource, /rainbowLinesConfig:/);
-  assert.match(mindMapSource, /colorsList: isDark \? DARK_BRANCH_COLORS : LIGHT_BRANCH_COLORS/);
+  assert.match(mindMapTreeSource, /usePreferencesStore\(\(state\) => state\.themeMode === "dark"\)/);
+  assert.match(mindMapTreeSource, /import\("simple-mind-map\/src\/plugins\/RainbowLines\.js"\)/);
+  assert.match(mindMapTreeSource, /const registerPlugin = MindMap\.usePlugin/);
+  assert.match(mindMapTreeSource, /registerPlugin\(RainbowLines\)/);
+  assert.match(mindMapTreeSource, /rainbowLinesConfig:/);
+  assert.match(mindMapTreeSource, /colorsList: isDark \? DARK_BRANCH_COLORS : LIGHT_BRANCH_COLORS/);
 });
 
 test("fill viewport pages keep browser scrolling inside the page", () => {
@@ -183,15 +188,15 @@ test("fill viewport pages keep browser scrolling inside the page", () => {
   assert.match(pageShellSource, /return \(\) =>/);
 });
 
-test("review page shows steps and expected result as a table", () => {
+test("review page shows steps and expected results as a responsive list", () => {
   assert.match(reviewPageSource, /测试步骤与预期结果/);
-  assert.match(reviewPageSource, /<table className="w-full border-collapse text-left text-sm">/);
-  assert.match(reviewPageSource, /<th className="[^"]*">测试步骤<\/th>/);
-  assert.match(reviewPageSource, /<th className="[^"]*">预期结果<\/th>/);
-  assert.match(reviewPageSource, /stepActionText\(step\) \|\| "-"/);
+  assert.match(reviewPageSource, /function StepList/);
+  assert.match(reviewPageSource, /<span>步骤<\/span>/);
+  assert.match(reviewPageSource, /<span>预期结果<\/span>/);
+  assert.match(reviewPageSource, /stepActionText\(step\) \|\| <span/);
   assert.match(reviewPageSource, /return step\.action \|\| step\.step \|\| step\.description \|\| ""/);
-  assert.match(reviewPageSource, /\{step\.expected_result \|\| testCase\.expected_result \|\| "-"\}/);
-  assert.doesNotMatch(reviewPageSource, /rowSpan=\{testCase\.steps\.length\}/);
+  assert.match(reviewPageSource, /step\.expected_result \|\| testCase\.expected_result \|\| \(/);
+  assert.match(reviewPageSource, /md:grid-cols-\[2\.25rem_minmax\(0,1fr\)_minmax\(0,1fr\)\]/);
 });
 
 test("review page gives duplicate or sparse steps unique row keys", () => {
@@ -202,11 +207,9 @@ test("review page gives duplicate or sparse steps unique row keys", () => {
 });
 
 test("review page keeps rejected reason in rejected state information", () => {
-  assert.match(reviewPageSource, /<RejectedReasonButton/);
-  assert.match(reviewPageSource, /feedback=\{selectedCase\.review_feedback\}/);
-  assert.match(reviewPageSource, /onClick=\{\(\) => openRejectDialog\(selectedCase\)\}/);
-  assert.match(reviewPageSource, /function RejectedReasonButton/);
-  assert.match(reviewPageSource, /feedback \|\| "未填写原因"/);
+  assert.match(reviewPageSource, /selectedCase\.status === "rejected" && selectedCase\.review_feedback/);
+  assert.match(reviewPageSource, /<span className="line-clamp-2">\{selectedCase\.review_feedback\}<\/span>/);
+  assert.match(reviewPageSource, /onReject=\{\(\) => openRejectDialog\(selectedCase\)\}/);
   assert.doesNotMatch(reviewPageSource, /ReviewBlock title="不采纳反馈"/);
   assert.doesNotMatch(reviewPageSource, /此用例尚未标记为不采纳。/);
   assert.doesNotMatch(reviewPageSource, /item\.review_feedback \|\| "未填写原因"/);
@@ -215,18 +218,15 @@ test("review page keeps rejected reason in rejected state information", () => {
     reviewPageSource,
     /<ModulePath className="mt-2" moduleName=\{item\.module\} variant="compact" \/>/,
   );
-  assert.match(reviewPageSource, /\{item\.priority\}/);
-  assert.match(reviewPageSource, /priorityTone\(item\.priority\)/);
-  assert.doesNotMatch(reviewPageSource, /statusTone\(item\.status\)/);
 });
 
-test("review detail header shows module path without status priority or time", () => {
-  assert.match(reviewPageSource, /<ModulePath moduleName=\{selectedCase\.module\} \/>/);
-  assert.match(reviewPageSource, /function ModulePath/);
+test("review detail header shows status priority and module path", () => {
+  assert.match(reviewPageSource, /<ModulePathInline moduleName=\{selectedCase\.module\} \/>/);
+  assert.match(reviewPageSource, /function ModulePathInline/);
   assert.match(reviewPageSource, /moduleSegments\(moduleName \|\| "未分模块"\)/);
-  assert.doesNotMatch(reviewPageSource, /statusLabel\(selectedCase\.status\)/);
-  assert.doesNotMatch(reviewPageSource, /statusTone\(selectedCase\.status\)/);
-  assert.doesNotMatch(reviewPageSource, /selectedCase\.priority/);
+  assert.match(reviewPageSource, /reviewStatusLabel\(selectedCase\.status\)/);
+  assert.match(reviewPageSource, /reviewTone\(selectedCase\.status\)/);
+  assert.match(reviewPageSource, /priorityTone\(selectedCase\.priority\)/);
   assert.doesNotMatch(reviewPageSource, /selectedCase\.updated_at/);
   assert.doesNotMatch(reviewPageSource, /formatDateTime/);
 });

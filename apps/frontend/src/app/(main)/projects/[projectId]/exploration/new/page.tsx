@@ -9,11 +9,5 @@ export default function Page() {
   const params = useParams<{ projectId: string }>();
   const projectName = useProjectName(params.projectId);
 
-  return (
-    <ExplorationRunCreatePage
-      projectId={params.projectId}
-      projectName={projectName}
-      projectScope="project"
-    />
-  );
+  return <ExplorationRunCreatePage projectId={params.projectId} projectName={projectName} projectScope="project" />;
 }

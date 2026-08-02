@@ -2,15 +2,15 @@
 
 import { useEffect, useMemo, useState } from "react";
 
-import { AlertTriangle, ClipboardCheck, FolderKanban, Gauge, PlaySquare, type LucideIcon } from "lucide-react";
+import { AlertTriangle, ClipboardCheck, FolderKanban, Gauge, type LucideIcon, PlaySquare } from "lucide-react";
 
 import { AssetTrendChart } from "@/app/(main)/dashboard/_components/asset-trend-chart";
 import { MetricCard, PageShell } from "@/components/ai-testing/page-shell";
-import { moduleBreadcrumbs } from "@/navigation/breadcrumbs";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { apiRequest, type ApiDashboardOverview } from "@/lib/api-client";
+import { type ApiDashboardOverview, apiRequest } from "@/lib/api-client";
+import { moduleBreadcrumbs } from "@/navigation/breadcrumbs";
 import { useProjectContextStore } from "@/stores/project-context-store";
 
 const metricIcons: Record<string, LucideIcon> = {
@@ -39,7 +39,9 @@ export default function Page() {
       setLoading(true);
       setError("");
       try {
-        const result = await apiRequest<ApiDashboardOverview>(`/dashboard/overview?project_id=${projectId}&days=${trendDays}`);
+        const result = await apiRequest<ApiDashboardOverview>(
+          `/dashboard/overview?project_id=${projectId}&days=${trendDays}`,
+        );
         if (!ignore) {
           setOverview(result);
         }
@@ -90,7 +92,12 @@ export default function Page() {
               />
             ))}
           </div>
-          <AssetTrendChart data={overview.trend} days={trendDays} onDaysChange={setTrendDays} projectLabel={projectLabel} />
+          <AssetTrendChart
+            data={overview.trend}
+            days={trendDays}
+            onDaysChange={setTrendDays}
+            projectLabel={projectLabel}
+          />
         </>
       ) : null}
     </PageShell>

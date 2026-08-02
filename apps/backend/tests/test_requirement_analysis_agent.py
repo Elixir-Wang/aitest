@@ -26,17 +26,7 @@ async def test_requirement_analysis_agent_recovers_from_invalid_structured_tool_
 
     tool_call_id = "call-invalid-requirement-json"
     valid_result = {
-        "understanding": {
-            "background": "背景",
-            "goals": "目标",
-            "users": "用户",
-            "scope": "范围",
-            "flow": "流程",
-            "states": "状态",
-            "rules": "规则",
-            "ui": "界面",
-            "data": "数据",
-        },
+        "understanding_markdown": "# 需求理解\n\n## 背景\n背景\n\n## 目标\n目标",
         "clarifications": [
             {
                 "id": "clar-001",
