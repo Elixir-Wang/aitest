@@ -16,6 +16,9 @@ export function PerformanceTestParamsDialog({ item, onOpenChange }: PerformanceT
     if (!item) return "";
     return JSON.stringify(
       {
+        target_type: item.target_type,
+        endpoint_id: item.endpoint_id,
+        scenario_id: item.scenario_id,
         request_config: item.request_config,
         load_config: item.load_config,
         data_config: item.data_config,
@@ -36,7 +39,7 @@ export function PerformanceTestParamsDialog({ item, onOpenChange }: PerformanceT
             <div className="min-w-0">
               <DialogTitle className="truncate">创建参数</DialogTitle>
               <DialogDescription className="mt-1 truncate">
-                {item?.name} · {item?.endpoint_method} {item?.endpoint_path}
+                {item?.name} · {item?.target_type === "scenario" ? item.scenario_name : `${item?.endpoint_method} ${item?.endpoint_path}`}
               </DialogDescription>
             </div>
             <OneClipboard copiedLabel="已复制" label="复制 JSON" text={payload} />

@@ -555,6 +555,7 @@ def _supported_recommendations(
             _should_demote_capacity_boundary(metric_snapshot, finding) for finding in referenced_findings
         ):
             normalized["priority"] = "P2"
+            normalized = _humanize_capacity_boundary_recommendation(normalized)
         result.append(normalized)
     return result
 
@@ -584,7 +585,16 @@ def _should_demote_capacity_boundary(metric_snapshot: dict[str, Any], finding: d
     capacity_boundary = "capacity:summary" in evidence_refs or bool(
         re.search(r"容量上限|容量拐点|性能拐点|固定(?:单阶段)?负载|阶梯加压", text, re.IGNORECASE)
     )
-    return capacity_boundary and not re.search(r"失败|退化|恶化|超时|错误|目标未通过", text, re.IGNORECASE)
+    return capacity_boundary and not _has_performance_failure_signal(text)
+
+
+def _has_performance_failure_signal(text: str) -> bool:
+    if re.search(r"请求失败|失败请求|失败率(?:上升|恶化|超标|非零)|退化|恶化|超时|错误|目标未通过", text, re.IGNORECASE):
+        return True
+    return any(
+        float(match.group(1)) > 0
+        for match in re.finditer(r"失败率\s*(?:为|=|：|:|>|≥)?\s*(\d+(?:\.\d+)?)\s*%", text, re.IGNORECASE)
+    )
 
 
 def _humanize_capacity_boundary_finding(
@@ -606,6 +616,25 @@ def _humanize_capacity_boundary_finding(
             "系统容量上限或性能拐点，也不能据此宣称已获得稳定容量。"
         ),
     }
+
+
+def _humanize_capacity_boundary_recommendation(recommendation: dict[str, Any]) -> dict[str, Any]:
+    internal_fields = re.compile(
+        r"load\.mode|stages|capacity_analysis|can_claim_stable_capacity|knee_point|\b(?:true|false|null)\b",
+        re.IGNORECASE,
+    )
+    normalized = dict(recommendation)
+    if internal_fields.search(str(normalized.get("action") or "")):
+        normalized["action"] = "补充分阶段阶梯加压复测。"
+    if internal_fields.search(str(normalized.get("expected_effect") or "")):
+        normalized["expected_effect"] = "识别容量拐点，或明确当前配置下已验证的最大稳定负载。"
+    verification = str(normalized.get("verification") or "")
+    if internal_fields.search(verification) or re.search(r"拐点.*非空", verification, re.IGNORECASE):
+        normalized["verification"] = (
+            "复测后报告应给出容量拐点，或明确当前配置下已验证的最大稳定负载，"
+            "并展示各级 P95、P99、失败率与吞吐量随负载变化的曲线。"
+        )
+    return normalized
 
 
 def _is_server_resource_evidence(value: str) -> bool:

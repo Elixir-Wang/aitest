@@ -16,6 +16,8 @@ def seed_system_defaults(db: sqlite3.Connection) -> None:
     _migrate_performance_scripts_to_single_record(db)
     _ensure_performance_analysis_columns(db)
     _ensure_api_test_script_columns(db)
+    _ensure_api_scenario_suite_tables(db)
+    _ensure_api_batch_run_table(db)
     _ensure_api_automation_run_columns(db)
     _ensure_api_script_generation_runs(db)
     _ensure_api_scenario_columns(db)
@@ -590,6 +592,80 @@ def _ensure_performance_test_columns(db: sqlite3.Connection) -> None:
     for column, statement in additions.items():
         if column not in columns:
             db.execute(statement)
+    columns = {str(column["name"]) for column in db.execute("PRAGMA table_info(performance_tests)").fetchall()}
+    table = db.execute(
+        "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'performance_tests'"
+    ).fetchone()
+    table_sql = str(table["sql"] or "") if table else ""
+    if (
+        "scenario_id" in columns
+        and "'scenario'" in table_sql
+        and "endpoint_id IS NOT NULL" not in table_sql
+        and "scenario_id IS NOT NULL" not in table_sql
+    ):
+        return
+
+    db.commit()
+    db.execute("PRAGMA foreign_keys = OFF")
+    db.executescript(
+        """
+        CREATE TABLE performance_tests_with_scenarios (
+          id TEXT PRIMARY KEY,
+          project_id TEXT NOT NULL,
+          name TEXT NOT NULL,
+          description TEXT NOT NULL DEFAULT '',
+          target_type TEXT NOT NULL CHECK(target_type IN ('endpoint', 'scenario')) DEFAULT 'endpoint',
+          endpoint_id TEXT,
+          scenario_id TEXT,
+          api_environment_id TEXT,
+          request_config_json TEXT NOT NULL DEFAULT '{}',
+          load_config_json TEXT NOT NULL DEFAULT '{}',
+          data_config_json TEXT NOT NULL DEFAULT '{}',
+          circuit_breaker_json TEXT NOT NULL DEFAULT '{}',
+          performance_goal_json TEXT NOT NULL DEFAULT '{}',
+          success_rules_json TEXT NOT NULL DEFAULT '[]',
+          created_by TEXT NOT NULL,
+          created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE,
+          FOREIGN KEY(endpoint_id) REFERENCES api_endpoints(id) ON DELETE SET NULL,
+          FOREIGN KEY(scenario_id) REFERENCES api_scenarios(id) ON DELETE SET NULL,
+          FOREIGN KEY(api_environment_id) REFERENCES api_test_environments(id) ON DELETE SET NULL,
+          CHECK(
+            (target_type = 'endpoint' AND scenario_id IS NULL)
+            OR (target_type = 'scenario' AND endpoint_id IS NULL)
+          ),
+          UNIQUE(project_id, name)
+        );
+        """
+    )
+    scenario_expression = "scenario_id" if "scenario_id" in columns else "NULL"
+    db.execute(
+        f"""
+        INSERT INTO performance_tests_with_scenarios (
+          id, project_id, name, description, target_type, endpoint_id, scenario_id,
+          api_environment_id, request_config_json, load_config_json, data_config_json,
+          circuit_breaker_json, performance_goal_json, success_rules_json, created_by,
+          created_at, updated_at
+        )
+        SELECT
+          id, project_id, name, description, target_type, endpoint_id, {scenario_expression},
+          api_environment_id, request_config_json, load_config_json, data_config_json,
+          circuit_breaker_json, performance_goal_json, success_rules_json, created_by,
+          created_at, updated_at
+        FROM performance_tests
+        """
+    )
+    db.executescript(
+        """
+        DROP TABLE performance_tests;
+        ALTER TABLE performance_tests_with_scenarios RENAME TO performance_tests;
+        CREATE INDEX IF NOT EXISTS idx_performance_tests_project_updated
+          ON performance_tests(project_id, updated_at);
+        """
+    )
+    db.commit()
+    db.execute("PRAGMA foreign_keys = ON")
 
 
 def _migrate_performance_scripts_to_single_record(db: sqlite3.Connection) -> None:
@@ -742,6 +818,76 @@ def _ensure_performance_analysis_columns(db: sqlite3.Connection) -> None:
         )
 
 
+def _ensure_api_scenario_suite_tables(db: sqlite3.Connection) -> None:
+    db.execute(
+        """
+        CREATE TABLE IF NOT EXISTS api_scenario_suites (
+          id TEXT PRIMARY KEY,
+          project_id TEXT NOT NULL,
+          api_environment_id TEXT NOT NULL,
+          name TEXT NOT NULL,
+          description TEXT NOT NULL DEFAULT '',
+          created_by TEXT NOT NULL,
+          created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE,
+          FOREIGN KEY(api_environment_id) REFERENCES api_test_environments(id) ON DELETE RESTRICT
+        )
+        """
+    )
+    db.execute(
+        "CREATE INDEX IF NOT EXISTS idx_api_scenario_suites_project_updated ON api_scenario_suites(project_id, updated_at)"
+    )
+    db.execute(
+        """
+        CREATE TABLE IF NOT EXISTS api_scenario_suite_items (
+          suite_id TEXT NOT NULL,
+          scenario_id TEXT NOT NULL,
+          position INTEGER NOT NULL,
+          created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          PRIMARY KEY(suite_id, scenario_id),
+          UNIQUE(suite_id, position),
+          FOREIGN KEY(suite_id) REFERENCES api_scenario_suites(id) ON DELETE CASCADE,
+          FOREIGN KEY(scenario_id) REFERENCES api_scenarios(id) ON DELETE RESTRICT
+        )
+        """
+    )
+
+
+def _ensure_api_batch_run_table(db: sqlite3.Connection) -> None:
+    db.execute(
+        """
+        CREATE TABLE IF NOT EXISTS api_batch_runs (
+          id TEXT PRIMARY KEY,
+          suite_id TEXT,
+          project_id TEXT NOT NULL,
+          api_environment_id TEXT NOT NULL,
+          name TEXT NOT NULL,
+          status TEXT NOT NULL CHECK(status IN ('queued', 'running', 'completed', 'failed')) DEFAULT 'queued',
+          result TEXT NOT NULL CHECK(result IN ('', 'passed', 'observed', 'failed', 'error')) DEFAULT '',
+          error_message TEXT NOT NULL DEFAULT '',
+          created_by TEXT NOT NULL,
+          created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          started_at TEXT,
+          finished_at TEXT,
+          report_deleted_at TEXT,
+          FOREIGN KEY(suite_id) REFERENCES api_scenario_suites(id) ON DELETE SET NULL,
+          FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE,
+          FOREIGN KEY(api_environment_id) REFERENCES api_test_environments(id) ON DELETE RESTRICT
+        )
+        """
+    )
+    db.execute(
+        "CREATE INDEX IF NOT EXISTS idx_api_batch_runs_project_created ON api_batch_runs(project_id, created_at)"
+    )
+    columns = {str(column["name"]) for column in db.execute("PRAGMA table_info(api_batch_runs)").fetchall()}
+    if "suite_id" not in columns:
+        db.execute(
+            "ALTER TABLE api_batch_runs ADD COLUMN suite_id TEXT REFERENCES api_scenario_suites(id) ON DELETE SET NULL"
+        )
+
+
 def _ensure_api_automation_run_columns(db: sqlite3.Connection) -> None:
     row = db.execute("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'api_automation_runs'").fetchone()
     if not row:
@@ -761,11 +907,22 @@ def _ensure_api_automation_run_columns(db: sqlite3.Connection) -> None:
         db.execute("ALTER TABLE api_automation_runs ADD COLUMN parent_run_id TEXT")
     if "source_repair_attempt_id" not in columns:
         db.execute("ALTER TABLE api_automation_runs ADD COLUMN source_repair_attempt_id TEXT")
+    if "batch_run_id" not in columns:
+        db.execute("ALTER TABLE api_automation_runs ADD COLUMN batch_run_id TEXT REFERENCES api_batch_runs(id) ON DELETE SET NULL")
+    if "batch_position" not in columns:
+        db.execute("ALTER TABLE api_automation_runs ADD COLUMN batch_position INTEGER")
     table_sql_row = db.execute(
         "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'api_automation_runs'"
     ).fetchone()
     if table_sql_row and "'observed'" not in str(table_sql_row["sql"] or ""):
         _rebuild_api_automation_runs_with_observed_status(db)
+    db.execute(
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_api_runs_batch_position
+        ON api_automation_runs(batch_run_id, batch_position)
+        WHERE batch_run_id IS NOT NULL
+        """
+    )
 
 
 def _rebuild_api_automation_runs_with_observed_status(db: sqlite3.Connection) -> None:
@@ -777,6 +934,8 @@ def _rebuild_api_automation_runs_with_observed_status(db: sqlite3.Connection) ->
           id TEXT PRIMARY KEY,
           project_id TEXT NOT NULL,
           api_environment_id TEXT,
+          batch_run_id TEXT,
+          batch_position INTEGER,
           task_id TEXT NOT NULL UNIQUE,
           status TEXT NOT NULL CHECK(status IN ('queued', 'running', 'passed', 'observed', 'failed', 'cancelled', 'interrupted')),
           script_ids_json TEXT NOT NULL DEFAULT '[]',
@@ -798,14 +957,15 @@ def _rebuild_api_automation_runs_with_observed_status(db: sqlite3.Connection) ->
           updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
           finished_at TEXT,
           FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE,
-          FOREIGN KEY(api_environment_id) REFERENCES api_test_environments(id) ON DELETE SET NULL
+          FOREIGN KEY(api_environment_id) REFERENCES api_test_environments(id) ON DELETE SET NULL,
+          FOREIGN KEY(batch_run_id) REFERENCES api_batch_runs(id) ON DELETE SET NULL
         )
         """
     )
     db.execute(
         """
         INSERT INTO api_automation_runs_new (
-          id, project_id, api_environment_id, task_id, status, script_ids_json,
+          id, project_id, api_environment_id, batch_run_id, batch_position, task_id, status, script_ids_json,
           target_type, target_ids_json, execution_snapshot_json, command_summary,
           stdout_path, stderr_path, json_report_path, scenario_result_path,
           observation_result_path, parent_run_id, source_repair_attempt_id,
@@ -813,7 +973,7 @@ def _rebuild_api_automation_runs_with_observed_status(db: sqlite3.Connection) ->
           created_at, updated_at, finished_at
         )
         SELECT
-          id, project_id, api_environment_id, task_id, status, script_ids_json,
+          id, project_id, api_environment_id, batch_run_id, batch_position, task_id, status, script_ids_json,
           target_type, target_ids_json, execution_snapshot_json, command_summary,
           stdout_path, stderr_path, json_report_path, scenario_result_path,
           observation_result_path, parent_run_id, source_repair_attempt_id,
@@ -835,6 +995,7 @@ def _ensure_api_scenario_columns(db: sqlite3.Connection) -> None:
     if scenario:
         columns = {str(column["name"]) for column in db.execute("PRAGMA table_info(api_scenarios)").fetchall()}
         additions = {
+            "api_environment_id": "ALTER TABLE api_scenarios ADD COLUMN api_environment_id TEXT REFERENCES api_test_environments(id) ON DELETE SET NULL",
             "revision": "ALTER TABLE api_scenarios ADD COLUMN revision INTEGER NOT NULL DEFAULT 0",
             "published_snapshot_json": "ALTER TABLE api_scenarios ADD COLUMN published_snapshot_json TEXT NOT NULL DEFAULT '{}'",
             "published_hash": "ALTER TABLE api_scenarios ADD COLUMN published_hash TEXT NOT NULL DEFAULT ''",

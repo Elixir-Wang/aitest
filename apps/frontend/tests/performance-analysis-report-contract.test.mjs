@@ -6,7 +6,26 @@ const reportSource = readFileSync(
   new URL("../src/components/ai-testing/performance-testing/performance-analysis-report.tsx", import.meta.url),
   "utf8",
 );
+const reportPageSource = readFileSync(
+  new URL(
+    "../src/app/(main)/projects/[projectId]/performance-tests/[testId]/runs/[runId]/analysis/[analysisId]/page.tsx",
+    import.meta.url,
+  ),
+  "utf8",
+);
 const apiClientSource = readFileSync(new URL("../src/lib/api-client.ts", import.meta.url), "utf8");
+
+test("performance analysis report omits the Locust console return button", () => {
+  assert.doesNotMatch(reportSource, /返回 Locust 控制台/);
+  assert.doesNotMatch(reportSource, /<ArrowLeft/);
+});
+
+test("performance analysis report breadcrumbs include report center, performance test, and test name", () => {
+  assert.match(reportPageSource, /getPerformanceTest/);
+  assert.match(reportPageSource, /moduleBreadcrumbs\(\s*"reports"/);
+  assert.match(reportPageSource, /reportBreadcrumbLabel = testName \? `\$\{testName\} - 性能智能分析报告`/);
+  assert.doesNotMatch(reportPageSource, /label: "性能测试"/);
+});
 
 test("performance analysis API exposes generation metadata", () => {
   assert.match(apiClientSource, /generation_mode: "" \| "ai_primary" \| "ai_repaired" \| "deterministic_fallback"/);
@@ -62,6 +81,35 @@ test("performance report follows the concise decision-first structure", () => {
   assert.match(reportSource, /未配置验收目标，仅作为观察指标/);
 });
 
+test("performance report places core metrics in the wider left column and scope details on the right", () => {
+  assert.match(reportSource, /xl:grid-cols-\[minmax\(34rem,1\.15fr\)_minmax\(22rem,0\.85fr\)\]/);
+  assert.ok(
+    reportSource.indexOf('id="core-metrics-heading"') < reportSource.indexOf("scopeItems.length"),
+    "core metrics should appear before the right-side scope details",
+  );
+});
+
+test("performance report presents scope details as a balanced two-column configuration matrix", () => {
+  assert.match(reportSource, /id="test-config-heading"/);
+  assert.match(reportSource, /aria-labelledby="test-config-heading"/);
+  assert.match(reportSource, /flex h-full flex-col justify-center/);
+  assert.match(reportSource, /mt-4 grid grid-cols-2 gap-x-8/);
+  assert.match(reportSource, /className="border-t py-3"/);
+  assert.match(reportSource, /<Gauge className="size-3\.5" \/>/);
+  assert.doesNotMatch(reportSource, /grid grid-cols-2 gap-x-5 gap-y-4 sm:grid-cols-3/);
+});
+
+test("performance verdict glyph sits beside the verdict headline instead of the section label", () => {
+  const labelIndex = reportSource.indexOf("<span>性能结论</span>");
+  const glyphIndex = reportSource.indexOf("<VerdictGlyph verdict={verdict} />");
+  const headlineIndex = reportSource.indexOf('<h1 className="font-semibold text-3xl tabular-nums">');
+  assert.ok(labelIndex < glyphIndex, "the verdict glyph should appear after the section label");
+  assert.ok(glyphIndex < headlineIndex, "the verdict glyph should sit immediately before the verdict headline");
+  assert.match(reportSource, /className="mt-3 flex items-center gap-2"/);
+  assert.match(reportSource, /size-6 shrink-0/);
+  assert.match(reportSource, /text-emerald-600/);
+});
+
 test("performance report renders endpoint metrics and degrades without inventing them", () => {
   assert.match(reportSource, /metric\.endpoint_metrics/);
   assert.match(reportSource, /endpoint\.request_share/);
@@ -88,7 +136,7 @@ test("performance report compresses AI findings and recommendations", () => {
   assert.match(reportSource, /divide-y rounded-lg border bg-card px-4 sm:px-5/);
   assert.match(reportSource, /severityBadgeClass/);
   assert.match(reportSource, /text-muted-foreground text-xs leading-5/);
-  assert.match(reportSource, /text-muted-foreground text-xs leading-5">\{recommendation\.action\}/);
+  assert.match(reportSource, /recommendationAction\(recommendation\.action\)/);
   assert.doesNotMatch(reportSource, /sm:text-base/);
   assert.doesNotMatch(reportSource, /sm:grid-cols-\[5\.5rem_minmax\(0,1fr\)\]/);
   assert.match(reportSource, /normalizedFindingSeverity/);
@@ -98,6 +146,25 @@ test("performance report compresses AI findings and recommendations", () => {
   assert.match(reportSource, /normalizedRecommendationPriority/);
   assert.match(reportSource, /目标\|指标\|验收\|测试有效性/);
   assert.match(reportSource, /达成\|合格\|passed/);
+});
+
+test("performance report humanizes internal capacity fields in historical recommendation verification", () => {
+  const verificationHelper = reportSource.slice(
+    reportSource.indexOf("function recommendationVerification"),
+    reportSource.indexOf("function isSupportedRecommendation"),
+  );
+  assert.match(verificationHelper, /can_claim_stable_capacity\|knee_point/);
+  assert.match(verificationHelper, /已验证的最大稳定负载/);
+  assert.match(verificationHelper, /P95、P99、失败率与吞吐量/);
+});
+
+test("zero failure rate does not prevent capacity-boundary humanization", () => {
+  const capacityHelper = reportSource.slice(
+    reportSource.indexOf("function isCapacityBoundaryFinding"),
+    reportSource.indexOf("function displayFindingStatement"),
+  );
+  assert.doesNotMatch(capacityHelper, /\/失败\|退化/);
+  assert.match(capacityHelper, /请求失败\|失败请求/);
 });
 
 test("performance trend chart separates latency from throughput and retains the console curve style", () => {

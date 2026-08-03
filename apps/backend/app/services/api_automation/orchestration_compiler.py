@@ -16,7 +16,12 @@ from app.agents.api_automation.orchestration.schemas import (
     StatusCodeAssertion,
 )
 from app.schemas.api_automation import ApiScenarioAiReviewPlan
-from app.services.api_automation.orchestration_asset_analysis import dependency_candidates, request_slots, response_slots
+from app.services.api_automation.orchestration_asset_analysis import (
+    dependency_candidates,
+    normalize_request_target,
+    request_slots,
+    response_slots,
+)
 
 
 _SUCCESS_METHODS = {"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD"}
@@ -124,6 +129,15 @@ def compile_plan(
                 edges.add((source_node.id, node.id, "success"))
                 bound_targets.add(key)
             elif target.has_default or len(target.enum) == 1:
+                value = target.enum[0] if len(target.enum) == 1 else target.default_value
+                node.bindings.append(
+                    ScenarioBinding.model_validate(
+                        {
+                            "target": {"location": target.location, "path": target.path},
+                            "source": {"type": "literal", "value": value},
+                        }
+                    )
+                )
                 bound_targets.add(key)
             else:
                 node.bindings.append(
@@ -440,34 +454,15 @@ def _apply_asset_values(bindings: list[ScenarioBinding], endpoint: dict[str, Any
     for binding in bindings:
         slot = slots.get((binding.target.location, binding.target.path))
         source = binding.source
-        if slot and not slot.sensitive and len(slot.enum) == 1 and source.type in {"user_input", "literal"}:
-            continue
-        if slot and not slot.sensitive and slot.has_default and source.type in {"user_input", "literal"}:
-            continue
+        if slot and not slot.sensitive and slot.has_default and source.type == "user_input":
+            source = LiteralValueSource(value=slot.default_value)
         normalized.append(binding.model_copy(update={"source": source}))
     return normalized
 
 
 def _normalize_target(target, endpoint: dict[str, Any]):
-    slots = request_slots(endpoint)
-    matching = [slot for slot in slots if slot.path == target.path]
-    if not matching:
-        return target
-    if any(slot.location == target.location for slot in matching):
-        return target
-    body_locations = {"json_body", "form", "multipart"}
-    matching_body_locations = {slot.location for slot in matching if slot.location in body_locations}
-    if target.location in body_locations and len(matching_body_locations) == 1:
-        return target.model_copy(update={"location": matching_body_locations.pop()})
-    aliases = {"form": "multipart", "multipart": "form"}
-    alias = aliases.get(target.location)
-    if alias and any(slot.location == alias for slot in matching):
-        return target.model_copy(update={"location": alias})
-    # Older plans used `form` for JSON bodies. Canonicalize this only when the
-    # asset has exactly one matching path and no form/multipart slot exists.
-    if target.location == "form" and len(matching) == 1 and matching[0].location == "json_body":
-        return target.model_copy(update={"location": "json_body"})
-    return target
+    location, path = normalize_request_target(endpoint, target.location, target.path)
+    return target.model_copy(update={"location": location, "path": path})
 
 
 def _binding_priority(binding: ScenarioBinding) -> int:

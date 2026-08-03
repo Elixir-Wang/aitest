@@ -28,7 +28,8 @@ from app.schemas.api_automation import (
     ApiScenarioAiReviewSaveIn,
     ApiScenarioExecuteIn,
     ApiScenarioIn,
-    ApiScenarioPublishIn,
+    ApiScenarioSuiteCreateIn,
+    ApiScenarioSuiteUpdateIn,
     ApiScenarioStepIn,
     ApiScenarioStepsReplaceIn,
     ApiScenarioVersionSaveIn,
@@ -379,6 +380,62 @@ def get_api_scenario_run_result(project_id: str, run_id: str, actor=Depends(curr
     return service.get_api_scenario_run_result(project_id, run_id, actor)
 
 
+@router.post("/api-scenario-suites")
+def create_api_scenario_suite(
+    project_id: str,
+    payload: ApiScenarioSuiteCreateIn,
+    actor=Depends(require_admin),
+) -> dict:
+    return service.create_api_scenario_suite(project_id, payload, actor)
+
+
+@router.get("/api-scenario-suites")
+def list_api_scenario_suites(project_id: str, actor=Depends(current_user)) -> list[dict]:
+    return service.list_api_scenario_suites(project_id, actor)
+
+
+@router.get("/api-scenario-suites/{suite_id}")
+def get_api_scenario_suite(project_id: str, suite_id: str, actor=Depends(current_user)) -> dict:
+    return service.get_api_scenario_suite(project_id, suite_id, actor)
+
+
+@router.patch("/api-scenario-suites/{suite_id}")
+def update_api_scenario_suite(
+    project_id: str,
+    suite_id: str,
+    payload: ApiScenarioSuiteUpdateIn,
+    actor=Depends(require_admin),
+) -> dict:
+    return service.update_api_scenario_suite(project_id, suite_id, payload, actor)
+
+
+@router.delete("/api-scenario-suites/{suite_id}", status_code=204)
+def delete_api_scenario_suite(project_id: str, suite_id: str, actor=Depends(require_admin)) -> None:
+    service.delete_api_scenario_suite(project_id, suite_id, actor)
+
+
+@router.post("/api-scenario-suites/{suite_id}/runs")
+def run_api_scenario_suite(
+    project_id: str,
+    suite_id: str,
+    background_tasks: BackgroundTasks,
+    actor=Depends(require_admin),
+) -> dict:
+    created = service.run_api_scenario_suite(project_id, suite_id, actor)
+    background_tasks.add_task(service.execute_api_batch_run, created["id"])
+    return created
+
+
+@router.get("/api-batch-runs")
+def list_api_batch_runs(project_id: str, actor=Depends(current_user)) -> list[dict]:
+    return service.list_api_batch_runs(project_id, actor)
+
+
+@router.get("/api-batch-runs/{batch_run_id}")
+def get_api_batch_run(project_id: str, batch_run_id: str, actor=Depends(current_user)) -> dict:
+    return service.get_api_batch_run(project_id, batch_run_id, actor)
+
+
 @router.post("/api-runs/{run_id}/repair-session")
 def create_api_repair_session(
     project_id: str,
@@ -588,21 +645,6 @@ def replace_api_scenario_steps(
 @router.post("/api-scenarios/{scenario_id}/validate")
 def validate_api_scenario(project_id: str, scenario_id: str, actor=Depends(current_user)) -> dict:
     return service.validate_api_scenario(project_id, scenario_id, actor)
-
-
-@router.post("/api-scenarios/{scenario_id}/publish")
-def publish_api_scenario(
-    project_id: str,
-    scenario_id: str,
-    payload: ApiScenarioPublishIn | None = None,
-    actor=Depends(require_admin),
-) -> dict:
-    return service.publish_api_scenario(
-        project_id,
-        scenario_id,
-        actor,
-        confirm_asset_changes=payload.confirm_asset_changes if payload else False,
-    )
 
 
 @router.get("/api-scenarios/{scenario_id}/revisions")

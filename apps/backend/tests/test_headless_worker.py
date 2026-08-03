@@ -216,6 +216,23 @@ def test_parse_locust_stats_csv_returns_current_aggregate_row() -> None:
     }
 
 
+def test_parse_locust_stats_csv_can_select_scenario_transaction_row() -> None:
+    sample = headless_worker.parse_locust_stats_csv(
+        "Type,Name,Request Count,Failure Count,Median Response Time,Average Response Time,Requests/s,Failures/s,50%,95%,99%\n"
+        "GET,01 GET /api/items,12,1,30,40,4,0.2,30,80,100\n"
+        "SCENARIO,SCENARIO 查询条目场景,4,1,120,150,1.2,0.2,120,260,300\n"
+        ",Aggregated,16,2,60,75,5.2,0.4,50,200,300\n",
+        user_count=3,
+        request_type="SCENARIO",
+    )
+
+    assert sample is not None
+    assert sample["request_count"] == 4
+    assert sample["failure_count"] == 1
+    assert sample["requests_per_second"] == 1.2
+    assert sample["average_response_time_ms"] == 150.0
+
+
 def test_read_realtime_sample_uses_current_stats_and_history_user_count(tmp_path: Path) -> None:
     (tmp_path / "result_stats.csv").write_text(
         "Type,Name,Request Count,Failure Count,Average Response Time,Requests/s,Failures/s,50%,95%,99%\n"

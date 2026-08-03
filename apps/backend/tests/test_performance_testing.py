@@ -134,6 +134,73 @@ def _payload(project_id: str = "project-1", **overrides) -> PerformanceTestCreat
     return PerformanceTestCreateIn.model_validate(values)
 
 
+def _seed_api_scenario(project_id: str = "project-1", scenario_id: str = "scenario-project-1") -> None:
+    with connect() as db:
+        db.execute(
+            """
+            INSERT INTO api_scenarios (
+              id, project_id, api_environment_id, name, description, status,
+              variables_json, revision, published_snapshot_json, published_hash,
+              created_by, updated_by
+            )
+            VALUES (?, ?, ?, '查询条目场景', '', 'ready', '{}', 1, ?, '', 'u-admin', 'u-admin')
+            """,
+            (
+                scenario_id,
+                project_id,
+                f"environment-{project_id}",
+                '{"scenario":{"id":"' + scenario_id + '","name":"查询条目场景"},"steps":[]}',
+            ),
+        )
+
+
+def test_performance_test_target_requires_exactly_one_matching_asset() -> None:
+    scenario = _payload(
+        target_type="scenario",
+        endpoint_id=None,
+        scenario_id="scenario-project-1",
+    )
+
+    assert scenario.target_type == "scenario"
+    assert scenario.endpoint_id is None
+    assert scenario.scenario_id == "scenario-project-1"
+
+    invalid_payloads = [
+        {"target_type": "endpoint", "endpoint_id": None, "scenario_id": None},
+        {"target_type": "endpoint", "endpoint_id": "endpoint-project-1", "scenario_id": "scenario-project-1"},
+        {"target_type": "scenario", "endpoint_id": None, "scenario_id": None},
+        {"target_type": "scenario", "endpoint_id": "endpoint-project-1", "scenario_id": "scenario-project-1"},
+    ]
+    for values in invalid_payloads:
+        with pytest.raises(ValidationError):
+            _payload(**values)
+
+
+def test_create_scenario_performance_test_persists_scenario_target(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    _seed_project_assets()
+    _seed_api_scenario()
+
+    created = service.create_performance_test(
+        "project-1",
+        _payload(
+            name="查询条目场景性能测试",
+            target_type="scenario",
+            endpoint_id=None,
+            scenario_id="scenario-project-1",
+        ),
+        ADMIN,
+    )
+
+    assert created["target_type"] == "scenario"
+    assert created["endpoint_id"] is None
+    assert created["scenario_id"] == "scenario-project-1"
+    assert created["scenario_name"] == "查询条目场景"
+
+
 def test_load_config_rejects_zero_or_reversed_wait_time() -> None:
     with pytest.raises(ValidationError):
         PerformanceLoadConfig(wait_time_min_seconds=0, wait_time_max_seconds=1)

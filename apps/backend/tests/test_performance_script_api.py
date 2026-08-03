@@ -1,4 +1,5 @@
 from pathlib import Path
+import json
 
 import pytest
 from fastapi import HTTPException
@@ -79,6 +80,147 @@ def _create_test(project_id: str = "project-1") -> dict:
         ),
         ADMIN,
     )
+
+
+def _create_scenario_test() -> dict:
+    _create_test()
+    snapshot = {
+        "id": "scenario-project-1",
+        "project_id": "project-1",
+        "name": "查询条目场景",
+        "variables": {"tenant": "default"},
+        "revision": 3,
+        "steps": [
+            {
+                "id": "step-assign",
+                "step_type": "assign",
+                "step_order": 0,
+                "name": "设置租户",
+                "control_config": {"name": "tenant", "source": {"type": "literal", "value": "tenant-a"}},
+                "on_failure": "stop",
+                "enabled": True,
+            },
+            {
+                "id": "step-request",
+                "step_type": "api_request",
+                "step_order": 1,
+                "name": "查询条目",
+                "endpoint_id": "endpoint-project-1",
+                "endpoint": {
+                    "id": "endpoint-project-1",
+                    "method": "GET",
+                    "path": "/api/items/{item_id}",
+                    "summary": "items",
+                    "parameters": [],
+                    "request_body": {},
+                    "responses": {"200": {"description": "ok"}},
+                    "auth": {},
+                },
+                "request_overrides": {"path_parameters": {"item_id": "fixed"}},
+                "bindings": [
+                    {"target": "/request/query_parameters/tenant", "source": {"type": "scenario", "name": "tenant"}}
+                ],
+                "extractors": [{"name": "item_id", "source": "response.body", "expression": "$.id"}],
+                "assertions": [{"type": "status_code", "expected": 200}],
+                "control_config": {},
+                "on_failure": "continue",
+                "enabled": True,
+            },
+            {
+                "id": "step-condition",
+                "step_type": "condition",
+                "step_order": 2,
+                "name": "校验提取结果",
+                "control_config": {
+                    "source": {"type": "step_output", "step_id": "step-request", "variable": "item_id"},
+                    "operator": "exists",
+                },
+                "on_failure": "stop",
+                "enabled": True,
+            },
+            {
+                "id": "step-wait",
+                "step_type": "wait",
+                "step_order": 3,
+                "name": "短暂停顿",
+                "control_config": {"duration_ms": 10},
+                "on_failure": "always_run",
+                "enabled": True,
+            },
+        ],
+    }
+    with connect() as db:
+        db.execute(
+            """
+            INSERT INTO api_scenarios (
+              id, project_id, api_environment_id, name, description, status,
+              variables_json, revision, published_snapshot_json, published_hash,
+              created_by, updated_by
+            )
+            VALUES (?, ?, ?, ?, '', 'ready', ?, 3, ?, '', 'u-admin', 'u-admin')
+            """,
+            (
+                "scenario-project-1",
+                "project-1",
+                "environment-project-1",
+                "查询条目场景",
+                json.dumps(snapshot["variables"], ensure_ascii=False),
+                json.dumps(snapshot, ensure_ascii=False),
+            ),
+        )
+    return service.create_performance_test(
+        "project-1",
+        PerformanceTestCreateIn(
+            name="scenario performance",
+            target_type="scenario",
+            scenario_id="scenario-project-1",
+            api_environment_id="environment-project-1",
+        ),
+        ADMIN,
+    )
+
+
+def test_scenario_script_generation_uses_current_saved_version(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    performance_test = _create_scenario_test()
+
+    generated = script_service.generate_script("project-1", performance_test["id"], ADMIN)
+
+    assert generated["validation_status"] == "valid"
+    assert generated["plan"]["target_type"] == "scenario"
+    assert generated["plan"]["scenario_id"] == "scenario-project-1"
+    assert generated["plan"]["scenario_name"] == "查询条目场景"
+    assert [step["step_type"] for step in generated["plan"]["steps"]] == [
+        "assign",
+        "api_request",
+        "condition",
+        "wait",
+    ]
+    assert generated["plan"]["steps"][1]["request"]["name"] == "02 GET /api/items/{item_id}"
+    assert "SCENARIO 查询条目场景" in generated["code"]
+    assert "events.request.fire" in generated["code"]
+    assert "def _run_scenario_step" in generated["code"]
+    assert generated["runtime_preview"]["scenario"]["revision"] == 3
+
+
+def test_scenario_script_generation_rejects_missing_current_version(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    performance_test = _create_scenario_test()
+    with connect() as db:
+        db.execute(
+            "UPDATE api_scenarios SET published_snapshot_json = '{}' WHERE id = 'scenario-project-1'"
+        )
+
+    with pytest.raises(HTTPException) as exc_info:
+        script_service.generate_script("project-1", performance_test["id"], ADMIN)
+
+    assert exc_info.value.detail["code"] == "PERFORMANCE_SCENARIO_VERSION_MISSING"
 
 
 def test_script_generation_overwrites_single_current_script(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

@@ -223,6 +223,154 @@ def test_generated_scenario_runtime_builds_request_from_endpoint_snapshot(monkey
     assert requests == [({"method": "GET", "path": "/profile", "query": {"expand": "roles"}}, {})]
 
 
+def test_generated_scenario_runtime_normalizes_json_request_body(monkeypatch) -> None:
+    support_module = ModuleType("support")
+    assertions_module = ModuleType("support.assertions")
+    assertions_module.assert_response_assertions = lambda response, assertions: None
+    monkeypatch.setitem(sys.modules, "support", support_module)
+    monkeypatch.setitem(sys.modules, "support.assertions", assertions_module)
+    namespace = {}
+    exec(renderer._scenario_py(), namespace)
+    requests = []
+
+    class FakeClient:
+        def request(self, request_data, test_data):
+            requests.append((request_data, test_data))
+            return SimpleNamespace(status_code=200, headers={}, json=lambda: {"ok": True})
+
+    namespace["run_scenario"](
+        FakeClient(),
+        {
+            "variables": {},
+            "steps": [
+                {
+                    "id": "segment-code",
+                    "name": "生成 SegmentCode",
+                    "endpoint": {"method": "POST", "path": "/segment-code/gen"},
+                    "request_overrides": {"request": {"json": {"message_source": "web_share"}}},
+                    "assertions": [{"type": "status_code", "expected": 200}],
+                }
+            ],
+        },
+    )
+
+    assert requests == [
+        (
+            {
+                "method": "POST",
+                "path": "/segment-code/gen",
+                "body": {"message_source": "web_share"},
+            },
+            {},
+        )
+    ]
+
+
+def test_generated_scenario_runtime_captures_sse_events_once(monkeypatch) -> None:
+    support_module = ModuleType("support")
+    assertions_module = ModuleType("support.assertions")
+    assertions_module.assert_response_assertions = lambda response, assertions: None
+    monkeypatch.setitem(sys.modules, "support", support_module)
+    monkeypatch.setitem(sys.modules, "support.assertions", assertions_module)
+    namespace = {}
+    exec(renderer._scenario_py(), namespace)
+    reads = 0
+
+    class FakeResponse:
+        status_code = 200
+        headers = {"Content-Type": "text/event-stream"}
+
+        def iter_lines(self, decode_unicode=True):
+            nonlocal reads
+            reads += 1
+            lines = [
+                b"event: message",
+                'data: {"code":"000000","data":{"answer":"你好"}}'.encode(),
+                b"",
+                b"event: done",
+                b"data: [DONE]",
+                b"",
+            ]
+            if decode_unicode:
+                return iter(line.decode("latin-1") for line in lines)
+            return iter(lines)
+
+    response = FakeResponse()
+    endpoint = {
+        "responses": {"200": {"content": {"text/event-stream": {"schema": {"type": "string"}}}}}
+    }
+
+    snapshot = namespace["_response_snapshot"](response, endpoint)
+    extracted = namespace["_extract"](
+        response,
+        [{"name": "code", "source": "sse_event_json", "event": "message", "path": "/code"}],
+    )
+
+    assert reads == 1
+    assert snapshot["body"] == {
+        "streaming": True,
+        "captured": True,
+        "event_count": 2,
+        "events": [
+            {"event": "message", "data": {"code": "000000", "data": {"answer": "你好"}}},
+            {"event": "done", "data": "[DONE]"},
+        ],
+    }
+    assert extracted == {"code": "000000"}
+
+
+def test_generated_scenario_runtime_applies_fixed_endpoint_parameters(monkeypatch) -> None:
+    support_module = ModuleType("support")
+    assertions_module = ModuleType("support.assertions")
+    assertions_module.assert_response_assertions = lambda response, assertions: None
+    monkeypatch.setitem(sys.modules, "support", support_module)
+    monkeypatch.setitem(sys.modules, "support.assertions", assertions_module)
+    namespace = {}
+    exec(renderer._scenario_py(), namespace)
+    requests = []
+
+    class FakeClient:
+        def request(self, request_data, test_data):
+            requests.append(request_data)
+            return SimpleNamespace(status_code=200, headers={}, json=lambda: {"ok": True})
+
+    namespace["run_scenario"](
+        FakeClient(),
+        {
+            "variables": {},
+            "steps": [
+                {
+                    "id": "chat",
+                    "endpoint": {
+                        "method": "POST",
+                        "path": "/sse",
+                        "parameters": [
+                            {
+                                "name": "SSE-Backend-Type",
+                                "in": "header",
+                                "required": True,
+                                "schema": {"type": "string", "enum": ["sse"]},
+                            },
+                            {
+                                "name": "cybertron-app-id",
+                                "in": "header",
+                                "required": True,
+                                "schema": {"type": "string", "default": "multi-agent-server"},
+                            },
+                        ],
+                    },
+                    "assertions": [{"type": "status_code", "expected": 200}],
+                }
+            ],
+        },
+    )
+
+    assert requests[0]["headers"] == {
+        "SSE-Backend-Type": "sse",
+        "cybertron-app-id": "multi-agent-server",
+    }
+
+
 def test_generated_scenario_runtime_builds_dynamic_multipart_json(monkeypatch) -> None:
     support_module = ModuleType("support")
     assertions_module = ModuleType("support.assertions")

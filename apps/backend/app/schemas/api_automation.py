@@ -383,6 +383,7 @@ class ApiScenarioIn(_StrippedModel):
     name: str = Field(min_length=1)
     description: str = ""
     variables: dict[str, Any] = Field(default_factory=dict)
+    api_environment_id: str | None = None
 
 
 class ApiScenarioStepIn(_StrippedModel):
@@ -555,9 +556,25 @@ class ApiScenarioAiPlanApplyIn(_StrippedModel):
     expected_review_revision: int = Field(ge=0)
 
 
-class ApiScenarioPublishIn(_StrippedModel):
-    confirm_asset_changes: bool = False
-
-
 class ApiScenarioExecuteIn(_StrippedModel):
     api_environment_id: str
+
+
+class ApiScenarioSuiteCreateIn(_StrippedModel):
+    name: str = Field(min_length=1, max_length=100)
+    description: str = Field(default="", max_length=500)
+    api_environment_id: str
+    scenario_ids: list[str] = Field(min_length=1, max_length=100)
+
+    @field_validator("scenario_ids")
+    @classmethod
+    def _validate_scenario_ids(cls, value: list[str]) -> list[str]:
+        if any(not scenario_id for scenario_id in value):
+            raise ValueError("场景不能为空。")
+        if len(set(value)) != len(value):
+            raise ValueError("不能重复选择同一场景。")
+        return value
+
+
+class ApiScenarioSuiteUpdateIn(ApiScenarioSuiteCreateIn):
+    pass

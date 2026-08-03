@@ -111,6 +111,9 @@ def _request(api_client, step, variables, outputs, evidence):
     overrides = step.get("request_overrides") or {}
     _merge(request, overrides.get("request") or {})
     _merge(test_data, overrides.get("test_data") or {})
+    if "body" not in request and "json" in request:
+        request["body"] = request.pop("json")
+    _apply_endpoint_parameter_defaults(request, endpoint)
     for binding in step.get("bindings") or []:
         value = _resolve_source(binding.get("source") or {}, variables, outputs)
         value = _transform(value, binding.get("transform"))
@@ -123,7 +126,7 @@ def _request(api_client, step, variables, outputs, evidence):
     evidence["assertions"] = _redact(step.get("assertions") or case.get("assertions") or [])
     response = _dispatch_request(api_client, request, test_data, endpoint)
     evidence["response"] = _response_snapshot(response, endpoint)
-    assert_response_assertions(response, step.get("assertions") or case.get("assertions") or [])
+    _assert_response_assertions(response, step.get("assertions") or case.get("assertions") or [])
     return _extract(response, step.get("extractors") or [])
 
 
@@ -133,7 +136,13 @@ def _response_snapshot(response, endpoint):
         "headers": dict(getattr(response, "headers", {}) or {}),
     }
     if _is_sse_endpoint(endpoint):
-        snapshot["body"] = {"streaming": True, "captured": False}
+        events = _sse_events(response)
+        snapshot["body"] = {
+            "streaming": True,
+            "captured": True,
+            "event_count": len(events),
+            "events": [_sse_event_snapshot(event) for event in events],
+        }
         return _redact(snapshot)
     try:
         snapshot["body"] = response.json()
@@ -194,6 +203,23 @@ def _expand_request_path(path, request, test_data):
     for key, value in values.items():
         expanded = expanded.replace("{" + str(key) + "}", quote(str(_expand_runtime_value(value)), safe=""))
     return expanded
+
+
+def _apply_endpoint_parameter_defaults(request, endpoint):
+    containers = {"header": "headers", "query": "query", "cookie": "cookies", "path": "path_params"}
+    for parameter in endpoint.get("parameters") or []:
+        container_name = containers.get(str(parameter.get("in") or ""))
+        name = str(parameter.get("name") or "")
+        schema = parameter.get("schema") or {}
+        enum_values = schema.get("enum") if isinstance(schema, dict) else None
+        if isinstance(enum_values, list) and len(enum_values) == 1:
+            value = enum_values[0]
+        elif isinstance(schema, dict) and "default" in schema:
+            value = schema["default"]
+        else:
+            continue
+        if container_name and name:
+            request.setdefault(container_name, {}).setdefault(name, value)
 
 
 def _expand_runtime_value(value):
@@ -301,7 +327,13 @@ def _extract(response, extractors):
 
 
 def _sse_events(response):
+    cached = getattr(response, "_api_scenario_sse_events", None)
+    if cached is not None:
+        return cached
     events = []
+    if not callable(getattr(response, "iter_lines", None)):
+        response._api_scenario_sse_events = events
+        return events
     event_name = "message"
     data_lines = []
 
@@ -312,7 +344,7 @@ def _sse_events(response):
         event_name = "message"
         data_lines = []
 
-    for raw_line in response.iter_lines(decode_unicode=True):
+    for raw_line in response.iter_lines(decode_unicode=False):
         line = raw_line.decode("utf-8") if isinstance(raw_line, bytes) else str(raw_line)
         if not line:
             flush()
@@ -323,7 +355,17 @@ def _sse_events(response):
         elif line.startswith("data:"):
             data_lines.append(line[5:].lstrip())
     flush()
+    response._api_scenario_sse_events = events
     return events
+
+
+def _sse_event_snapshot(event):
+    data = event["data"]
+    try:
+        data = json.loads(data)
+    except (TypeError, json.JSONDecodeError):
+        pass
+    return {"event": event["event"], "data": data}
 
 
 def _extract_sse_event_json(events, extractor, path):
@@ -361,6 +403,23 @@ def _json_path(value, path):
         elif isinstance(current, list) and token.isdigit() and int(token) < len(current): current = current[int(token)]
         else: return None
     return current
+
+
+def _assert_response_assertions(response, assertions):
+    for assertion in assertions:
+        runtime_assertion = copy.deepcopy(assertion)
+        original_path = str(runtime_assertion.get("path") or "")
+        if runtime_assertion.get("type") in {"jsonpath_equals", "jsonpath_exists", "jsonpath_type"} and original_path.startswith("/"):
+            tokens = [part.replace("~1", "/").replace("~0", "~") for part in original_path.strip("/").split("/") if part]
+            runtime_assertion["path"] = "$" + "".join("." + token for token in tokens)
+        try:
+            assert_response_assertions(response, [runtime_assertion])
+        except AssertionError as exc:
+            runtime_path = str(runtime_assertion.get("path") or "")
+            message = str(exc)
+            if original_path and runtime_path != original_path:
+                message = message.replace(runtime_path, original_path)
+            raise AssertionError(message) from exc
 
 
 def _header(headers, name):

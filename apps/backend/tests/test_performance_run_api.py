@@ -17,6 +17,33 @@ def test_format_run_sse_event_emits_json_payload() -> None:
     )
 
 
+def test_run_payload_marks_sqlite_timestamps_as_utc() -> None:
+    payload = performance_runs._run_payload(
+        {
+            "id": "perfrun-1",
+            "project_id": "project-1",
+            "performance_test_id": "perftest-1",
+            "script_id": "perfscript-1",
+            "status": "running",
+            "load_config_json": "{}",
+            "runtime_config_json": "{}",
+            "latest_summary_json": "{}",
+            "error_code": "",
+            "error_message": "",
+            "trace_id": "",
+            "created_at": "2026-08-03 11:23:45",
+            "started_at": "2026-08-03 11:23:50",
+            "finished_at": None,
+            "updated_at": "2026-08-03 11:24:50",
+        }
+    )
+
+    assert payload["created_at"] == "2026-08-03T11:23:45Z"
+    assert payload["started_at"] == "2026-08-03T11:23:50Z"
+    assert payload["finished_at"] is None
+    assert payload["updated_at"] == "2026-08-03T11:24:50Z"
+
+
 def test_create_performance_analysis_schedules_background_execution(monkeypatch) -> None:
     created = {"id": "perfanalysis-1", "status": "collecting"}
     calls = []

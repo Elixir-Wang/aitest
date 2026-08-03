@@ -195,8 +195,9 @@ class PerformanceTestCreateIn(BaseModel):
 
     name: str = Field(min_length=1, max_length=120)
     description: str = Field(default="", max_length=1000)
-    target_type: Literal["endpoint"] = "endpoint"
-    endpoint_id: str = Field(min_length=1)
+    target_type: Literal["endpoint", "scenario"] = "endpoint"
+    endpoint_id: str | None = Field(default=None, min_length=1)
+    scenario_id: str | None = Field(default=None, min_length=1)
     api_environment_id: str = Field(min_length=1)
     request_config: PerformanceRequestConfig = Field(default_factory=PerformanceRequestConfig)
     load_config: PerformanceLoadConfig = Field(default_factory=PerformanceLoadConfig)
@@ -205,10 +206,18 @@ class PerformanceTestCreateIn(BaseModel):
     performance_goal: PerformanceGoal = Field(default_factory=PerformanceGoal)
     success_rules: list[PerformanceSuccessRule] = Field(default_factory=default_success_rules, min_length=1)
 
-    @field_validator("name", "description", "endpoint_id", "api_environment_id", mode="before")
+    @field_validator("name", "description", "endpoint_id", "scenario_id", "api_environment_id", mode="before")
     @classmethod
     def strip_text_fields(cls, value: Any) -> Any:
         return value.strip() if isinstance(value, str) else value
+
+    @model_validator(mode="after")
+    def validate_target(self) -> "PerformanceTestCreateIn":
+        if self.target_type == "endpoint" and (not self.endpoint_id or self.scenario_id):
+            raise ValueError("接口性能测试必须且只能选择一个接口")
+        if self.target_type == "scenario" and (not self.scenario_id or self.endpoint_id):
+            raise ValueError("场景性能测试必须且只能选择一个接口场景")
+        return self
 
 
 class PerformanceTestUpdateIn(BaseModel):
@@ -217,6 +226,7 @@ class PerformanceTestUpdateIn(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=120)
     description: str | None = Field(default=None, max_length=1000)
     endpoint_id: str | None = Field(default=None, min_length=1)
+    scenario_id: str | None = Field(default=None, min_length=1)
     api_environment_id: str | None = Field(default=None, min_length=1)
     request_config: PerformanceRequestConfig | None = None
     load_config: PerformanceLoadConfig | None = None
@@ -225,7 +235,7 @@ class PerformanceTestUpdateIn(BaseModel):
     performance_goal: PerformanceGoal | None = None
     success_rules: list[PerformanceSuccessRule] | None = Field(default=None, min_length=1)
 
-    @field_validator("name", "description", "endpoint_id", "api_environment_id", mode="before")
+    @field_validator("name", "description", "endpoint_id", "scenario_id", "api_environment_id", mode="before")
     @classmethod
     def strip_text_fields(cls, value: Any) -> Any:
         return value.strip() if isinstance(value, str) else value
@@ -243,6 +253,19 @@ class PerformanceSseRulePreviewIn(BaseModel):
 
     sample: str = Field(min_length=1, max_length=65_536)
     sse: PerformanceSseConfig
+
+
+class PerformanceSseMetricGenerateIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    endpoint_id: str = Field(min_length=1)
+    api_environment_id: str = Field(min_length=1)
+    path_parameters: dict[str, Any] = Field(default_factory=dict)
+    query_parameters: dict[str, Any] = Field(default_factory=dict)
+    headers: dict[str, Any] = Field(default_factory=dict)
+    body: Any = None
+    max_stream_seconds: float = Field(default=60, gt=0, le=600)
+    candidate_sse: PerformanceSseConfig | None = None
 
 
 class PerformanceEndpointSummary(BaseModel):
@@ -265,11 +288,13 @@ class PerformanceTestOut(BaseModel):
     project_id: str
     name: str
     description: str
-    target_type: Literal["endpoint"]
+    target_type: Literal["endpoint", "scenario"]
     endpoint_id: str | None
     endpoint_name: str
     endpoint_method: str
     endpoint_path: str
+    scenario_id: str | None
+    scenario_name: str
     api_environment_id: str | None
     environment_name: str
     latest_script_id: str | None = None

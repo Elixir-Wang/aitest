@@ -5,7 +5,9 @@ from app.agents.performance_testing.script_generation.schemas import LocustScrip
 
 def render_locust_script(plan: LocustScriptPlan) -> str:
     plan_json = json.dumps(plan.model_dump(mode="json"), ensure_ascii=False, sort_keys=True)
-    locust_imports = "HttpUser, LoadTestShape, between, task" if plan.load.mode != "fixed" else "HttpUser, between, task"
+    locust_imports = "HttpUser, between, events, task" if plan.target_type == "scenario" else "HttpUser, between, task"
+    if plan.load.mode != "fixed":
+        locust_imports = locust_imports.replace("HttpUser,", "HttpUser, LoadTestShape,")
     prefix = f'''import json
 import math
 import random
@@ -58,11 +60,238 @@ def _json_path(payload, path):
         current = current[part]
     return True, current
 '''
-    if plan.request.transport == "sse":
+    if plan.target_type == "scenario":
+        body = _render_scenario_helpers() + _render_scenario_user(
+            plan.load.wait_time_min_seconds,
+            plan.load.wait_time_max_seconds,
+            plan.scenario_name,
+        )
+    elif plan.request and plan.request.transport == "sse":
         body = _render_sse_helpers() + _render_sse_user(plan.load.wait_time_min_seconds, plan.load.wait_time_max_seconds)
     else:
         body = _render_http_user(plan.load.wait_time_min_seconds, plan.load.wait_time_max_seconds)
     return prefix + body + (_render_load_shape() if plan.load.mode != "fixed" else "")
+
+
+def _render_scenario_helpers() -> str:
+    return r'''
+
+
+def _scenario_source(source, variables, outputs):
+    kind = source.get("type")
+    if kind == "literal":
+        return source.get("value")
+    if kind == "object":
+        return {key: _scenario_source(value, variables, outputs) for key, value in (source.get("properties") or {}).items()}
+    if kind in {"scenario", "environment", "secret", "user_input"}:
+        return variables.get(source.get("name") or source.get("key"))
+    if kind == "step_output":
+        return (outputs.get(source.get("step_id")) or {}).get(source.get("variable"))
+    if kind == "generated":
+        generator = source.get("generator")
+        if generator == "uuid4":
+            return str(uuid.uuid4())
+        if generator == "timestamp_ms":
+            return int(time.time() * 1000)
+        if generator == "timestamp_iso":
+            return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        if generator == "random_string":
+            return uuid.uuid4().hex[:int(source.get("length") or 0)]
+    raise ValueError("unsupported scenario source: " + str(kind))
+
+
+def _scenario_transform(value, transform):
+    if not transform:
+        return value
+    if transform == "string":
+        return str(value)
+    if transform == "integer":
+        return int(value)
+    if transform == "float":
+        return float(value)
+    if transform == "boolean":
+        return bool(value)
+    if transform == "json_encode":
+        return json.dumps(value, ensure_ascii=False)
+    raise ValueError("unsupported scenario transform: " + str(transform))
+
+
+def _scenario_set_pointer(target, pointer, value):
+    parts = [part.replace("~1", "/").replace("~0", "~") for part in pointer.strip("/").split("/") if part]
+    if not parts:
+        raise ValueError("scenario binding target is empty")
+    current = target
+    for part in parts[:-1]:
+        current = current.setdefault(part, {})
+        if not isinstance(current, dict):
+            raise ValueError("scenario binding target is invalid: " + pointer)
+    current[parts[-1]] = value
+
+
+def _scenario_value(payload, path):
+    if not path or path == "$":
+        return payload
+    exists, value = _json_path(payload, path)
+    return value if exists else None
+
+
+def _scenario_condition(actual, operator, expected):
+    if operator == "exists":
+        return actual is not None
+    if operator == "non_empty":
+        return actual not in (None, "", [], {})
+    if operator in {"equals", "eq"}:
+        return actual == expected
+    if operator in {"not_equals", "ne"}:
+        return actual != expected
+    if operator == "contains":
+        return expected in actual
+    if operator == "matches":
+        return re.search(str(expected), str(actual)) is not None
+    if operator == "gt":
+        return actual > expected
+    if operator == "gte":
+        return actual >= expected
+    if operator == "lt":
+        return actual < expected
+    if operator == "lte":
+        return actual <= expected
+    raise ValueError("unsupported scenario condition: " + str(operator))
+
+
+def _scenario_assert(response, assertions):
+    payload = None
+    for assertion in assertions:
+        assertion_type = assertion.get("type")
+        expected = assertion.get("expected")
+        if assertion_type == "status_code" and response.status_code != expected:
+            raise AssertionError(f"unexpected status code: {response.status_code}")
+        if assertion_type in {"json_path", "jsonpath_equals", "jsonpath_exists"}:
+            if payload is None:
+                payload = response.json()
+            path = assertion.get("path") or assertion.get("json_path") or ""
+            actual = _scenario_value(payload, path)
+            if assertion_type == "jsonpath_exists" and actual is None:
+                raise AssertionError("JSONPath missing: " + path)
+            if assertion_type != "jsonpath_exists" and actual != expected:
+                raise AssertionError("JSONPath mismatch: " + path)
+
+
+def _scenario_extract(response, extractors):
+    result = {}
+    for extractor in extractors:
+        source = extractor.get("source") or "response.body"
+        path = extractor.get("path") or extractor.get("expression") or ""
+        if source in {"response.body", "json_body"}:
+            value = _scenario_value(response.json(), path)
+        elif source in {"response.header", "header"}:
+            value = response.headers.get(path)
+        elif source in {"response.status", "status_code"}:
+            value = response.status_code
+        elif source == "text_regex":
+            match = re.search(path, response.text or "")
+            value = match.group(1) if match else None
+        else:
+            raise ValueError("unsupported scenario extractor: " + str(source))
+        if extractor.get("required", True) and value is None:
+            raise AssertionError("required extractor missing: " + str(extractor.get("name")))
+        result[str(extractor.get("name"))] = value
+    return result
+
+
+def _run_scenario_step(user, step, data):
+    step_type = step["step_type"]
+    if step_type == "wait":
+        time.sleep(max(0, float(step.get("control_config", {}).get("duration_ms", 0))) / 1000)
+        return {}
+    if step_type == "assign":
+        config = step.get("control_config") or {}
+        name = str(config.get("name") or "value")
+        value = _scenario_source(config.get("source") or {}, user.variables, user.outputs)
+        user.variables[name] = value
+        return {name: value}
+    if step_type == "condition":
+        config = step.get("control_config") or {}
+        actual = _scenario_source(config.get("source") or {}, user.variables, user.outputs)
+        if not _scenario_condition(actual, config.get("operator"), config.get("expected")):
+            raise AssertionError("scenario condition failed")
+        return {}
+
+    request = _resolve(step["request"], user.sequence, data)
+    for binding in step.get("bindings") or []:
+        value = _scenario_source(binding.get("source") or {}, user.variables, user.outputs)
+        value = _scenario_transform(value, binding.get("transform"))
+        target = str(binding.get("target") or "")
+        if not target.startswith("/request/"):
+            raise ValueError("unsupported scenario binding target: " + target)
+        _scenario_set_pointer(request, target.removeprefix("/request"), value)
+    path = request["path"]
+    for key, value in request.get("path_parameters", {}).items():
+        path = path.replace("{" + str(key) + "}", str(value))
+    with user.client.request(
+        method=request["method"],
+        url=path,
+        name=request["name"],
+        params=request.get("query_parameters") or {},
+        headers=request.get("headers") or {},
+        json=request.get("body"),
+        timeout=request["timeout_seconds"],
+        catch_response=True,
+    ) as response:
+        try:
+            _scenario_assert(response, step.get("assertions") or [])
+            extracted = _scenario_extract(response, step.get("extractors") or [])
+        except Exception as exc:
+            response.failure(str(exc))
+            raise
+        response.success()
+        return extracted
+'''
+
+
+def _render_scenario_user(wait_min: float, wait_max: float, scenario_name: str) -> str:
+    return f'''
+
+
+class PerformanceUser(HttpUser):
+    wait_time = between({wait_min!r}, {wait_max!r})
+
+    def on_start(self):
+        self.sequence = 0
+        self.data_index = 0
+        self.base_variables = dict(PLAN.get("scenario_variables") or {{}})
+        self.variables = dict(self.base_variables)
+        self.outputs = {{}}
+        if PLAN.get("random_seed") is not None:
+            random.seed(PLAN["random_seed"])
+
+    @task
+    def execute_target(self):
+        self.sequence += 1
+        data = _next_data_row(self)
+        self.variables = {{**self.base_variables, **data}}
+        self.outputs = {{}}
+        started_at = time.perf_counter()
+        first_error = None
+        stop_chain = False
+        for step in PLAN["steps"]:
+            if stop_chain and step.get("on_failure") != "always_run":
+                continue
+            try:
+                self.outputs[step["id"]] = _run_scenario_step(self, step, data)
+            except Exception as exc:
+                if first_error is None:
+                    first_error = exc
+                if step.get("on_failure") != "continue":
+                    stop_chain = True
+        events.request.fire(
+            request_type="SCENARIO",
+            name={f"SCENARIO {scenario_name}"!r},
+            response_time=(time.perf_counter() - started_at) * 1000,
+            response_length=0,
+            exception=first_error,
+        )
+'''
 
 
 def _render_http_user(wait_min: float, wait_max: float) -> str:

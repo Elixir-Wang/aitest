@@ -518,3 +518,43 @@ A patch failed because the current uncommitted `toScenarioStepInput` implementat
 Read the exact narrow function range immediately before patching files with concurrent uncommitted changes, then apply smaller patches.
 
 ---
+## [ERR-20260803-001] rtk_read_command_misuse
+
+**Logged**: 2026-08-03T00:00:00+08:00
+**Priority**: low
+**Status**: resolved
+**Area**: tooling
+
+### Summary
+Attempted to invoke Unix `cat` through RTK and later used unsupported `rtk read --line` options on Windows.
+
+### Error
+```text
+Binary 'cat' not found on PATH
+Binary 'read' not found on PATH
+```
+
+### Resolution
+Use `rtk read <file> -m <lines>` for whole-file reads and `rtk grep <pattern> <path> -A/-B` for focused context.
+
+---
+
+## [ERR-20260803-002] unix-sed-unavailable
+
+**Logged**: 2026-08-03T00:00:00+08:00
+**Priority**: low
+**Status**: resolved
+**Area**: tooling
+
+### Summary
+The Windows workspace does not provide `sed`.
+
+### Error
+`rtk: program not found`
+
+### Resolution
+Use Node filesystem reads for line ranges instead of assuming Unix utilities.
+
+### Metadata
+- Source: error
+- Tags: windows, shell, sed

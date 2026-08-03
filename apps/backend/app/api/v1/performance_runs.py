@@ -260,6 +260,10 @@ async def stream_performance_run(project_id: str, run_id: str, actor=Depends(cur
                 run = run_repo.get_run(db, run_id)
                 if run is None:
                     return
+                test = db.execute(
+                    "SELECT target_type FROM performance_tests WHERE id = ?",
+                    (run["performance_test_id"],),
+                ).fetchone()
                 latest_stat_row = run_repo.get_latest_stat(db, run_id)
                 failures = run_repo.list_failures(db, run_id)
                 exceptions = run_repo.list_exceptions(db, run_id)
@@ -272,6 +276,7 @@ async def stream_performance_run(project_id: str, run_id: str, actor=Depends(cur
             latest = headless_worker.read_realtime_sample(
                 _run_report_directory(project_id, run_id),
                 configured_users=int(load_config.get("users") or 0),
+                request_type="SCENARIO" if test and test["target_type"] == "scenario" else None,
             )
             if latest is None and latest_stat_row is not None:
                 latest = _stat_payload(latest_stat_row)
@@ -330,7 +335,16 @@ def _history_samples(project_id: str, run_id: str) -> list[dict[str, object]]:
     if not path.is_file():
         return []
     try:
-        return headless_worker.parse_locust_stats_history_samples(path.read_text(encoding="utf-8-sig"))
+        with connect() as db:
+            run = run_repo.get_run(db, run_id)
+            test = db.execute(
+                "SELECT target_type FROM performance_tests WHERE id = ?",
+                (run["performance_test_id"],),
+            ).fetchone() if run else None
+        return headless_worker.parse_locust_stats_history_samples(
+            path.read_text(encoding="utf-8-sig"),
+            request_type="SCENARIO" if test and test["target_type"] == "scenario" else None,
+        )
     except (OSError, UnicodeDecodeError, ValueError):
         return []
 
@@ -385,11 +399,19 @@ def _run_payload(row) -> dict:
         "error_code": row["error_code"],
         "error_message": row["error_message"],
         "trace_id": row["trace_id"],
-        "created_at": row["created_at"],
-        "started_at": row["started_at"],
-        "finished_at": row["finished_at"],
-        "updated_at": row["updated_at"],
+        "created_at": _sqlite_utc_timestamp(row["created_at"]),
+        "started_at": _sqlite_utc_timestamp(row["started_at"]),
+        "finished_at": _sqlite_utc_timestamp(row["finished_at"]),
+        "updated_at": _sqlite_utc_timestamp(row["updated_at"]),
     }
+
+
+def _sqlite_utc_timestamp(value: str | None) -> str | None:
+    if not value:
+        return value
+    if value.endswith("Z") or "+" in value[10:]:
+        return value
+    return f"{value.replace(' ', 'T', 1)}Z"
 
 
 def _stat_payload(row) -> dict:

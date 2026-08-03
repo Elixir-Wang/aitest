@@ -44,6 +44,10 @@ const paramsDialogSource = readFileSync(
   new URL("../src/components/ai-testing/performance-testing/performance-test-params-dialog.tsx", import.meta.url),
   "utf8",
 );
+const sseMetricsConfigSource = readFileSync(
+  new URL("../src/components/ai-testing/performance-testing/performance-sse-metrics-config.tsx", import.meta.url),
+  "utf8",
+);
 const scriptPageSource = readFileSync(
   new URL(
     "../src/app/(main)/projects/[projectId]/performance-tests/[testId]/scripts/[scriptId]/page.tsx",
@@ -82,6 +86,21 @@ test("performance testing API client exposes preview and CRUD contracts", () => 
   assert.match(apiClientSource, /export function listPerformanceTests/);
   assert.match(apiClientSource, /export function createPerformanceTest/);
   assert.match(apiClientSource, /export function deletePerformanceTest/);
+});
+
+test("performance SSE metrics use one summary section and one validated configuration dialog", () => {
+  assert.match(apiClientSource, /export function generatePerformanceSseMetrics/);
+  assert.match(apiClientSource, /performance-tests\/sse-metrics\/generate/);
+  assert.match(formSource, /<PerformanceSseMetricsConfig/);
+  assert.match(sseMetricsConfigSource, /业务响应指标/);
+  assert.match(sseMetricsConfigSource, /运行接口编排并生成指标/);
+  assert.match(sseMetricsConfigSource, /SSE 指标配置/);
+  assert.match(sseMetricsConfigSource, /样本事件/);
+  assert.match(sseMetricsConfigSource, /命中.*次/);
+  assert.match(sseMetricsConfigSource, /待验证/);
+  assert.match(sseMetricsConfigSource, /重新验证/);
+  assert.match(sseMetricsConfigSource, /当前配置不会立即被覆盖/);
+  assert.doesNotMatch(sseMetricsConfigSource, /Tabs|事件时间轴|JSONPath 自动补全/);
 });
 
 test("performance create form reuses endpoint and environment assets without secret fields", () => {
@@ -124,7 +143,25 @@ test("performance create form leaves success rules to the OpenAPI-backed server 
   assert.doesNotMatch(formSource, /成功状态码|successCodes|setSuccessRules|withStatusCodes|parseStatusCodes/);
   assert.doesNotMatch(formSource, /success_rules:/);
   assert.match(apiClientSource, /success_rules\?: PerformanceSuccessRule\[\]/);
-  assert.match(formSource, /if \(!preview \|\| preview\.endpoint\.id !== endpointId\)/);
+  assert.match(formSource, /targetType === "endpoint" && \(!preview \|\| preview\.endpoint\.id !== endpointId\)/);
+});
+
+test("performance create form supports current API scenarios without version selection", () => {
+  assert.match(apiClientSource, /target_type: "endpoint" \| "scenario"/);
+  assert.match(apiClientSource, /scenario_id: string \| null/);
+  assert.match(formSource, /listApiAutomationScenarios/);
+  assert.match(formSource, /接口场景/);
+  assert.match(
+    formSource,
+    /<SelectOption key=\{scenario\.id\} value=\{scenario\.id\}>\s*\{scenario\.name\}\s*<\/SelectOption>/,
+  );
+  assert.match(formSource, /target_type: targetType/);
+  assert.match(formSource, /endpoint_id: targetType === "endpoint" \? endpointId : null/);
+  assert.match(formSource, /scenario_id: targetType === "scenario" \? scenarioId : null/);
+  assert.doesNotMatch(
+    formSource,
+    /直接使用场景当前保存版本|当前版本 v|个步骤。场景修改后请手动重新生成脚本|发布场景|版本选择|scenarioVersionId/,
+  );
 });
 
 test("global performance create route owns project selection and structured editors", () => {
@@ -181,7 +218,7 @@ test("performance script API and review route support generation, edits, and val
   assert.match(scriptReviewSource, /只读 Locust 脚本/);
   assert.match(scriptReviewSource, /校验通过/);
   assert.doesNotMatch(scriptReviewSource, /确认脚本|已确认|重新确认/);
-  assert.match(scriptReviewSource, /preview\?\.request\?\.headers \?\? planRequest\.headers/);
+  assert.match(scriptReviewSource, /requestPreview\?\.request\.headers \?\? planRequest\.headers/);
 });
 
 test("performance script review reuses the clipboard control and keeps JSON editors white", () => {

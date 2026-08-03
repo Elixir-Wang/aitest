@@ -15,6 +15,7 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   type ApiAutomationEndpoint,
   type ApiAutomationEnvironment,
+  type ApiAutomationScenario,
   type ApiProject,
   ApiRequestError,
   apiRequest,
@@ -22,6 +23,7 @@ import {
   generatePerformanceScript,
   listApiAutomationEndpoints,
   listApiAutomationEnvironments,
+  listApiAutomationScenarios,
   type PerformanceCircuitBreaker,
   type PerformanceDataConfig,
   type PerformanceLoadConfig,
@@ -34,6 +36,7 @@ import { toast } from "@/lib/toast";
 
 import { LoadStageEditor } from "./load-stage-editor";
 import { PerformanceDataEditor } from "./performance-data-editor";
+import { PerformanceSseMetricsConfig } from "./performance-sse-metrics-config";
 
 type NumericDraft = {
   users: string;
@@ -78,8 +81,11 @@ export function PerformanceTestForm() {
   const [projects, setProjects] = useState<ApiProject[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState("");
   const [endpoints, setEndpoints] = useState<ApiAutomationEndpoint[]>([]);
+  const [scenarios, setScenarios] = useState<ApiAutomationScenario[]>([]);
   const [environments, setEnvironments] = useState<ApiAutomationEnvironment[]>([]);
+  const [targetType, setTargetType] = useState<"endpoint" | "scenario">("endpoint");
   const [endpointId, setEndpointId] = useState("");
+  const [scenarioId, setScenarioId] = useState("");
   const [environmentId, setEnvironmentId] = useState("");
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
@@ -89,9 +95,7 @@ export function PerformanceTestForm() {
   const [bodyJson, setBodyJson] = useState("null");
   const [transport, setTransport] = useState<"http" | "sse">("http");
   const [sseMaxStreamSeconds, setSseMaxStreamSeconds] = useState("60");
-  const [firstContentPath, setFirstContentPath] = useState("$.choices[*].delta.content");
-  const [firstToolCallPath, setFirstToolCallPath] = useState("$.choices[*].delta.tool_calls[*]");
-  const [trackToolCall, setTrackToolCall] = useState(true);
+  const [sseConfig, setSseConfig] = useState<PerformanceSseConfig | null>(null);
   const [mode, setMode] = useState<PerformanceLoadConfig["mode"]>("fixed");
   const [stages, setStages] = useState<PerformanceLoadStage[]>([]);
   const [dataConfig, setDataConfig] = useState<PerformanceDataConfig>(initialDataConfig);
@@ -113,8 +117,10 @@ export function PerformanceTestForm() {
 
   useEffect(() => {
     setEndpoints([]);
+    setScenarios([]);
     setEnvironments([]);
     setEndpointId("");
+    setScenarioId("");
     setEnvironmentId("");
     setPreview(null);
     setRequestTouched(false);
@@ -122,13 +128,19 @@ export function PerformanceTestForm() {
     setQueryJson("{}");
     setHeadersJson("{}");
     setBodyJson("null");
+    setSseConfig(null);
     setDataConfig(initialDataConfig);
     if (!selectedProjectId) return;
     let ignore = false;
-    Promise.all([listApiAutomationEndpoints(selectedProjectId), listApiAutomationEnvironments(selectedProjectId)])
-      .then(([endpointRows, environmentRows]) => {
+    Promise.all([
+      listApiAutomationEndpoints(selectedProjectId),
+      listApiAutomationScenarios(selectedProjectId),
+      listApiAutomationEnvironments(selectedProjectId),
+    ])
+      .then(([endpointRows, scenarioRows, environmentRows]) => {
         if (ignore) return;
         setEndpoints(endpointRows);
+        setScenarios(scenarioRows);
         setEnvironments(environmentRows);
       })
       .catch((error) => toast.error(apiErrorMessage(error, "接口资产加载失败")));
@@ -138,7 +150,7 @@ export function PerformanceTestForm() {
   }, [selectedProjectId]);
 
   useEffect(() => {
-    if (!selectedProjectId || !endpointId) return;
+    if (targetType !== "endpoint" || !selectedProjectId || !endpointId) return;
     const sequence = ++previewSequence.current;
     setPreview(null);
     setPreviewing(true);
@@ -161,7 +173,7 @@ export function PerformanceTestForm() {
       .finally(() => {
         if (sequence === previewSequence.current) setPreviewing(false);
       });
-  }, [endpointId, environmentId, selectedProjectId]);
+  }, [endpointId, environmentId, selectedProjectId, targetType]);
 
   function changeMode(nextMode: PerformanceLoadConfig["mode"]) {
     setMode(nextMode);
@@ -171,10 +183,28 @@ export function PerformanceTestForm() {
   function changeEndpoint(nextEndpointId: string) {
     if (requestTouched && !window.confirm("切换接口会重置当前请求配置，继续？")) return;
     setEndpointId(nextEndpointId);
+    setSseConfig(null);
+  }
+
+  function changeTargetType(nextTargetType: "endpoint" | "scenario") {
+    if (requestTouched && targetType === "endpoint" && !window.confirm("切换压测对象会重置当前请求配置，继续？")) return;
+    setTargetType(nextTargetType);
+    setEndpointId("");
+    setScenarioId("");
+    setPreview(null);
+    setRequestTouched(false);
+    setSseConfig(null);
+  }
+
+  function changeScenario(nextScenarioId: string) {
+    setScenarioId(nextScenarioId);
+    const scenario = scenarios.find((item) => item.id === nextScenarioId);
+    if (scenario?.api_environment_id) changeEnvironment(scenario.api_environment_id);
   }
 
   function changeEnvironment(nextEnvironmentId: string) {
     setEnvironmentId(nextEnvironmentId);
+    setSseConfig(null);
     const environment = environments.find((item) => item.id === nextEnvironmentId);
     if (environment) {
       setNumbers((current) => ({ ...current, timeout: String(environment.timeout_seconds) }));
@@ -186,11 +216,12 @@ export function PerformanceTestForm() {
   }
 
   async function submit() {
-    if (!selectedProjectId || !name.trim() || !endpointId || !environmentId) {
-      toast.error("请选择项目、环境和接口，并填写测试名称");
+    const targetId = targetType === "endpoint" ? endpointId : scenarioId;
+    if (!selectedProjectId || !name.trim() || !targetId || !environmentId) {
+      toast.error("请选择项目、环境和压测对象，并填写测试名称");
       return;
     }
-    if (!preview || preview.endpoint.id !== endpointId) {
+    if (targetType === "endpoint" && (!preview || preview.endpoint.id !== endpointId)) {
       toast.error("请求配置预览尚未完成，请稍后重试");
       return;
     }
@@ -198,64 +229,31 @@ export function PerformanceTestForm() {
       toast.error("当前测试模式至少需要一个负载阶段");
       return;
     }
+    if (targetType === "endpoint" && transport === "sse" && !sseConfig) {
+      toast.error("请先运行接口编排并生成 SSE 指标");
+      return;
+    }
     setSaving(true);
     try {
-      const sse: PerformanceSseConfig | null =
-        transport === "sse"
-          ? {
-              max_stream_seconds: positiveNumber(sseMaxStreamSeconds, "SSE 流超时"),
-              end_rule: {
-                event_name: "",
-                source: "data_text",
-                path: "",
-                operator: "equals",
-                expected: "[DONE]",
-              },
-              metrics: [
-                {
-                  id: "first_content",
-                  name: "首内容耗时",
-                  occurrence: "first",
-                  missing_policy: "record_null",
-                  match: {
-                    event_name: "",
-                    source: "data_json",
-                    path: firstContentPath.trim(),
-                    operator: "non_empty",
-                  },
-                },
-                ...(trackToolCall
-                  ? [
-                      {
-                        id: "first_tool_call",
-                        name: "首次工具调用耗时",
-                        occurrence: "first" as const,
-                        missing_policy: "record_null" as const,
-                        match: {
-                          event_name: "",
-                          source: "data_json" as const,
-                          path: firstToolCallPath.trim(),
-                          operator: "exists" as const,
-                        },
-                      },
-                    ]
-                  : []),
-              ],
-            }
-          : null;
+      let sse: PerformanceSseConfig | null = null;
+      if (targetType === "endpoint" && transport === "sse") {
+        if (!sseConfig) throw new Error("请先运行接口编排并生成 SSE 指标");
+        sse = { ...sseConfig, max_stream_seconds: positiveNumber(sseMaxStreamSeconds, "SSE 流超时") };
+      }
       const created = await createPerformanceTest(selectedProjectId, {
         name: name.trim(),
         description: description.trim(),
-        target_type: "endpoint",
-        endpoint_id: endpointId,
+        target_type: targetType,
+        endpoint_id: targetType === "endpoint" ? endpointId : null,
+        scenario_id: targetType === "scenario" ? scenarioId : null,
         api_environment_id: environmentId,
         request_config: {
-          path_parameters: parseObject(pathJson, "Path 参数"),
-          query_parameters: parseObject(queryJson, "Query 参数"),
-          headers: parseObject(headersJson, "Headers"),
-          body: parseJson(bodyJson, "Request Body"),
+          path_parameters: targetType === "endpoint" ? parseObject(pathJson, "Path 参数") : {},
+          query_parameters: targetType === "endpoint" ? parseObject(queryJson, "Query 参数") : {},
+          headers: targetType === "endpoint" ? parseObject(headersJson, "Headers") : {},
+          body: targetType === "endpoint" ? parseJson(bodyJson, "Request Body") : null,
           random_seed: null,
-          transport,
+          transport: targetType === "endpoint" ? transport : "http",
           sse,
         },
         load_config: {
@@ -333,6 +331,19 @@ export function PerformanceTestForm() {
           </Field>
 
           <Field>
+            <FieldLabel htmlFor="test-target-type">压测对象 *</FieldLabel>
+            <Select
+              id="test-target-type"
+              placeholder="选择压测对象"
+              setValue={(value) => changeTargetType(value as "endpoint" | "scenario")}
+              value={targetType}
+            >
+              <SelectOption value="endpoint">单接口</SelectOption>
+              <SelectOption value="scenario">接口场景</SelectOption>
+            </Select>
+          </Field>
+
+          <Field>
             <FieldLabel htmlFor="test-environment">环境 *</FieldLabel>
             <Select id="test-environment" placeholder="选择环境" setValue={changeEnvironment} value={environmentId}>
               <SelectOption value="">选择环境</SelectOption>
@@ -344,22 +355,33 @@ export function PerformanceTestForm() {
             </Select>
           </Field>
 
-          <Field>
-            <FieldLabel htmlFor="test-endpoint">接口 *</FieldLabel>
-            <Select
-              id="test-endpoint"
-              placeholder="选择接口"
-              setValue={(value) => changeEndpoint(value)}
-              value={endpointId}
-            >
-              <SelectOption value="">选择接口</SelectOption>
-              {endpoints.map((endpoint) => (
-                <SelectOption key={endpoint.id} value={endpoint.id}>
-                  {`${endpoint.method} ${endpoint.path}${endpoint.summary ? ` · ${endpoint.summary}` : ""}`}
-                </SelectOption>
-              ))}
-            </Select>
-          </Field>
+          {targetType === "endpoint" ? (
+            <Field>
+              <FieldLabel htmlFor="test-endpoint">接口 *</FieldLabel>
+              <Select id="test-endpoint" placeholder="选择接口" setValue={changeEndpoint} value={endpointId}>
+                <SelectOption value="">选择接口</SelectOption>
+                {endpoints.map((endpoint) => (
+                  <SelectOption key={endpoint.id} value={endpoint.id}>
+                    {`${endpoint.method} ${endpoint.path}${endpoint.summary ? ` · ${endpoint.summary}` : ""}`}
+                  </SelectOption>
+                ))}
+              </Select>
+            </Field>
+          ) : (
+            <Field>
+              <FieldLabel htmlFor="test-scenario">接口场景 *</FieldLabel>
+              <Select id="test-scenario" placeholder="选择接口场景" setValue={changeScenario} value={scenarioId}>
+                <SelectOption value="">选择接口场景</SelectOption>
+                {scenarios
+                  .filter((scenario) => scenario.revision > 0)
+                  .map((scenario) => (
+                    <SelectOption key={scenario.id} value={scenario.id}>
+                      {scenario.name}
+                    </SelectOption>
+                  ))}
+              </Select>
+            </Field>
+          )}
 
           <Field>
             <FieldLabel htmlFor="test-mode">测试模式</FieldLabel>
@@ -388,11 +410,13 @@ export function PerformanceTestForm() {
             />
           </Field>
 
-          {/* 请求配置区块 */}
-          <div className="flex items-center gap-2 border-b pb-2 md:col-span-2">
-            <Settings className="size-4 text-muted-foreground" />
-            <h3 className="font-semibold text-base">请求配置</h3>
-          </div>
+          {targetType === "endpoint" ? (
+            <>
+              {/* 请求配置区块 */}
+              <div className="flex items-center gap-2 border-b pb-2 md:col-span-2">
+                <Settings className="size-4 text-muted-foreground" />
+                <h3 className="font-semibold text-base">请求配置</h3>
+              </div>
 
           {previewing ? <p className="text-muted-foreground text-xs md:col-span-2">正在生成请求预览</p> : null}
           {preview?.warnings.map((warning) => (
@@ -495,36 +519,22 @@ export function PerformanceTestForm() {
                   value={sseMaxStreamSeconds}
                 />
               </Field>
-              <Field>
-                <FieldLabel htmlFor="sse-first-content-path">首内容字段路径</FieldLabel>
-                <Input
-                  id="sse-first-content-path"
-                  onChange={(event) => setFirstContentPath(event.target.value)}
-                  spellCheck={false}
-                  value={firstContentPath}
-                />
-              </Field>
-              <Field className="md:col-span-2">
-                <label className="flex items-center gap-2">
-                  <input
-                    checked={trackToolCall}
-                    onChange={(event) => setTrackToolCall(event.target.checked)}
-                    type="checkbox"
-                  />
-                  <span className="text-sm">采集首次工具调用耗时</span>
-                </label>
-              </Field>
-              {trackToolCall ? (
-                <Field className="md:col-span-2">
-                  <FieldLabel htmlFor="sse-first-tool-path">首次工具调用字段路径</FieldLabel>
-                  <Input
-                    id="sse-first-tool-path"
-                    onChange={(event) => setFirstToolCallPath(event.target.value)}
-                    spellCheck={false}
-                    value={firstToolCallPath}
-                  />
-                </Field>
-              ) : null}
+              <PerformanceSseMetricsConfig
+                endpointId={endpointId}
+                environmentId={environmentId}
+                getRequestValues={() => ({
+                  path_parameters: parseObject(pathJson, "Path 参数"),
+                  query_parameters: parseObject(queryJson, "Query 参数"),
+                  headers: parseObject(headersJson, "Headers"),
+                  body: parseJson(bodyJson, "Request Body"),
+                })}
+                maxStreamSeconds={Number(sseMaxStreamSeconds)}
+                onChange={setSseConfig}
+                projectId={selectedProjectId}
+                value={sseConfig}
+              />
+            </>
+          ) : null}
             </>
           ) : null}
 

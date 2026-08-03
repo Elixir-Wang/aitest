@@ -2,18 +2,31 @@ from pathlib import Path
 
 import pytest
 
+from app.api.v1.api_automation import router as api_automation_router
 from app.core import db as db_core
 from app.core import settings, storage
 from app.core.db import connect
 from app.repositories import api_automation_repo
 from app.seed.init_db import init_db
 from app.seed.seeds import seed_system_defaults
-from app.schemas.api_automation import ApiScenarioIn, ApiScenarioStepIn, ApiScenarioStepsReplaceIn, ApiScenarioVersionSaveIn
+from app.schemas.api_automation import (
+    ApiEnvironmentIn,
+    ApiScenarioIn,
+    ApiScenarioStepIn,
+    ApiScenarioStepsReplaceIn,
+    ApiScenarioVersionSaveIn,
+)
 from app.services import task_service
 from app.services.api_automation import service
 
 
 ACTOR = {"id": "u-admin", "role": "admin", "nickname": "管理员", "username": "admin", "project_scope": "全部项目"}
+
+
+def test_api_scenario_backend_does_not_expose_publish_route() -> None:
+    paths = {route.path for route in api_automation_router.routes}
+
+    assert "/projects/{project_id}/api-scenarios/{scenario_id}/publish" not in paths
 
 
 def _use_temp_db(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -78,6 +91,38 @@ def _seed_project_endpoint_and_runs() -> None:
         )
 
 
+def _save_latest_scenario_version(scenario_id: str) -> dict:
+    scenario = service.get_api_scenario("project-1", scenario_id, ACTOR)
+    return service.save_api_scenario_version(
+        "project-1",
+        scenario_id,
+        ApiScenarioVersionSaveIn(
+            name=scenario["name"],
+            description=scenario["description"],
+            variables=scenario["variables"],
+            steps=[
+                ApiScenarioStepIn(
+                    id=step["id"],
+                    step_type=step["step_type"],
+                    api_test_case_id=step["api_test_case_id"],
+                    endpoint_id=step["endpoint_id"],
+                    step_order=step["step_order"],
+                    name=step["name"],
+                    request_overrides=step["request_overrides"],
+                    bindings=step["bindings"],
+                    extractors=step["extractors"],
+                    assertions=step["assertions"],
+                    control_config=step["control_config"],
+                    on_failure=step["on_failure"],
+                    enabled=step["enabled"],
+                )
+                for step in scenario["steps"]
+            ],
+        ),
+        ACTOR,
+    )
+
+
 def test_create_scenario_and_steps(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     _use_temp_db(monkeypatch, tmp_path)
     _seed_project_endpoint_and_runs()
@@ -103,7 +148,36 @@ def test_create_scenario_and_steps(monkeypatch: pytest.MonkeyPatch, tmp_path: Pa
     assert detail["steps"][0]["extractors"] == [{"name": "user_id", "path": "$.id"}]
 
 
-def test_endpoint_only_scenario_validates_and_publishes(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_scenario_update_persists_selected_api_environment(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    _seed_project_endpoint_and_runs()
+    environment = service.create_api_environment(
+        "project-1",
+        ApiEnvironmentIn(name="生产环境", api_base_url="https://api.example.test"),
+        ACTOR,
+    )
+    scenario = service.create_api_scenario("project-1", ApiScenarioIn(name="登录后查资料"), ACTOR)
+
+    updated = service.update_api_scenario(
+        "project-1",
+        scenario["id"],
+        ApiScenarioIn(
+            name=scenario["name"],
+            description=scenario["description"],
+            variables=scenario["variables"],
+            api_environment_id=environment["id"],
+        ),
+        ACTOR,
+    )
+
+    assert updated["api_environment_id"] == environment["id"]
+    assert service.get_api_scenario("project-1", scenario["id"], ACTOR)["api_environment_id"] == environment["id"]
+
+
+def test_endpoint_only_scenario_validates_and_saves_latest_version(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
     _use_temp_db(monkeypatch, tmp_path)
     _seed_project_endpoint_and_runs()
     scenario = service.create_api_scenario("project-1", ApiScenarioIn(name="资料查询"), ACTOR)
@@ -124,14 +198,14 @@ def test_endpoint_only_scenario_validates_and_publishes(monkeypatch: pytest.Monk
     )
 
     validation = service.validate_api_scenario("project-1", scenario["id"], ACTOR)
-    published = service.publish_api_scenario("project-1", scenario["id"], ACTOR)
+    saved = _save_latest_scenario_version(scenario["id"])
     with connect() as db:
         row = db.execute("SELECT published_snapshot_json FROM api_scenarios WHERE id = ?", (scenario["id"],)).fetchone()
         snapshot = api_automation_repo.loads_json(row["published_snapshot_json"], {})
 
     assert validation == {"valid": True, "errors": [], "warnings": []}
-    assert published["steps"][0]["endpoint_id"] == "apiend-1"
-    assert published["steps"][0]["api_test_case_id"] is None
+    assert saved["steps"][0]["endpoint_id"] == "apiend-1"
+    assert saved["steps"][0]["api_test_case_id"] is None
     assert snapshot["steps"][0]["endpoint"] == {
         "id": "apiend-1",
         "method": "GET",
@@ -145,7 +219,7 @@ def test_endpoint_only_scenario_validates_and_publishes(monkeypatch: pytest.Monk
     assert "case" not in snapshot["steps"][0]
 
 
-def test_published_scenario_reports_and_confirms_endpoint_asset_changes(
+def test_saving_latest_version_accepts_current_endpoint_asset_changes(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -166,7 +240,7 @@ def test_published_scenario_reports_and_confirms_endpoint_asset_changes(
         ),
         ACTOR,
     )
-    service.publish_api_scenario("project-1", scenario["id"], ACTOR)
+    _save_latest_scenario_version(scenario["id"])
     with connect() as db:
         db.execute(
             """
@@ -191,13 +265,9 @@ def test_published_scenario_reports_and_confirms_endpoint_asset_changes(
             "fields": ["path", "parameters"],
         }
     ]
-    with pytest.raises(Exception) as error:
-        service.publish_api_scenario("project-1", scenario["id"], ACTOR)
-    assert error.value.detail["code"] == "API_SCENARIO_ASSET_CHANGES_UNCONFIRMED"
+    saved = _save_latest_scenario_version(scenario["id"])
 
-    republished = service.publish_api_scenario("project-1", scenario["id"], ACTOR, confirm_asset_changes=True)
-
-    assert republished["revision"] == 2
+    assert saved["revision"] == 2
     assert service.get_api_scenario("project-1", scenario["id"], ACTOR)["asset_changes"] == []
 
 
@@ -216,7 +286,7 @@ def test_scenario_revisions_include_orchestration_and_restore_as_new_version(
         ),
         ACTOR,
     )
-    service.publish_api_scenario("project-1", scenario["id"], ACTOR)
+    _save_latest_scenario_version(scenario["id"])
     service.replace_api_scenario_steps(
         "project-1",
         scenario["id"],
@@ -232,7 +302,7 @@ def test_scenario_revisions_include_orchestration_and_restore_as_new_version(
         ),
         ACTOR,
     )
-    service.publish_api_scenario("project-1", scenario["id"], ACTOR)
+    _save_latest_scenario_version(scenario["id"])
 
     revisions = service.list_api_scenario_revisions("project-1", scenario["id"], ACTOR)
     restored = service.restore_api_scenario_revision("project-1", scenario["id"], 1, ACTOR)
@@ -506,14 +576,14 @@ def test_replace_validate_and_publish_scenario(monkeypatch: pytest.MonkeyPatch, 
     )
 
     validation = service.validate_api_scenario("project-1", scenario["id"], ACTOR)
-    published = service.publish_api_scenario("project-1", scenario["id"], ACTOR)
+    saved = _save_latest_scenario_version(scenario["id"])
 
     assert detail["steps"][0]["step_order"] == 0
     assert detail["steps"][0]["endpoint_id"] == "apiend-1"
     assert validation == {"valid": True, "errors": [], "warnings": []}
-    assert published["status"] == "ready"
-    assert published["revision"] == 1
-    assert published["published_hash"]
+    assert saved["status"] == "ready"
+    assert saved["revision"] == 1
+    assert saved["published_hash"]
 
 
 def test_scenario_validation_rejects_forward_variable_reference(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -542,7 +612,7 @@ def test_scenario_validation_rejects_forward_variable_reference(monkeypatch: pyt
     assert any("引用的步骤不存在" in error for error in validation["errors"])
 
 
-def test_published_scenario_creates_collectable_run_artifact(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_latest_saved_scenario_creates_collectable_run_artifact(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     _use_temp_db(monkeypatch, tmp_path)
     _seed_project_endpoint_and_runs()
     with connect() as db:
@@ -583,7 +653,7 @@ def test_published_scenario_creates_collectable_run_artifact(monkeypatch: pytest
         ApiScenarioStepsReplaceIn(steps=[ApiScenarioStepIn(api_test_case_id="apitc-run")]),
         ACTOR,
     )
-    service.publish_api_scenario("project-1", scenario["id"], ACTOR)
+    _save_latest_scenario_version(scenario["id"])
     collection_calls = []
     monkeypatch.setattr(
         service,
@@ -630,9 +700,12 @@ def test_published_scenario_creates_collectable_run_artifact(monkeypatch: pytest
 
     assert completed["status"] == "passed"
     assert completed["summary"]["passed"] == 1
-    assert execution_calls[0]["test_paths"] == ["testcases/scenarios/test_scenario.py"]
-    assert execution_calls[0]["scenario_file"].startswith("scenarios/")
-    assert execution_calls[0]["scenario_file"].endswith("/scenario.json")
+    assert [path.replace("\\", "/") for path in execution_calls[0]["test_paths"]] == [
+        "testcases/scenarios/test_scenario.py"
+    ]
+    scenario_file = execution_calls[0]["scenario_file"].replace("\\", "/")
+    assert scenario_file.startswith("scenarios/")
+    assert scenario_file.endswith("/scenario.json")
 
 
 def test_scenario_run_requires_and_uses_current_saved_version(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -668,12 +741,28 @@ def test_scenario_run_requires_and_uses_current_saved_version(monkeypatch: pytes
         service.create_api_scenario_run("project-1", scenario["id"], "apienv-draft", ACTOR)
     assert error.value.detail["code"] == "API_SCENARIO_NOT_READY"
 
-    current = service.publish_api_scenario("project-1", scenario["id"], ACTOR)
+    current = _save_latest_scenario_version(scenario["id"])
+    service.replace_api_scenario_steps(
+        "project-1",
+        scenario["id"],
+        ApiScenarioStepsReplaceIn(
+            steps=[
+                ApiScenarioStepIn(
+                    id=current["steps"][0]["id"],
+                    endpoint_id="apiend-1",
+                    name="查询最新资料",
+                    assertions=[{"type": "status_code", "expected": 200}],
+                )
+            ]
+        ),
+        ACTOR,
+    )
+    latest = _save_latest_scenario_version(scenario["id"])
     run = service.create_api_scenario_run("project-1", scenario["id"], "apienv-draft", ACTOR)
 
     assert run["execution_snapshot"]["scenario"]["source"] == "current"
-    assert run["execution_snapshot"]["scenario"]["revision"] == 1
-    assert current["status"] == "ready"
+    assert run["execution_snapshot"]["scenario"]["revision"] == 2
+    assert latest["status"] == "ready"
 
 
 def test_task_service_includes_api_automation_tasks(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

@@ -28,6 +28,7 @@ import {
   X,
 } from "lucide-react";
 
+import { ApiBatchRunList } from "@/components/ai-testing/api-automation/api-batch-run-list";
 import {
   AnimatedSelect,
   Select,
@@ -94,12 +95,13 @@ import { toast } from "@/lib/toast";
 import { cn } from "@/lib/utils";
 import { moduleBreadcrumbs } from "@/navigation/breadcrumbs";
 
-const tabs = ["接口资产", "接口环境", "接口用例", "测试脚本", "运行记录", "场景编排"];
+const tabs = ["接口资产", "接口环境", "接口用例", "测试脚本", "运行记录", "场景编排", "批量运行"];
 
 function tabFromSearchParam(value: string | null) {
   if (value === "cases") return "接口用例";
   if (value === "runs") return "运行记录";
   if (value === "scenarios") return "场景编排";
+  if (value === "batch-runs") return "批量运行";
   return tabs[0];
 }
 const API_GENERATION_ACTIVE_STATUSES = new Set(["queued", "running"]);
@@ -234,6 +236,7 @@ export default function Page() {
   const [searchText, setSearchText] = useState("");
   const [environmentSearchText, setEnvironmentSearchText] = useState("");
   const [selectedEnvironmentIds, setSelectedEnvironmentIds] = useState<string[]>([]);
+
   const [importOpen, setImportOpen] = useState(false);
   const [importMode, setImportMode] = useState<ImportMode>("file");
   const [openApiFiles, setOpenApiFiles] = useState<File[]>([]);
@@ -2242,6 +2245,7 @@ export default function Page() {
       )}
 
       {activeTab === "场景编排" && <ApiScenarioList projectId={projectId} />}
+      {activeTab === "批量运行" && <ApiBatchRunList projectId={projectId} />}
 
       <Dialog open={environmentOpen} onOpenChange={setEnvironmentOpen}>
         <DialogContent className="max-h-[calc(100vh-2rem)] overflow-hidden p-0 sm:max-w-3xl">

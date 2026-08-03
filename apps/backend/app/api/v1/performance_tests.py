@@ -4,6 +4,7 @@ from app.dependencies.auth import current_user, require_admin
 from app.schemas.performance_test import (
     PerformanceRequestPreviewIn,
     PerformanceRequestPreviewOut,
+    PerformanceSseMetricGenerateIn,
     PerformanceSseRulePreviewIn,
     PerformanceScriptConfigurationIn,
     PerformanceScriptOut,
@@ -11,7 +12,7 @@ from app.schemas.performance_test import (
     PerformanceTestOut,
     PerformanceTestUpdateIn,
 )
-from app.services.performance_testing import script_service, service
+from app.services.performance_testing import script_service, service, sse_metric_generation
 
 
 router = APIRouter(prefix="/projects/{project_id}/performance-tests", tags=["performance-tests"])
@@ -33,6 +34,15 @@ def preview_sse_rule(
     actor=Depends(current_user),
 ) -> dict:
     return service.preview_sse_rules(project_id, payload, actor)
+
+
+@router.post("/sse-metrics/generate")
+def generate_sse_metrics(
+    project_id: str,
+    payload: PerformanceSseMetricGenerateIn,
+    actor=Depends(require_admin),
+) -> dict:
+    return sse_metric_generation.generate_project_sse_metrics(project_id, payload, actor)
 
 
 @router.post("", response_model=PerformanceTestOut)

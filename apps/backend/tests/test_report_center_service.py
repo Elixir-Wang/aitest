@@ -4,6 +4,7 @@ import pytest
 from fastapi import HTTPException
 
 from app.core import db as core_db
+from app.repositories import api_automation_repo
 from app.seed.init_db import init_db
 from app.services import report_center_service
 
@@ -32,12 +33,30 @@ def _seed_report(
         "INSERT INTO projects (id, name, status, description, created_by) VALUES (?, ?, 'active', '', 'u-admin')",
         (project_id, project_name),
     )
+    api_automation_repo.upsert_endpoint(
+        db,
+        endpoint_id=f"endpoint-{suffix}",
+        project_id=project_id,
+        document_id=None,
+        method="GET",
+        path="/health",
+        normalized_path="/health",
+        summary="健康检查",
+        description="",
+        tags=[],
+        parameters=[],
+        request_body={},
+        responses={"200": {"description": "ok"}},
+        auth={},
+        source={},
+        created_by="u-admin",
+    )
     db.execute(
         """
-        INSERT INTO performance_tests (id, project_id, name, created_by)
-        VALUES (?, ?, ?, 'u-admin')
+        INSERT INTO performance_tests (id, project_id, name, target_type, endpoint_id, created_by)
+        VALUES (?, ?, ?, 'endpoint', ?, 'u-admin')
         """,
-        (f"test-{suffix}", project_id, f"压测-{suffix}"),
+        (f"test-{suffix}", project_id, f"压测-{suffix}", f"endpoint-{suffix}"),
     )
     db.execute(
         """
@@ -71,6 +90,54 @@ def _seed_report(
             generation_mode,
         ),
     )
+
+
+def _seed_api_batch_report(db) -> None:
+    db.execute(
+        "INSERT INTO projects (id, name, status, description, created_by) VALUES ('project-api', '接口项目', 'active', '', 'u-admin')"
+    )
+    db.execute(
+        """
+        INSERT INTO api_test_environments (
+          id, project_id, name, api_base_url, auth_type, created_by
+        ) VALUES ('apienv-report', 'project-api', '回归环境', 'https://api.example.test', 'none', 'u-admin')
+        """
+    )
+    api_automation_repo.create_api_batch_run(
+        db,
+        batch_run_id="apibatch-report",
+        project_id="project-api",
+        api_environment_id="apienv-report",
+        name="接口批量运行",
+        created_by="u-admin",
+    )
+    api_automation_repo.update_api_batch_run(
+        db,
+        "apibatch-report",
+        status="completed",
+        result="failed",
+        started=True,
+        finished=True,
+    )
+    for position, (run_id, scenario_name, status) in enumerate(
+        (("apirun-pass", "登录", "passed"), ("apirun-fail", "下单", "failed"))
+    ):
+        api_automation_repo.create_api_run(
+            db,
+            run_id=run_id,
+            task_id=f"api_automation_run:{run_id}",
+            project_id="project-api",
+            api_environment_id="apienv-report",
+            script_ids=[],
+            target_type="scenario",
+            target_ids=[f"apiscn-{position}"],
+            execution_snapshot={"scenario": {"id": f"apiscn-{position}", "name": scenario_name, "step_count": 2}},
+            command_summary="python -m pytest scenario.py --json-report",
+            created_by="u-admin",
+            status=status,
+            batch_run_id="apibatch-report",
+            batch_position=position,
+        )
 
 
 def test_report_center_lists_frozen_performance_reports(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
@@ -150,3 +217,47 @@ def test_report_center_rejects_deleting_invisible_report(monkeypatch: pytest.Mon
         report_center_service.delete_report("performance", "analysis-b", PROJECT_ACTOR)
 
     assert getattr(exc_info.value, "status_code", None) == 404
+
+
+def test_report_center_lists_completed_api_batches_as_reports(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    with core_db.connect() as db:
+        _seed_api_batch_report(db)
+
+    reports = report_center_service.list_reports("api", "all", ADMIN)
+
+    assert len(reports) == 1
+    assert reports[0]["id"] == "apibatch-report"
+    assert reports[0]["report_type"] == "api"
+    assert reports[0]["environment_name"] == "回归环境"
+    assert reports[0]["scenario_count"] == 2
+    assert reports[0]["passed_count"] == 1
+    assert reports[0]["pass_rate"] == 0.5
+    assert reports[0]["href"] == "/reports/api/apibatch-report"
+
+
+def test_report_center_returns_api_batch_report_detail(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    with core_db.connect() as db:
+        _seed_api_batch_report(db)
+
+    report = report_center_service.get_api_report("apibatch-report", ADMIN)
+
+    assert report["result"] == "failed"
+    assert report["counts"]["total"] == 2
+    assert [run["scenario_name"] for run in report["runs"]] == ["登录", "下单"]
+
+
+def test_deleting_api_report_hides_report_but_keeps_child_runs(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    with core_db.connect() as db:
+        _seed_api_batch_report(db)
+
+    report_center_service.delete_report("api", "apibatch-report", ADMIN)
+
+    assert report_center_service.list_reports("api", "all", ADMIN) == []
+    with core_db.connect() as db:
+        child_count = db.execute(
+            "SELECT COUNT(*) FROM api_automation_runs WHERE batch_run_id = 'apibatch-report'"
+        ).fetchone()[0]
+    assert child_count == 2

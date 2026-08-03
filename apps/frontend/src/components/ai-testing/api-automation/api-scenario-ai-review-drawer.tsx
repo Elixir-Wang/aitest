@@ -103,7 +103,7 @@ export function ApiScenarioAiReviewDrawer({
           </div>
         </DrawerHeader>
 
-        <div className="min-h-0 space-y-4 overflow-y-auto bg-muted/10 px-4 py-4 sm:px-6">
+        <div className="select-text! min-h-0 space-y-4 overflow-y-auto bg-muted/10 px-4 py-4 sm:px-6">
           {plan.validation.errors.length > 0 ? (
             <div className="rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-destructive text-xs">
               {plan.validation.errors.join("；")}

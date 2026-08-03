@@ -7,6 +7,7 @@ from app.agents.api_automation.pytest_requests.renderer import (
     SCENARIO_TEST_FILE,
     render_scenario_entrypoint_files,
     render_scenario_files,
+    render_scenario_runtime_files,
 )
 from app.core import storage
 
@@ -43,7 +44,8 @@ def materialize_scenario_snapshot(project_id: str, snapshot: dict) -> dict:
 
 def materialize_scenario_entrypoint(suite_path: Path) -> Path:
     written = {}
-    for file_key, content in render_scenario_entrypoint_files().items():
+    files = {**render_scenario_runtime_files(), **render_scenario_entrypoint_files()}
+    for file_key, content in files.items():
         target = resolve_suite_file(suite_path, file_key)
         write_atomic(target, content)
         written[file_key] = target

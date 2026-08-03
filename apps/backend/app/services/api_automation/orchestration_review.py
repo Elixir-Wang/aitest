@@ -15,7 +15,7 @@ from app.schemas.api_automation import (
     ApiScenarioAiReviewPlan,
     ApiScenarioAiReviewStep,
 )
-from app.services.api_automation.orchestration_asset_analysis import AssetSlot, request_slots
+from app.services.api_automation.orchestration_asset_analysis import AssetSlot, normalize_request_target, request_slots
 
 
 _GROUP_LABELS = {
@@ -60,7 +60,8 @@ def build_review_plan(
         slot_by_target = {(slot.location, slot.path): slot for slot in request_slots(endpoint)}
         grouped: dict[str, list[ApiScenarioAiReviewField]] = {}
         for field in step.fields:
-            slot = slot_by_target.get((field.target.location, field.target.path))
+            location, path = normalize_request_target(endpoint, field.target.location, field.target.path)
+            slot = slot_by_target.get((location, path))
             source = field.proposal
             status = _initial_status(
                 source,
@@ -71,10 +72,10 @@ def build_review_plan(
                 environment_variables=environment_variables,
                 environment_secrets=environment_secrets,
             )
-            grouped.setdefault(field.target.location, []).append(
+            grouped.setdefault(location, []).append(
                 ApiScenarioAiReviewField(
-                    field_id=_field_id(step.client_step_id, field.target.location, field.target.path),
-                    path=field.target.path,
+                    field_id=_field_id(step.client_step_id, location, path),
+                    path=path,
                     display_name=field.display_name,
                     required=slot.required if slot else field.required,
                     value_type=slot.value_type if slot else field.value_type,

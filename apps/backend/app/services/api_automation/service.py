@@ -64,6 +64,8 @@ from app.schemas.api_automation import (
     ApiScenarioAiReviewPlan,
     ApiScenarioAiReviewSaveIn,
     ApiScenarioIn,
+    ApiScenarioSuiteCreateIn,
+    ApiScenarioSuiteUpdateIn,
     ApiScenarioStepIn,
     ApiScenarioStepsReplaceIn,
     ApiScenarioVersionSaveIn,
@@ -87,6 +89,11 @@ from app.services.api_automation.orchestration_asset_analysis import (
 from app.services.api_automation.orchestration_compiler import compile_review_plan
 from app.services.api_automation.orchestration_job_runner import job_runner as orchestration_job_runner
 from app.services.api_automation.orchestration_planner import ApiScenarioPlanner
+from app.services.api_automation.orchestration_request_examples import (
+    apply_request_examples,
+    extract_request_examples,
+    public_request_examples,
+)
 from app.services.api_automation.orchestration_review import build_review_plan
 from app.services.api_automation.orchestration_validator import validate_review_plan
 
@@ -2107,6 +2114,181 @@ def create_api_scenario_run(
         return _serialize_api_run(api_automation_repo.find_api_run(db, run_id), db)
 
 
+def create_api_scenario_suite(project_id: str, payload: ApiScenarioSuiteCreateIn, actor) -> dict:
+    _require_admin(actor)
+    suite_id = f"apisuite-{secrets.token_hex(8)}"
+    with connect() as db:
+        _require_visible_project(db, project_id, actor)
+        _validate_api_scenario_suite_payload(db, project_id, payload.api_environment_id, payload.scenario_ids)
+        api_automation_repo.create_api_scenario_suite(
+            db,
+            suite_id=suite_id,
+            project_id=project_id,
+            api_environment_id=payload.api_environment_id,
+            name=payload.name,
+            description=payload.description,
+            created_by=actor["id"],
+        )
+        api_automation_repo.replace_api_scenario_suite_items(db, suite_id, payload.scenario_ids)
+        return _serialize_api_scenario_suite(api_automation_repo.find_api_scenario_suite(db, suite_id), db)
+
+
+def list_api_scenario_suites(project_id: str, actor) -> list[dict]:
+    with connect() as db:
+        _require_visible_project(db, project_id, actor)
+        return [
+            _serialize_api_scenario_suite(row, db)
+            for row in api_automation_repo.list_api_scenario_suites(db, project_id)
+        ]
+
+
+def get_api_scenario_suite(project_id: str, suite_id: str, actor) -> dict:
+    with connect() as db:
+        _require_visible_project(db, project_id, actor)
+        row = api_automation_repo.find_api_scenario_suite(db, suite_id)
+        if not row or row["project_id"] != project_id:
+            raise api_error(404, "API_SCENARIO_SUITE_NOT_FOUND", "接口场景测试集不存在。")
+        return _serialize_api_scenario_suite(row, db)
+
+
+def update_api_scenario_suite(
+    project_id: str,
+    suite_id: str,
+    payload: ApiScenarioSuiteUpdateIn,
+    actor,
+) -> dict:
+    _require_admin(actor)
+    with connect() as db:
+        _require_visible_project(db, project_id, actor)
+        row = api_automation_repo.find_api_scenario_suite(db, suite_id)
+        if not row or row["project_id"] != project_id:
+            raise api_error(404, "API_SCENARIO_SUITE_NOT_FOUND", "接口场景测试集不存在。")
+        _validate_api_scenario_suite_payload(db, project_id, payload.api_environment_id, payload.scenario_ids)
+        api_automation_repo.update_api_scenario_suite(
+            db,
+            suite_id,
+            api_environment_id=payload.api_environment_id,
+            name=payload.name,
+            description=payload.description,
+        )
+        api_automation_repo.replace_api_scenario_suite_items(db, suite_id, payload.scenario_ids)
+        return _serialize_api_scenario_suite(api_automation_repo.find_api_scenario_suite(db, suite_id), db)
+
+
+def delete_api_scenario_suite(project_id: str, suite_id: str, actor) -> None:
+    _require_admin(actor)
+    with connect() as db:
+        _require_visible_project(db, project_id, actor)
+        row = api_automation_repo.find_api_scenario_suite(db, suite_id)
+        if not row or row["project_id"] != project_id:
+            raise api_error(404, "API_SCENARIO_SUITE_NOT_FOUND", "接口场景测试集不存在。")
+        api_automation_repo.delete_api_scenario_suite(db, suite_id)
+
+
+def run_api_scenario_suite(project_id: str, suite_id: str, actor) -> dict:
+    _require_admin(actor)
+    batch_run_id = f"apibatch-{secrets.token_hex(8)}"
+    with connect() as db:
+        _require_visible_project(db, project_id, actor)
+        suite = api_automation_repo.find_api_scenario_suite(db, suite_id)
+        if not suite or suite["project_id"] != project_id:
+            raise api_error(404, "API_SCENARIO_SUITE_NOT_FOUND", "接口场景测试集不存在。")
+        environment = api_automation_repo.find_api_environment(db, suite["api_environment_id"])
+        if not environment or environment["project_id"] != project_id:
+            raise api_error(404, "API_ENVIRONMENT_NOT_FOUND", "接口环境不存在。")
+        scenario_rows = api_automation_repo.list_api_scenario_suite_items(db, suite_id)
+        if not scenario_rows:
+            raise api_error(409, "API_SCENARIO_SUITE_EMPTY", "测试集至少需要一个接口场景。")
+        for scenario in scenario_rows:
+            if scenario["status"] != "ready":
+                raise api_error(409, "API_SCENARIO_NOT_READY", f"场景“{scenario['name']}”尚未保存，不能批量运行。")
+            enabled_step = db.execute(
+                "SELECT 1 FROM api_scenario_steps WHERE scenario_id = ? AND enabled = 1 LIMIT 1",
+                (scenario["id"],),
+            ).fetchone()
+            if not enabled_step:
+                raise api_error(409, "API_SCENARIO_EMPTY", f"场景“{scenario['name']}”没有启用步骤，不能批量运行。")
+        api_automation_repo.create_api_batch_run(
+            db,
+            batch_run_id=batch_run_id,
+            suite_id=suite_id,
+            project_id=project_id,
+            api_environment_id=suite["api_environment_id"],
+            name=suite["name"],
+            created_by=actor["id"],
+        )
+
+    try:
+        for position, scenario in enumerate(scenario_rows):
+            run = create_api_scenario_run(project_id, scenario["id"], suite["api_environment_id"], actor)
+            with connect() as db:
+                api_automation_repo.attach_api_run_to_batch(db, run["id"], batch_run_id, position)
+    except Exception as exc:
+        with connect() as db:
+            api_automation_repo.update_api_batch_run(
+                db,
+                batch_run_id,
+                status="failed",
+                result="error",
+                error_message=str(exc)[:2000],
+                finished=True,
+            )
+        raise
+    return get_api_batch_run(project_id, batch_run_id, actor)
+
+
+def execute_api_batch_run(batch_run_id: str) -> dict:
+    with connect() as db:
+        batch = api_automation_repo.find_api_batch_run(db, batch_run_id)
+        if not batch:
+            raise api_error(404, "API_BATCH_RUN_NOT_FOUND", "接口批量运行不存在。")
+        api_automation_repo.update_api_batch_run(db, batch_run_id, status="running", started=True)
+        child_runs = api_automation_repo.list_batch_api_runs(db, batch_run_id)
+
+    for child_run in child_runs:
+        if child_run["status"] != "queued":
+            continue
+        try:
+            execute_api_run(child_run["id"])
+        except Exception as exc:
+            with connect() as db:
+                api_automation_repo.update_api_run(
+                    db,
+                    child_run["id"],
+                    status="failed",
+                    error_message=str(exc)[:2000],
+                    finished=True,
+                )
+
+    with connect() as db:
+        child_runs = api_automation_repo.list_batch_api_runs(db, batch_run_id)
+        counts = _api_batch_run_counts(child_runs)
+        api_automation_repo.update_api_batch_run(
+            db,
+            batch_run_id,
+            status="completed",
+            result=_api_batch_run_result(counts),
+            error_message="",
+            finished=True,
+        )
+        return _serialize_api_batch_run(api_automation_repo.find_api_batch_run(db, batch_run_id), db)
+
+
+def list_api_batch_runs(project_id: str, actor) -> list[dict]:
+    with connect() as db:
+        _require_visible_project(db, project_id, actor)
+        return [_serialize_api_batch_run(row, db) for row in api_automation_repo.list_api_batch_runs(db, project_id)]
+
+
+def get_api_batch_run(project_id: str, batch_run_id: str, actor) -> dict:
+    with connect() as db:
+        _require_visible_project(db, project_id, actor)
+        row = api_automation_repo.find_api_batch_run(db, batch_run_id)
+        if not row or row["project_id"] != project_id:
+            raise api_error(404, "API_BATCH_RUN_NOT_FOUND", "接口批量运行不存在。")
+        return _serialize_api_batch_run(row, db)
+
+
 def get_api_run(project_id: str, run_id: str, actor) -> dict:
     with connect() as db:
         _require_visible_project(db, project_id, actor)
@@ -2165,14 +2347,18 @@ def create_api_scenario(project_id: str, payload: ApiScenarioIn, actor) -> dict:
     scenario_id = f"apiscn-{secrets.token_hex(8)}"
     with connect() as db:
         _require_visible_project(db, project_id, actor)
+        _validate_scenario_environment(db, project_id, payload.api_environment_id)
         db.execute(
             """
-            INSERT INTO api_scenarios (id, project_id, name, description, variables_json, created_by)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO api_scenarios (
+              id, project_id, api_environment_id, name, description, variables_json, created_by
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 scenario_id,
                 project_id,
+                payload.api_environment_id,
                 payload.name,
                 payload.description,
                 api_automation_repo.dumps_json(payload.variables),
@@ -2204,14 +2390,27 @@ def update_api_scenario(project_id: str, scenario_id: str, payload: ApiScenarioI
         _require_visible_project(db, project_id, actor)
         scenario = _require_scenario(db, project_id, scenario_id)
         existing_data = _serialize_scenario(scenario, [])
+        api_environment_id = (
+            payload.api_environment_id
+            if "api_environment_id" in payload.model_fields_set
+            else scenario["api_environment_id"]
+        )
+        _validate_scenario_environment(db, project_id, api_environment_id)
         db.execute(
             """
             UPDATE api_scenarios
-            SET name = ?, description = ?, variables_json = ?,
+            SET name = ?, description = ?, variables_json = ?, api_environment_id = ?,
                 updated_by = ?, updated_at = CURRENT_TIMESTAMP
             WHERE id = ?
             """,
-            (payload.name, payload.description, api_automation_repo.dumps_json(payload.variables), actor["id"], scenario_id),
+            (
+                payload.name,
+                payload.description,
+                api_automation_repo.dumps_json(payload.variables),
+                api_environment_id,
+                actor["id"],
+                scenario_id,
+            ),
         )
         steps = _list_scenario_step_rows(db, scenario_id)
         result = _serialize_scenario(db.execute("SELECT * FROM api_scenarios WHERE id = ?", (scenario_id,)).fetchone(), [_serialize_scenario_step(step) for step in steps])
@@ -2227,8 +2426,16 @@ def update_api_scenario(project_id: str, scenario_id: str, payload: ApiScenarioI
         actor_name=operation_log_service.actor_display_name(actor),
         source="web",
         summary=f"更新接口场景：{payload.name}",
-        before={"name": existing_data.get("name"), "description": existing_data.get("description")},
-        after={"name": payload.name, "description": payload.description},
+        before={
+            "name": existing_data.get("name"),
+            "description": existing_data.get("description"),
+            "api_environment_id": existing_data.get("api_environment_id"),
+        },
+        after={
+            "name": payload.name,
+            "description": payload.description,
+            "api_environment_id": api_environment_id,
+        },
     )
     return result
 
@@ -2442,14 +2649,17 @@ def execute_api_scenario_ai_plan(
             selection = resolve_model_selection("api_test_generation")
         model = build_agent_model(selection, extra_body=thinking_disabled_extra_body(selection))
         planner = ApiScenarioPlanner(model)
+        request_examples = extract_request_examples(_redact_orchestration_text(payload.goal), endpoint_context)
         snapshot = {
             "goal": _redact_orchestration_text(payload.goal),
             "constraints": payload.constraints.model_dump(),
             "current_scenario_revision": expected_revision,
             "endpoint_catalog": [endpoint_summary(endpoint) for endpoint in endpoint_context],
             "environment_schema": environment_projection,
+            "explicit_request_examples": public_request_examples(request_examples),
         }
         proposal = asyncio.run(planner.plan(snapshot))
+        proposal = apply_request_examples(proposal, request_examples, endpoint_context)
         review = build_review_plan(
             proposal,
             endpoint_context,
@@ -3010,21 +3220,6 @@ def validate_api_scenario(project_id: str, scenario_id: str, actor) -> dict:
         return _validate_scenario_definition(db, scenario, steps)
 
 
-def publish_api_scenario(project_id: str, scenario_id: str, actor, *, confirm_asset_changes: bool = False) -> dict:
-    _require_admin(actor)
-    with connect() as db:
-        _require_visible_project(db, project_id, actor)
-        scenario = _require_scenario(db, project_id, scenario_id)
-        steps = [_serialize_scenario_step(row) for row in _list_scenario_step_rows(db, scenario_id)]
-        validation = _validate_scenario_definition(db, scenario, steps)
-        if not validation["valid"]:
-            raise api_error(409, "API_SCENARIO_INVALID", "；".join(validation["errors"]))
-        asset_changes = _list_scenario_asset_changes(db, scenario, steps)
-        if asset_changes and not confirm_asset_changes:
-            raise api_error(409, "API_SCENARIO_ASSET_CHANGES_UNCONFIRMED", "接口资产已变化，请确认差异后重新发布。")
-        return _save_current_scenario_version(db, scenario, steps, actor)
-
-
 def list_api_scenario_revisions(project_id: str, scenario_id: str, actor) -> list[dict]:
     with connect() as db:
         _require_visible_project(db, project_id, actor)
@@ -3549,6 +3744,8 @@ def _serialize_api_run(row: Row | None, db=None) -> dict:
         "id": row["id"],
         "project_id": row["project_id"],
         "api_environment_id": row["api_environment_id"],
+        "batch_run_id": row["batch_run_id"] if "batch_run_id" in keys else None,
+        "batch_position": row["batch_position"] if "batch_position" in keys else None,
         "task_id": row["task_id"],
         "status": row["status"],
         "script_ids": script_ids,
@@ -3572,10 +3769,124 @@ def _serialize_api_run(row: Row | None, db=None) -> dict:
     }
 
 
+def _serialize_api_scenario_suite(row: Row | None, db) -> dict:
+    if row is None:
+        raise api_error(404, "API_SCENARIO_SUITE_NOT_FOUND", "接口场景测试集不存在。")
+    environment = api_automation_repo.find_api_environment(db, row["api_environment_id"])
+    scenario_rows = api_automation_repo.list_api_scenario_suite_items(db, row["id"])
+    scenarios = []
+    for scenario in scenario_rows:
+        counts = db.execute(
+            """
+            SELECT COUNT(*) AS step_count,
+                   SUM(CASE WHEN enabled = 1 THEN 1 ELSE 0 END) AS enabled_step_count
+            FROM api_scenario_steps
+            WHERE scenario_id = ?
+            """,
+            (scenario["id"],),
+        ).fetchone()
+        scenarios.append(
+            {
+                "id": scenario["id"],
+                "name": scenario["name"],
+                "description": scenario["description"],
+                "status": scenario["status"],
+                "revision": scenario["revision"],
+                "position": scenario["position"],
+                "step_count": int(counts["step_count"] or 0),
+                "enabled_step_count": int(counts["enabled_step_count"] or 0),
+            }
+        )
+    latest_batch = api_automation_repo.find_latest_api_batch_run_for_suite(db, row["id"])
+    return {
+        "id": row["id"],
+        "project_id": row["project_id"],
+        "api_environment_id": row["api_environment_id"],
+        "name": row["name"],
+        "description": row["description"],
+        "environment": {
+            "id": environment["id"],
+            "name": environment["name"],
+            "api_base_url": environment["api_base_url"],
+        }
+        if environment
+        else None,
+        "scenarios": scenarios,
+        "latest_batch": _serialize_api_batch_run(latest_batch, db) if latest_batch else None,
+        "created_at": row["created_at"],
+        "updated_at": row["updated_at"],
+    }
+
+
+def _serialize_api_batch_run(row: Row | None, db) -> dict:
+    if row is None:
+        raise api_error(404, "API_BATCH_RUN_NOT_FOUND", "接口批量运行不存在。")
+    child_rows = api_automation_repo.list_batch_api_runs(db, row["id"])
+    environment = api_automation_repo.find_api_environment(db, row["api_environment_id"])
+    return {
+        "id": row["id"],
+        "suite_id": row["suite_id"],
+        "project_id": row["project_id"],
+        "api_environment_id": row["api_environment_id"],
+        "name": row["name"],
+        "status": row["status"],
+        "result": row["result"],
+        "error_message": row["error_message"],
+        "environment": {
+            "id": environment["id"],
+            "name": environment["name"],
+            "api_base_url": environment["api_base_url"],
+        }
+        if environment
+        else None,
+        "counts": _api_batch_run_counts(child_rows),
+        "runs": [_serialize_api_run(child_row, db) for child_row in child_rows],
+        "created_at": row["created_at"],
+        "started_at": row["started_at"],
+        "finished_at": row["finished_at"],
+        "updated_at": row["updated_at"],
+    }
+
+
+def _validate_api_scenario_suite_payload(
+    db,
+    project_id: str,
+    api_environment_id: str,
+    scenario_ids: list[str],
+) -> None:
+    environment = api_automation_repo.find_api_environment(db, api_environment_id)
+    if not environment or environment["project_id"] != project_id:
+        raise api_error(404, "API_ENVIRONMENT_NOT_FOUND", "接口环境不存在。")
+    for scenario_id in scenario_ids:
+        _require_scenario(db, project_id, scenario_id)
+
+
+def _api_batch_run_counts(child_runs: list[Row]) -> dict[str, int]:
+    statuses = [str(run["status"]) for run in child_runs]
+    return {
+        "total": len(statuses),
+        "passed": statuses.count("passed"),
+        "observed": statuses.count("observed"),
+        "failed": statuses.count("failed"),
+        "error": sum(status in {"cancelled", "interrupted"} for status in statuses),
+    }
+
+
+def _api_batch_run_result(counts: dict[str, int]) -> str:
+    if counts["failed"]:
+        return "failed"
+    if counts["error"]:
+        return "error"
+    if counts["observed"]:
+        return "observed"
+    return "passed"
+
+
 def _serialize_scenario(row: Row, steps: list[dict], *, asset_changes: list[dict] | None = None) -> dict:
     return {
         "id": row["id"],
         "project_id": row["project_id"],
+        "api_environment_id": row["api_environment_id"],
         "name": row["name"],
         "description": row["description"],
         "status": row["status"],
@@ -3616,6 +3927,14 @@ def _require_scenario(db, project_id: str, scenario_id: str) -> Row:
     if not row or row["project_id"] != project_id:
         raise api_error(404, "API_SCENARIO_NOT_FOUND", "接口场景不存在。")
     return row
+
+
+def _validate_scenario_environment(db, project_id: str, environment_id: str | None) -> None:
+    if not environment_id:
+        return
+    environment = api_automation_repo.find_api_environment(db, environment_id)
+    if not environment or environment["project_id"] != project_id:
+        raise api_error(400, "API_SCENARIO_ENVIRONMENT_INVALID", "接口环境不存在或不属于当前项目。")
 
 
 def _list_scenario_step_rows(db, scenario_id: str) -> list[Row]:

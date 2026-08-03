@@ -77,6 +77,12 @@ test("AI scenario review value controls stay inside their grid columns", () => {
   assert.match(reviewFieldSource, /<Input[\s\S]*?className="h-8 min-w-0 font-mono text-xs"/);
 });
 
+test("AI scenario review displays object sources as plain JSON values", () => {
+  assert.match(reviewFieldSource, /function unwrapObjectSource/);
+  assert.match(reviewFieldSource, /JSON\.stringify\(unwrapObjectSource\(source\.properties/);
+  assert.match(reviewFieldSource, /wrapObjectSource/);
+});
+
 test("AI scenario generation uses an accepted background task contract", () => {
   assert.match(clientSource, /ApiScenarioAiPlanAccepted/);
   assert.match(clientSource, /lifecycle_status:\s*"generating"/);
@@ -135,6 +141,11 @@ test("AI orchestration drawer separates dragging from text selection", () => {
   assert.match(editorSource, /className="[^"]*select-text!/);
 });
 
+test("AI review drawer allows text selection without changing drawer dragging", () => {
+  assert.match(reviewDrawerSource, /<div className="select-text! min-h-0 space-y-4 overflow-y-auto/);
+  assert.match(reviewDrawerSource, /<Drawer direction="right" handleOnly/);
+  assert.match(reviewDrawerSource, /<DrawerHandle[\s\S]*?cursor-ew-resize/);
+});
 test("AI orchestration generation actions stay in the drawer header", () => {
   const headerSource = editorSource.match(/<DrawerHeader[\s\S]*?<\/DrawerHeader>/)?.[0] ?? "";
 

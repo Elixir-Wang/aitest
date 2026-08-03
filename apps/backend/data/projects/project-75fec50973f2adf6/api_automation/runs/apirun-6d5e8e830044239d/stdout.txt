@@ -1,0 +1,122 @@
+============================= test session starts =============================
+platform win32 -- Python 3.13.7, pytest-9.0.1, pluggy-1.6.0
+rootdir: D:\project\test_project\apps\backend\data\projects\project-75fec50973f2adf6\api_automation\pytest_requests
+configfile: pytest.ini
+plugins: anyio-4.13.0, langsmith-0.8.5, locust-2.45.0, base-url-2.1.0, json-report-1.5.0, metadata-3.1.1, playwright-0.8.0
+collected 1 item
+
+testcases\scenarios\test_scenario.py F                                   [100%]
+
+================================== FAILURES ===================================
+________________________________ test_scenario ________________________________
+
+response = <Response [200]>
+assertions = [{'expected': 200, 'type': 'status_code'}, {'path': '/data/segment_code', 'type': 'jsonpath_exists'}]
+
+    def _assert_response_assertions(response, assertions):
+        for assertion in assertions:
+            runtime_assertion = copy.deepcopy(assertion)
+            original_path = str(runtime_assertion.get("path") or "")
+            if runtime_assertion.get("type") in {"jsonpath_equals", "jsonpath_exists", "jsonpath_type"} and original_path.startswith("/"):
+                tokens = [part.replace("~1", "/").replace("~0", "~") for part in original_path.strip("/").split("/") if part]
+                runtime_assertion["path"] = "$" + "".join("." + token for token in tokens)
+            try:
+>               assert_response_assertions(response, [runtime_assertion])
+
+support\scenario.py:374: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+response = <Response [200]>
+assertions = [{'path': '$.data.segment_code', 'type': 'jsonpath_exists'}]
+
+    def assert_response_assertions(response, assertions: list[dict]) -> None:
+        for idx, assertion in enumerate(assertions):
+            assertion_type = assertion.get("type")
+            path = assertion.get("path", "")
+            expected = assertion.get("expected")
+            location = f"[断言{idx + 1}] {assertion_type}" + (f" path={path}" if path else "")
+    
+            if assertion_type == "status_code":
+                assert response.status_code == expected, (
+                    f"{location} 失败\n"
+                    f"  期望状态码: {expected}\n"
+                    f"  实际状态码: {response.status_code}\n"
+                    f"  响应体: {response.text[:200]}"
+                )
+            elif assertion_type == "jsonpath_exists":
+                body = response.json()
+                actual = _read_path(body, path)
+>               assert actual is not None, (
+                       ^^^^^^^^^^^^^^^^^^
+                    f"{location} 失败\n"
+                    f"  路径: {path}\n"
+                    f"  实际值: {actual}\n"
+                    f"  说明: 期望该路径存在且值不为 None"
+E                   AssertionError: [断言1] jsonpath_exists path=$.data.segment_code 失败
+E                     路径: $.data.segment_code
+E                     实际值: None
+E                     说明: 期望该路径存在且值不为 None
+
+support\assertions.py:21: AssertionError
+
+The above exception was the direct cause of the following exception:
+
+api_client = <support.client.ApiClient object at 0x00000274A79FBA10>
+
+    def test_scenario(api_client):
+        suite_root = Path(__file__).resolve().parents[2]
+        scenario_file = os.environ.get("API_SCENARIO_FILE", "").strip()
+        scenario_path = (suite_root / scenario_file).resolve()
+        try:
+            scenario_path.relative_to(suite_root)
+        except ValueError as exc:
+            raise RuntimeError("API_SCENARIO_FILE must be inside the pytest suite") from exc
+        scenario = json.loads(scenario_path.read_text(encoding="utf-8"))
+>       run_scenario(api_client, scenario)
+
+testcases\scenarios\test_scenario.py:25: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+support\scenario.py:49: in run_scenario
+    raise failure
+support\scenario.py:41: in run_scenario
+    outputs[step.get("id", "")] = _run_step(api_client, step, variables, outputs, evidence)
+                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+support\scenario.py:69: in _run_step
+    return _request_with_lifecycle(api_client, step, variables, outputs, evidence)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+support\scenario.py:82: in _request_with_lifecycle
+    result = _request(api_client, step, variables, outputs, evidence)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+support\scenario.py:126: in _request
+    _assert_response_assertions(response, step.get("assertions") or case.get("assertions") or [])
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+response = <Response [200]>
+assertions = [{'expected': 200, 'type': 'status_code'}, {'path': '/data/segment_code', 'type': 'jsonpath_exists'}]
+
+    def _assert_response_assertions(response, assertions):
+        for assertion in assertions:
+            runtime_assertion = copy.deepcopy(assertion)
+            original_path = str(runtime_assertion.get("path") or "")
+            if runtime_assertion.get("type") in {"jsonpath_equals", "jsonpath_exists", "jsonpath_type"} and original_path.startswith("/"):
+                tokens = [part.replace("~1", "/").replace("~0", "~") for part in original_path.strip("/").split("/") if part]
+                runtime_assertion["path"] = "$" + "".join("." + token for token in tokens)
+            try:
+                assert_response_assertions(response, [runtime_assertion])
+            except AssertionError as exc:
+                runtime_path = str(runtime_assertion.get("path") or "")
+                message = str(exc)
+                if original_path and runtime_path != original_path:
+                    message = message.replace(runtime_path, original_path)
+>               raise AssertionError(message) from exc
+E               AssertionError: [断言1] jsonpath_exists path=/data/segment_code 失败
+E                 路径: /data/segment_code
+E                 实际值: None
+E                 说明: 期望该路径存在且值不为 None
+
+support\scenario.py:380: AssertionError
+--------------------------------- JSON report ---------------------------------
+report saved to: D:\project\test_project\apps\backend\data\projects\project-75fec50973f2adf6\api_automation\runs\apirun-6d5e8e830044239d\report.json
+=========================== short test summary info ===========================
+FAILED testcases/scenarios/test_scenario.py::test_scenario - AssertionError: ...
+============================== 1 failed in 0.52s ==============================

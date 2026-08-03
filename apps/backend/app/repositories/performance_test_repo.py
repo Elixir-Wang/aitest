@@ -24,7 +24,8 @@ def create_performance_test(
     name: str,
     description: str,
     target_type: str,
-    endpoint_id: str,
+    endpoint_id: str | None,
+    scenario_id: str | None,
     api_environment_id: str,
     request_config: dict[str, Any],
     load_config: dict[str, Any],
@@ -37,12 +38,12 @@ def create_performance_test(
     db.execute(
         """
         INSERT INTO performance_tests (
-          id, project_id, name, description, target_type, endpoint_id,
+          id, project_id, name, description, target_type, endpoint_id, scenario_id,
           api_environment_id, request_config_json,
           load_config_json, data_config_json, circuit_breaker_json,
           performance_goal_json, success_rules_json, created_by
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             test_id,
@@ -51,6 +52,7 @@ def create_performance_test(
             description,
             target_type,
             endpoint_id,
+            scenario_id,
             api_environment_id,
             _dumps(request_config),
             _dumps(load_config),
@@ -71,6 +73,7 @@ def list_performance_tests(db: Connection, project_id: str) -> list[Row]:
           COALESCE(api_endpoints.summary, '') AS endpoint_name,
           COALESCE(api_endpoints.method, '') AS endpoint_method,
           COALESCE(api_endpoints.path, '') AS endpoint_path,
+          COALESCE(api_scenarios.name, '') AS scenario_name,
           COALESCE(api_test_environments.name, '') AS environment_name,
           (
             SELECT id
@@ -83,6 +86,7 @@ def list_performance_tests(db: Connection, project_id: str) -> list[Row]:
           NULL AS latest_run_at
         FROM performance_tests
         LEFT JOIN api_endpoints ON api_endpoints.id = performance_tests.endpoint_id
+        LEFT JOIN api_scenarios ON api_scenarios.id = performance_tests.scenario_id
         LEFT JOIN api_test_environments ON api_test_environments.id = performance_tests.api_environment_id
         WHERE performance_tests.project_id = ?
         ORDER BY performance_tests.updated_at DESC, performance_tests.created_at DESC
@@ -99,6 +103,7 @@ def find_performance_test(db: Connection, test_id: str) -> Row | None:
           COALESCE(api_endpoints.summary, '') AS endpoint_name,
           COALESCE(api_endpoints.method, '') AS endpoint_method,
           COALESCE(api_endpoints.path, '') AS endpoint_path,
+          COALESCE(api_scenarios.name, '') AS scenario_name,
           COALESCE(api_test_environments.name, '') AS environment_name,
           (
             SELECT id
@@ -111,6 +116,7 @@ def find_performance_test(db: Connection, test_id: str) -> Row | None:
           NULL AS latest_run_at
         FROM performance_tests
         LEFT JOIN api_endpoints ON api_endpoints.id = performance_tests.endpoint_id
+        LEFT JOIN api_scenarios ON api_scenarios.id = performance_tests.scenario_id
         LEFT JOIN api_test_environments ON api_test_environments.id = performance_tests.api_environment_id
         WHERE performance_tests.id = ?
         """,
@@ -155,6 +161,8 @@ def serialize_performance_test(row: Row) -> dict[str, Any]:
         "endpoint_name": row["endpoint_name"],
         "endpoint_method": row["endpoint_method"],
         "endpoint_path": row["endpoint_path"],
+        "scenario_id": row["scenario_id"],
+        "scenario_name": row["scenario_name"],
         "api_environment_id": row["api_environment_id"],
         "environment_name": row["environment_name"],
         "latest_script_id": row["latest_script_id"],

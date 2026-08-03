@@ -80,19 +80,55 @@ class LocustSuccessRulePlan(BaseModel):
         return {"kind": self.kind, "json_path": self.json_path, "expected": self.expected}
 
 
+class LocustScenarioStepPlan(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    name: str
+    step_type: Literal["api_request", "wait", "condition", "assign"]
+    request: LocustRequestPlan | None = None
+    bindings: list[dict[str, Any]] = Field(default_factory=list)
+    extractors: list[dict[str, Any]] = Field(default_factory=list)
+    assertions: list[dict[str, Any]] = Field(default_factory=list)
+    control_config: dict[str, Any] = Field(default_factory=dict)
+    on_failure: Literal["stop", "continue", "always_run"] = "stop"
+
+    @model_validator(mode="after")
+    def validate_request(self) -> "LocustScenarioStepPlan":
+        if self.step_type == "api_request" and self.request is None:
+            raise ValueError("接口请求步骤必须包含 request")
+        if self.step_type != "api_request" and self.request is not None:
+            raise ValueError("控制步骤不能包含 request")
+        return self
+
+
 class LocustScriptPlan(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     schema_version: Literal["v1"] = "v1"
     test_id: str
+    target_type: Literal["endpoint", "scenario"] = "endpoint"
     random_seed: int | None = None
-    request: LocustRequestPlan
+    request: LocustRequestPlan | None = None
+    scenario_id: str | None = None
+    scenario_name: str = ""
+    scenario_revision: int | None = None
+    scenario_variables: dict[str, Any] = Field(default_factory=dict)
+    steps: list[LocustScenarioStepPlan] = Field(default_factory=list)
     load: LocustLoadPlan
     data: LocustDataPlan = Field(default_factory=LocustDataPlan)
-    success_rules: list[LocustSuccessRulePlan]
+    success_rules: list[LocustSuccessRulePlan] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def remove_redundant_success_rules(self) -> "LocustScriptPlan":
+        if self.target_type == "endpoint" and self.request is None:
+            raise ValueError("接口性能测试必须包含 request")
+        if self.target_type == "endpoint" and self.steps:
+            raise ValueError("接口性能测试不能包含场景步骤")
+        if self.target_type == "scenario" and (not self.scenario_id or not self.scenario_name or not self.steps):
+            raise ValueError("场景性能测试必须包含场景信息和步骤")
+        if self.target_type == "scenario" and self.request is not None:
+            raise ValueError("场景性能测试不能包含顶层 request")
         equals_paths = {rule.json_path for rule in self.success_rules if rule.kind == "jsonpath_equals"}
         unique: list[LocustSuccessRulePlan] = []
         serialized: set[str] = set()

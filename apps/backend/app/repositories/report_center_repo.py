@@ -43,3 +43,59 @@ def find_performance_report(db: Connection, report_id: str) -> Row | None:
 
 def delete_performance_report(db: Connection, report_id: str) -> None:
     db.execute("DELETE FROM performance_analysis_sessions WHERE id = ?", (report_id,))
+
+
+def list_api_reports(db: Connection, project_ids: list[str]) -> list[Row]:
+    if not project_ids:
+        return []
+    placeholders = ", ".join("?" for _ in project_ids)
+    return db.execute(
+        f"""
+        SELECT
+          batches.id,
+          batches.project_id,
+          projects.name AS project_name,
+          batches.api_environment_id,
+          environments.name AS environment_name,
+          batches.name,
+          batches.status,
+          batches.result,
+          batches.error_message,
+          batches.created_at,
+          batches.updated_at,
+          batches.finished_at,
+          COUNT(runs.id) AS scenario_count,
+          COALESCE(SUM(CASE WHEN runs.status = 'passed' THEN 1 ELSE 0 END), 0) AS passed_count
+        FROM api_batch_runs AS batches
+        JOIN projects ON projects.id = batches.project_id
+        LEFT JOIN api_test_environments AS environments ON environments.id = batches.api_environment_id
+        LEFT JOIN api_automation_runs AS runs ON runs.batch_run_id = batches.id
+        WHERE batches.project_id IN ({placeholders})
+          AND batches.status = 'completed'
+          AND batches.report_deleted_at IS NULL
+        GROUP BY batches.id
+        ORDER BY batches.updated_at DESC, batches.created_at DESC
+        """,
+        project_ids,
+    ).fetchall()
+
+
+def find_api_report(db: Connection, report_id: str) -> Row | None:
+    return db.execute(
+        """
+        SELECT batches.*, projects.name AS project_name, environments.name AS environment_name,
+               environments.api_base_url
+        FROM api_batch_runs AS batches
+        JOIN projects ON projects.id = batches.project_id
+        LEFT JOIN api_test_environments AS environments ON environments.id = batches.api_environment_id
+        WHERE batches.id = ? AND batches.report_deleted_at IS NULL
+        """,
+        (report_id,),
+    ).fetchone()
+
+
+def delete_api_report(db: Connection, report_id: str) -> None:
+    db.execute(
+        "UPDATE api_batch_runs SET report_deleted_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+        (report_id,),
+    )

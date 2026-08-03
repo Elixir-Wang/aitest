@@ -12,6 +12,7 @@ from app.services.performance_testing import service
 from app.agents.performance_testing.script_generation.schemas import LocustScriptPlan
 from app.agents.performance_testing.script_generation.service import PROMPT_VERSION, build_ai_or_default_plan
 from app.services.performance_testing.script_renderer import render_locust_script
+from app.services.performance_testing.scenario_compiler import build_scenario_plan
 from app.services.performance_testing.validator import validate_locust_script
 
 
@@ -25,7 +26,27 @@ def generate_script(project_id: str, test_id: str, actor) -> dict[str, Any]:
             **dict(performance_test["request_config"].get("headers") or {}),
             **service._environment_runtime_headers(environment),
         }
-        plan, generation_source, model_id = build_ai_or_default_plan(performance_test)
+        if performance_test["target_type"] == "scenario":
+            scenario = db.execute(
+                "SELECT published_snapshot_json FROM api_scenarios WHERE id = ? AND project_id = ?",
+                (performance_test["scenario_id"], project_id),
+            ).fetchone()
+            snapshot = api_automation_repo.loads_json(scenario["published_snapshot_json"], {}) if scenario else {}
+            if not snapshot or not snapshot.get("steps"):
+                raise api_error(
+                    400,
+                    "PERFORMANCE_SCENARIO_VERSION_MISSING",
+                    "接口场景没有当前保存版本，请先保存场景。",
+                )
+            plan = build_scenario_plan(
+                performance_test,
+                snapshot,
+                service._environment_runtime_headers(environment),
+                api_automation_repo.loads_json(environment["variables_json"], {}) if environment else {},
+            )
+            generation_source, model_id = "default_plan", ""
+        else:
+            plan, generation_source, model_id = build_ai_or_default_plan(performance_test)
         code = render_locust_script(plan)
         validation = validate_locust_script(plan, code)
         current = performance_script_repo.find_script_by_test(db, test_id)
@@ -103,7 +124,19 @@ def _build_runtime_preview(db, project_id: str, test_id: str, script: dict[str, 
     if test_row["api_environment_id"]:
         environment = api_automation_repo.find_api_environment(db, test_row["api_environment_id"])
     env_headers = service._environment_runtime_headers(environment)
-    plan_request = dict(script.get("plan", {}).get("request") or {})
+    plan = script.get("plan", {})
+    if plan.get("target_type") == "scenario":
+        return {
+            "scenario": {
+                "id": plan.get("scenario_id", ""),
+                "name": plan.get("scenario_name", ""),
+                "revision": plan.get("scenario_revision"),
+                "step_count": len(plan.get("steps") or []),
+            },
+            "env_headers": env_headers,
+            "managed_header_names": sorted(service._environment_managed_header_names(environment)),
+        }
+    plan_request = dict(plan.get("request") or {})
     plan_headers = dict(plan_request.get("headers") or {})
     merged_headers = {**plan_headers, **env_headers}
     return {

@@ -24,3 +24,8 @@ def delete_report(
     actor=Depends(require_admin),
 ) -> None:
     report_center_service.delete_report(report_type, report_id, actor)
+
+
+@router.get("/api/{report_id}")
+def get_api_report(report_id: str, actor=Depends(current_user)) -> dict:
+    return report_center_service.get_api_report(report_id, actor)

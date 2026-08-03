@@ -52,8 +52,13 @@ def validate_locust_script(plan: LocustScriptPlan, source: str) -> ScriptValidat
         errors.append("脚本必须定义受 @task 管理的 execute_target")
     if not has_controlled_request:
         errors.append("请求必须使用 catch_response=True")
-    if plan.request.method not in source or plan.request.name not in source:
-        errors.append("脚本与结构化 Plan 不一致")
+    if plan.target_type == "endpoint":
+        if not plan.request or plan.request.method not in source or plan.request.name not in source:
+            errors.append("脚本与结构化 Plan 不一致")
+    else:
+        expected_names = [step.request.name for step in plan.steps if step.request is not None]
+        if "SCENARIO" not in source or plan.scenario_name not in source or any(name not in source for name in expected_names):
+            errors.append("脚本与场景结构化 Plan 不一致")
 
     if not errors:
         if importlib.util.find_spec("locust") is None:

@@ -143,6 +143,18 @@ def request_slots(endpoint: dict[str, Any]) -> list[AssetSlot]:
     return _dedupe_slots(slots)
 
 
+def normalize_request_target(endpoint: dict[str, Any], location: str, path: str) -> tuple[str, str]:
+    slots = request_slots(endpoint)
+    matching = [slot for slot in slots if slot.path == path]
+    if not matching or any(slot.location == location for slot in matching):
+        return location, path
+    body_locations = {"json_body", "form", "multipart"}
+    matching_body_locations = {slot.location for slot in matching if slot.location in body_locations}
+    if location in body_locations and len(matching_body_locations) == 1:
+        return matching_body_locations.pop(), path
+    return location, path
+
+
 def response_slots(endpoint: dict[str, Any]) -> list[AssetSlot]:
     slots: list[AssetSlot] = []
     for status, response in (endpoint.get("responses") or {}).items():

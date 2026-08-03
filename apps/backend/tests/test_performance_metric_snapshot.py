@@ -330,8 +330,9 @@ def test_report_snapshot_filters_cumulative_trend_and_resource_recommendations()
                     "level": "observed",
                     "title": "容量未评估",
                     "statement": (
-                        "测试采用固定单阶段负载（load.mode=fixed，stages 为空），capacity_analysis 判定 "
-                        "can_claim_stable_capacity=false、knee_point=null。"
+                        "本次为固定单阶段负载（10 用户、60 秒），性能目标（平均响应时间 ≤3000ms、失败率 ≤0.0%）"
+                        "全部通过；但 capacity_analysis.can_claim_stable_capacity=false，knee_point=null，"
+                        "未触达容量上限，无法据此声称稳定容量或系统上限。"
                     ),
                     "confidence": 0.9,
                     "evidence_refs": ["capacity:summary"],
@@ -353,7 +354,11 @@ def test_report_snapshot_filters_cumulative_trend_and_resource_recommendations()
                     "action": "补充阶梯负载复测",
                     "expected_effect": "确认已验证负载上界",
                     "cost": "medium",
-                    "verification": "报告给出拐点或已验证上界",
+                    "verification": (
+                        "复测后在同口径下获得：1) can_claim_stable_capacity=true；"
+                        "2) knee_point（并发用户或 RPS）被识别；"
+                        "3) 各级 p95/p99 与失败率随负载变化的可量化曲线。"
+                    ),
                     "finding_refs": ["capacity"],
                 },
             ],
@@ -371,6 +376,10 @@ def test_report_snapshot_filters_cumulative_trend_and_resource_recommendations()
     )
     assert "can_claim_stable_capacity" not in report["findings"][0]["statement"]
     assert report["recommendations"][0]["priority"] == "P2"
+    assert report["recommendations"][0]["verification"] == (
+        "复测后报告应给出容量拐点，或明确当前配置下已验证的最大稳定负载，"
+        "并展示各级 P95、P99、失败率与吞吐量随负载变化的曲线。"
+    )
 
 
 def test_report_snapshot_filters_redundant_all_objectives_achieved_finding() -> None:

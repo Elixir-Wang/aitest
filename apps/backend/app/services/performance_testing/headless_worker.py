@@ -170,25 +170,30 @@ def start_headless_run(run_id: str, options: dict[str, Any] | None = None) -> bo
     return True
 
 
-def parse_locust_stats_history(content: str) -> dict[str, Any] | None:
-    samples = parse_locust_stats_history_samples(content)
+def parse_locust_stats_history(content: str, *, request_type: str | None = None) -> dict[str, Any] | None:
+    samples = parse_locust_stats_history_samples(content, request_type=request_type)
     return samples[-1] if samples else None
 
 
-def parse_locust_stats_history_samples(content: str) -> list[dict[str, Any]]:
+def parse_locust_stats_history_samples(content: str, *, request_type: str | None = None) -> list[dict[str, Any]]:
     rows = csv.DictReader(content.splitlines())
     return [
         _locust_history_sample(row)
         for row in rows
-        if row.get("Type") == "Aggregated" or row.get("Name") == "Aggregated"
+        if _is_summary_row(row, request_type)
     ]
 
 
-def parse_locust_stats_csv(content: str, *, user_count: int = 0) -> dict[str, Any] | None:
+def parse_locust_stats_csv(
+    content: str,
+    *,
+    user_count: int = 0,
+    request_type: str | None = None,
+) -> dict[str, Any] | None:
     """Parse the current aggregate row from Locust's non-history CSV output."""
     rows = list(csv.DictReader(content.splitlines()))
     aggregate = next(
-        (row for row in reversed(rows) if row.get("Type") == "Aggregated" or row.get("Name") == "Aggregated"),
+        (row for row in reversed(rows) if _is_summary_row(row, request_type)),
         None,
     )
     if not aggregate:
@@ -211,15 +216,24 @@ def parse_locust_stats_csv(content: str, *, user_count: int = 0) -> dict[str, An
     }
 
 
-def read_realtime_sample(run_dir: Path, *, configured_users: int = 0) -> dict[str, Any] | None:
+def read_realtime_sample(
+    run_dir: Path,
+    *,
+    configured_users: int = 0,
+    request_type: str | None = None,
+) -> dict[str, Any] | None:
     """Read the newest aggregate metrics, tolerating Locust while flushing CSV files."""
     stats_path = run_dir / "result_stats.csv"
     if not stats_path.exists():
         return None
     try:
         sampled_at = str(stats_path.stat().st_mtime)
-        sample = parse_locust_stats_csv(stats_path.read_text(encoding="utf-8-sig"), user_count=configured_users)
-        history_sample = _read_history_sample(run_dir)
+        sample = parse_locust_stats_csv(
+            stats_path.read_text(encoding="utf-8-sig"),
+            user_count=configured_users,
+            request_type=request_type,
+        )
+        history_sample = _read_history_sample(run_dir, request_type=request_type)
     except (OSError, UnicodeDecodeError, ValueError):
         return None
     if sample is None:
@@ -249,18 +263,27 @@ def _locust_history_sample(aggregate: dict[str, str | None]) -> dict[str, Any]:
     }
 
 
+def _is_summary_row(row: dict[str, str | None], request_type: str | None) -> bool:
+    if request_type is not None:
+        return row.get("Type") == request_type
+    return row.get("Type") == "Aggregated" or row.get("Name") == "Aggregated"
+
+
 def _locust_float(value: object) -> float:
     if value in (None, "", "N/A"):
         return 0.0
     return float(value)
 
 
-def _read_history_sample(run_dir: Path) -> dict[str, Any] | None:
+def _read_history_sample(run_dir: Path, *, request_type: str | None = None) -> dict[str, Any] | None:
     history_path = run_dir / "result_stats_history.csv"
     if not history_path.exists():
         return None
     try:
-        return parse_locust_stats_history(history_path.read_text(encoding="utf-8-sig"))
+        return parse_locust_stats_history(
+            history_path.read_text(encoding="utf-8-sig"),
+            request_type=request_type,
+        )
     except (OSError, UnicodeDecodeError):
         return None
 
@@ -300,11 +323,19 @@ def _collect_locust_results(db, run_id: str, run_dir: Path) -> None:
     run = run_repo.get_run(db, run_id)
     load_config = json.loads(run["load_config_json"] or "{}") if run else {}
     configured_users = int(load_config.get("users") or 0)
+    test = db.execute(
+        "SELECT target_type FROM performance_tests WHERE id = ?",
+        (run["performance_test_id"],),
+    ).fetchone() if run else None
+    request_type = "SCENARIO" if test and test["target_type"] == "scenario" else None
     stats_path = run_dir / "result_stats.csv"
     if stats_path.exists():
         with stats_path.open("r", encoding="utf-8-sig", newline="") as handle:
             rows = list(csv.DictReader(handle))
-        aggregate = next((row for row in reversed(rows) if row.get("Type") == "Aggregated"), rows[-1] if rows else None)
+        aggregate = next(
+            (row for row in reversed(rows) if _is_summary_row(row, request_type)),
+            rows[-1] if rows else None,
+        )
         if aggregate:
             request_count = int(float(aggregate.get("Request Count") or 0))
             failure_count = int(float(aggregate.get("Failure Count") or 0))

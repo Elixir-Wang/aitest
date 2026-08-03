@@ -771,7 +771,7 @@ def test_sse_extractor_to_runtime_preserves_event_and_occurrence() -> None:
     }
 
 
-def test_compiler_uses_asset_single_value_enum_without_node_binding() -> None:
+def test_compiler_materializes_asset_single_value_enum_as_literal_binding() -> None:
     endpoint = {
         "id": "sse",
         "method": "POST",
@@ -805,7 +805,38 @@ def test_compiler_uses_asset_single_value_enum_without_node_binding() -> None:
 
     compiled = compile_plan(plan, [endpoint], {"configured": False, "variables": [], "secrets": [], "auth_type": "none"})
 
-    assert compiled.nodes[0].bindings == []
+    binding = compiled.nodes[0].bindings[0]
+    assert binding.target.location == "header"
+    assert binding.target.path == "/SSE-Backend-Type"
+    assert binding.source.type == "literal"
+    assert binding.source.value == "sse"
+
+
+def test_compiler_materializes_asset_default_as_literal_binding() -> None:
+    endpoint = {
+        "id": "sse",
+        "method": "POST",
+        "path": "/sse",
+        "parameters": [
+            {
+                "name": "cybertron-app-id",
+                "in": "header",
+                "required": True,
+                "schema": {"type": "string", "default": "multi-agent-server"},
+            }
+        ],
+        "request_body": {},
+        "responses": {},
+    }
+    plan = ScenarioPlanResult(nodes=[ScenarioPlanNode(id="chat", type="api_request", endpoint_id="sse")])
+
+    compiled = compile_plan(plan, [endpoint], {"configured": False, "variables": [], "secrets": [], "auth_type": "none"})
+
+    binding = compiled.nodes[0].bindings[0]
+    assert binding.target.location == "header"
+    assert binding.target.path == "/cybertron-app-id"
+    assert binding.source.type == "literal"
+    assert binding.source.value == "multi-agent-server"
 
 
 def test_compiler_fills_unbound_required_field_with_literal_mock() -> None:

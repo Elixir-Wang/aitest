@@ -713,10 +713,62 @@ CREATE TABLE IF NOT EXISTS api_test_scripts (
 CREATE INDEX IF NOT EXISTS idx_api_scripts_project_updated
   ON api_test_scripts(project_id, updated_at);
 
+CREATE TABLE IF NOT EXISTS api_scenario_suites (
+  id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL,
+  api_environment_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  created_by TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE,
+  FOREIGN KEY(api_environment_id) REFERENCES api_test_environments(id) ON DELETE RESTRICT
+);
+
+CREATE INDEX IF NOT EXISTS idx_api_scenario_suites_project_updated
+  ON api_scenario_suites(project_id, updated_at);
+
+CREATE TABLE IF NOT EXISTS api_scenario_suite_items (
+  suite_id TEXT NOT NULL,
+  scenario_id TEXT NOT NULL,
+  position INTEGER NOT NULL,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY(suite_id, scenario_id),
+  UNIQUE(suite_id, position),
+  FOREIGN KEY(suite_id) REFERENCES api_scenario_suites(id) ON DELETE CASCADE,
+  FOREIGN KEY(scenario_id) REFERENCES api_scenarios(id) ON DELETE RESTRICT
+);
+
+CREATE TABLE IF NOT EXISTS api_batch_runs (
+  id TEXT PRIMARY KEY,
+  suite_id TEXT,
+  project_id TEXT NOT NULL,
+  api_environment_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  status TEXT NOT NULL CHECK(status IN ('queued', 'running', 'completed', 'failed')) DEFAULT 'queued',
+  result TEXT NOT NULL CHECK(result IN ('', 'passed', 'observed', 'failed', 'error')) DEFAULT '',
+  error_message TEXT NOT NULL DEFAULT '',
+  created_by TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  started_at TEXT,
+  finished_at TEXT,
+  report_deleted_at TEXT,
+  FOREIGN KEY(suite_id) REFERENCES api_scenario_suites(id) ON DELETE SET NULL,
+  FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE,
+  FOREIGN KEY(api_environment_id) REFERENCES api_test_environments(id) ON DELETE RESTRICT
+);
+
+CREATE INDEX IF NOT EXISTS idx_api_batch_runs_project_created
+  ON api_batch_runs(project_id, created_at);
+
 CREATE TABLE IF NOT EXISTS api_automation_runs (
   id TEXT PRIMARY KEY,
   project_id TEXT NOT NULL,
   api_environment_id TEXT,
+  batch_run_id TEXT,
+  batch_position INTEGER,
   task_id TEXT NOT NULL UNIQUE,
   status TEXT NOT NULL CHECK(status IN ('queued', 'running', 'passed', 'observed', 'failed', 'cancelled', 'interrupted')),
   script_ids_json TEXT NOT NULL DEFAULT '[]',
@@ -738,7 +790,8 @@ CREATE TABLE IF NOT EXISTS api_automation_runs (
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   finished_at TEXT,
   FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE,
-  FOREIGN KEY(api_environment_id) REFERENCES api_test_environments(id) ON DELETE SET NULL
+  FOREIGN KEY(api_environment_id) REFERENCES api_test_environments(id) ON DELETE SET NULL,
+  FOREIGN KEY(batch_run_id) REFERENCES api_batch_runs(id) ON DELETE SET NULL
 );
 
 CREATE INDEX IF NOT EXISTS idx_api_runs_project_created
@@ -822,8 +875,9 @@ CREATE TABLE IF NOT EXISTS performance_tests (
   project_id TEXT NOT NULL,
   name TEXT NOT NULL,
   description TEXT NOT NULL DEFAULT '',
-  target_type TEXT NOT NULL CHECK(target_type IN ('endpoint')) DEFAULT 'endpoint',
+  target_type TEXT NOT NULL CHECK(target_type IN ('endpoint', 'scenario')) DEFAULT 'endpoint',
   endpoint_id TEXT,
+  scenario_id TEXT,
   api_environment_id TEXT,
   request_config_json TEXT NOT NULL DEFAULT '{}',
   load_config_json TEXT NOT NULL DEFAULT '{}',
@@ -836,7 +890,12 @@ CREATE TABLE IF NOT EXISTS performance_tests (
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE,
   FOREIGN KEY(endpoint_id) REFERENCES api_endpoints(id) ON DELETE SET NULL,
+  FOREIGN KEY(scenario_id) REFERENCES api_scenarios(id) ON DELETE SET NULL,
   FOREIGN KEY(api_environment_id) REFERENCES api_test_environments(id) ON DELETE SET NULL,
+  CHECK(
+    (target_type = 'endpoint' AND scenario_id IS NULL)
+    OR (target_type = 'scenario' AND endpoint_id IS NULL)
+  ),
   UNIQUE(project_id, name)
 );
 
@@ -1002,6 +1061,7 @@ CREATE INDEX IF NOT EXISTS idx_performance_test_run_events_run_created
 CREATE TABLE IF NOT EXISTS api_scenarios (
   id TEXT PRIMARY KEY,
   project_id TEXT NOT NULL,
+  api_environment_id TEXT,
   name TEXT NOT NULL,
   description TEXT NOT NULL DEFAULT '',
   status TEXT NOT NULL CHECK(status IN ('draft', 'ready', 'archived')) DEFAULT 'draft',
@@ -1013,7 +1073,8 @@ CREATE TABLE IF NOT EXISTS api_scenarios (
   updated_by TEXT NOT NULL DEFAULT '',
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE
+  FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE,
+  FOREIGN KEY(api_environment_id) REFERENCES api_test_environments(id) ON DELETE SET NULL
 );
 
 CREATE TABLE IF NOT EXISTS api_scenario_steps (

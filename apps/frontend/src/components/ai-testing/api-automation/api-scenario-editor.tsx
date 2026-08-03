@@ -131,7 +131,11 @@ export function ApiScenarioEditor({ projectId, scenarioId }: ApiScenarioEditorPr
             <Sparkles />
             AI 编排
           </Button>
-          <Select onValueChange={editor.actions.setSelectedEnvironmentId} value={editor.selectedEnvironmentId}>
+          <Select
+            disabled={editor.environmentSaving}
+            onValueChange={editor.actions.persistSelectedEnvironment}
+            value={editor.selectedEnvironmentId}
+          >
             <SelectTrigger className="w-40">
               <SelectValue placeholder="选择运行环境" />
             </SelectTrigger>

@@ -24,7 +24,6 @@ const editScenarioPageSource = readSource(
   "../src/app/(main)/projects/[projectId]/automation/api/scenarios/[scenarioId]/page.tsx",
 );
 const clientSource = readSource("../src/lib/api-client.ts");
-
 test("scenario tab renders a project-list style scenario list", () => {
   assert.match(automationPageSource, /ApiScenarioList/);
   assert.match(automationPageSource, /scenarios/);
@@ -91,6 +90,12 @@ test("scenario editor supports ordered steps, version saving, and execution", ()
   assert.match(scenarioRunDrawerSource, /变量/);
 });
 
+test("scenario response viewer uses a light data-paper surface", () => {
+  assert.match(scenarioRunDrawerSource, /rounded-xl border border-slate-200 bg-white/);
+  assert.match(scenarioRunDrawerSource, /SSE 事件流/);
+  assert.doesNotMatch(scenarioRunDrawerSource, /bg-slate-950/);
+});
+
 test("scenario editor provides a constrained canvas backed by the existing step model", () => {
   assert.match(scenarioEditorSource, /ApiScenarioCanvas/);
   assert.doesNotMatch(scenarioEditorSource, /orchestrationMode/);
@@ -152,6 +157,14 @@ test("scenario editor exposes run status from the header without reserving a bot
   assert.match(scenarioRunDrawerSource, /Number\.isFinite/);
   assert.doesNotMatch(scenarioEditorSource, /尚未运行当前场景/);
   assert.doesNotMatch(scenarioEditorSource, /运行结果将在此处展开/);
+});
+
+test("scenario editor persists and restores its selected environment", () => {
+  assert.match(clientSource, /api_environment_id: string \| null/);
+  assert.match(scenarioEditorHookSource, /selectedScenario\?\.api_environment_id/);
+  assert.match(scenarioEditorHookSource, /updateApiAutomationScenario/);
+  assert.match(scenarioEditorHookSource, /persistSelectedEnvironment/);
+  assert.match(scenarioEditorSource, /onValueChange=\{editor\.actions\.persistSelectedEnvironment\}/);
 });
 
 test("scenario asset picker overrides the base dialog width on desktop", () => {

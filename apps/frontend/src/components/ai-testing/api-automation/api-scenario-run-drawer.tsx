@@ -420,16 +420,65 @@ function DiagnosisSection({
 }
 
 function JsonView({ value }: { value: unknown }) {
+  const [copied, setCopied] = useState(false);
   const empty =
     value == null ||
     (Array.isArray(value) && value.length === 0) ||
     (typeof value === "object" && Object.keys(value).length === 0);
   if (empty) return <div className="py-10 text-center text-muted-foreground text-xs">暂无数据</div>;
+  const serialized = JSON.stringify(value, null, 2);
+  const metadata = getJsonViewMetadata(value);
+
+  async function copyJson() {
+    await navigator.clipboard.writeText(serialized);
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 1200);
+  }
+
   return (
-    <pre className="mt-4 overflow-auto bg-slate-950 p-4 font-mono text-[11px] text-slate-200 leading-5">
-      {JSON.stringify(value, null, 2)}
-    </pre>
+    <div className="mt-4 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-[0_12px_32px_-24px_rgba(15,23,42,0.35)]">
+      <div className="flex min-h-10 items-center justify-between gap-3 border-slate-200 border-b bg-slate-50/80 px-3 py-2">
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="size-1.5 shrink-0 rounded-full bg-emerald-500 shadow-[0_0_0_3px_rgba(16,185,129,0.12)]" />
+          <span className="truncate font-semibold text-[11px] text-slate-700 uppercase tracking-[0.08em]">
+            {metadata.label}
+          </span>
+          {metadata.detail ? (
+            <span className="rounded-md border border-slate-200 bg-white px-1.5 py-0.5 font-mono text-[10px] text-slate-500">
+              {metadata.detail}
+            </span>
+          ) : null}
+        </div>
+        <Button
+          aria-label="复制 JSON"
+          className="h-7 gap-1.5 px-2 text-slate-600 hover:bg-white hover:text-slate-900"
+          onClick={copyJson}
+          size="sm"
+          variant="ghost"
+        >
+          {copied ? <Check className="size-3.5 text-emerald-600" /> : <Copy className="size-3.5" />}
+          <span className="text-[11px]">{copied ? "已复制" : "复制"}</span>
+        </Button>
+      </div>
+      <pre className="max-h-[calc(100vh-22rem)] overflow-auto whitespace-pre p-4 font-mono text-[12px] text-slate-700 leading-6 selection:bg-emerald-100 selection:text-slate-950">
+        {serialized}
+      </pre>
+    </div>
   );
+}
+
+function getJsonViewMetadata(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return { label: "JSON 数据", detail: "" };
+  const response = value as Record<string, unknown>;
+  const body = response.body;
+  if (body && typeof body === "object" && !Array.isArray(body)) {
+    const stream = body as Record<string, unknown>;
+    if (stream.streaming === true) {
+      const eventCount = typeof stream.event_count === "number" ? `${stream.event_count} events` : "stream";
+      return { label: "SSE 事件流", detail: eventCount };
+    }
+  }
+  return { label: "JSON 响应", detail: `${Object.keys(response).length} fields` };
 }
 
 function RunStatusBadge({ status }: { status: string }) {

@@ -7,7 +7,6 @@ import { useRouter } from "next/navigation";
 import {
   Activity,
   AlertTriangle,
-  ArrowLeft,
   CheckCircle2,
   CircleHelp,
   Gauge,
@@ -140,16 +139,6 @@ export function PerformanceAnalysisReport({
 
   return (
     <div className="mx-auto w-full max-w-[90rem] space-y-7">
-      <div className="border-b pb-4">
-        <Button
-          onClick={() => router.push(`/projects/${projectId}/performance-tests/${testId}/runs/${runId}`)}
-          variant="ghost"
-        >
-          <ArrowLeft className="size-4" />
-          返回 Locust 控制台
-        </Button>
-      </div>
-
       {isFallback ? (
         <section className="flex flex-col gap-4 rounded-lg border border-amber-300 bg-amber-50 p-4 text-amber-950 sm:flex-row sm:items-center sm:justify-between dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-100">
           <div>
@@ -164,49 +153,62 @@ export function PerformanceAnalysisReport({
       ) : null}
 
       <section className={`overflow-hidden rounded-lg border border-l-4 bg-card ${verdictAccentClass(verdict)}`}>
-        <div className="grid xl:grid-cols-[minmax(22rem,0.85fr)_minmax(34rem,1.15fr)]">
+        <div className="grid xl:grid-cols-[minmax(34rem,1.15fr)_minmax(22rem,0.85fr)]">
           <div className="p-5 sm:p-6 xl:pr-8">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-2 text-muted-foreground text-xs">
-                <VerdictGlyph verdict={verdict} />
                 <span>性能结论</span>
               </div>
               <p className="text-muted-foreground text-xs">
                 数据质量 <span className="ml-1 font-medium text-foreground">{qualityLabel(quality.status)}</span>
               </p>
             </div>
-            <h1 className="mt-3 font-semibold text-3xl tabular-nums">{verdictLabel(verdict)}</h1>
+            <div className="mt-3 flex items-center gap-2">
+              <VerdictGlyph verdict={verdict} />
+              <h1 className="font-semibold text-3xl tabular-nums">{verdictLabel(verdict)}</h1>
+            </div>
             <p className="mt-2 max-w-xl text-muted-foreground text-sm leading-6">
               {verdictSummary(verdict, objectives.length, aggregate.requests_per_second)}
             </p>
-            {scopeItems.length ? (
-              <dl className="mt-5 grid grid-cols-2 gap-x-5 gap-y-4 border-t pt-4 sm:grid-cols-3">
-                {scopeItems.map((item) => (
-                  <div className="min-w-0" key={item.label}>
-                    <dt className="text-[11px] text-muted-foreground">{item.label}</dt>
-                    <dd className="mt-1 truncate font-medium text-sm tabular-nums" title={item.value}>
-                      {item.value}
-                    </dd>
-                  </div>
-                ))}
-              </dl>
-            ) : null}
+
+            <div className="mt-5 border-t pt-4">
+              <h2 className="font-medium text-muted-foreground text-xs" id="core-metrics-heading">
+                核心指标
+              </h2>
+              <section
+                aria-labelledby="core-metrics-heading"
+                className="mt-5 grid grid-cols-2 gap-x-6 gap-y-6 sm:grid-cols-3 2xl:grid-cols-5"
+              >
+                <ReportMetric label="请求总数" value={numberValue(aggregate.request_count)} />
+                <ReportMetric label="观测吞吐" suffix=" RPS" value={decimalValue(aggregate.requests_per_second)} />
+                <ReportMetric label="失败率" suffix="%" value={percentageValue(aggregate.failure_rate)} />
+                <ReportMetric label="P95 响应时间" suffix=" ms" value={nullableValue(aggregate.p95_response_time_ms)} />
+                <ReportMetric label="P99 响应时间" suffix=" ms" value={nullableValue(aggregate.p99_response_time_ms)} />
+              </section>
+            </div>
           </div>
 
           <div className="border-t bg-muted/20 p-5 sm:p-6 xl:border-t-0 xl:border-l xl:pl-8">
-            <h2 className="font-medium text-muted-foreground text-xs" id="core-metrics-heading">
-              核心指标
-            </h2>
-            <section
-              aria-labelledby="core-metrics-heading"
-              className="mt-5 grid grid-cols-2 gap-x-6 gap-y-6 sm:grid-cols-3 2xl:grid-cols-5"
-            >
-              <ReportMetric label="请求总数" value={numberValue(aggregate.request_count)} />
-              <ReportMetric label="观测吞吐" suffix=" RPS" value={decimalValue(aggregate.requests_per_second)} />
-              <ReportMetric label="失败率" suffix="%" value={percentageValue(aggregate.failure_rate)} />
-              <ReportMetric label="P95 响应时间" suffix=" ms" value={nullableValue(aggregate.p95_response_time_ms)} />
-              <ReportMetric label="P99 响应时间" suffix=" ms" value={nullableValue(aggregate.p99_response_time_ms)} />
-            </section>
+            {scopeItems.length ? (
+              <section aria-labelledby="test-config-heading" className="flex h-full flex-col justify-center">
+                <div className="flex items-center gap-2 text-muted-foreground text-xs">
+                  <Gauge className="size-3.5" />
+                  <h2 id="test-config-heading" className="font-medium">
+                    测试配置
+                  </h2>
+                </div>
+                <dl className="mt-4 grid grid-cols-2 gap-x-8">
+                  {scopeItems.map((item) => (
+                    <div className="border-t py-3" key={item.label}>
+                      <dt className="text-[11px] text-muted-foreground">{item.label}</dt>
+                      <dd className="mt-1 truncate font-medium text-sm tabular-nums" title={item.value}>
+                        {item.value}
+                      </dd>
+                    </div>
+                  ))}
+                </dl>
+              </section>
+            ) : null}
           </div>
         </div>
       </section>
@@ -543,7 +545,9 @@ export function PerformanceAnalysisReport({
             {recommendations.map((recommendation) => (
               <div className="py-4" key={recommendation.id}>
                 <div className="flex min-w-0 items-start justify-between gap-3">
-                  <p className="min-w-0 text-muted-foreground text-xs leading-5">{recommendation.action}</p>
+                  <p className="min-w-0 text-muted-foreground text-xs leading-5">
+                    {recommendationAction(recommendation.action)}
+                  </p>
                   <Badge
                     className={`${severityBadgeClass("low")} shrink-0 font-semibold tabular-nums`}
                     variant="outline"
@@ -652,7 +656,15 @@ function SectionHeading({ icon: Icon, id, title }: { icon: typeof Activity; id?:
 
 function VerdictGlyph({ verdict }: { verdict: string }) {
   const Icon = verdict === "pass" ? CheckCircle2 : verdict === "fail" ? AlertTriangle : CircleHelp;
-  return <Icon className="size-4" />;
+  const colorClass =
+    verdict === "pass"
+      ? "text-emerald-600 dark:text-emerald-400"
+      : verdict === "fail"
+        ? "text-destructive"
+        : verdict === "conditional_pass"
+          ? "text-amber-600 dark:text-amber-400"
+          : "text-muted-foreground";
+  return <Icon className={`size-6 shrink-0 ${colorClass}`} />;
 }
 
 function verdictAccentClass(verdict: string) {
@@ -728,7 +740,16 @@ function isCapacityBoundaryFinding(finding: { title: string; statement: string; 
   const capacityBoundary =
     finding.evidence_refs?.includes("capacity:summary") ||
     /容量上限|容量拐点|性能拐点|固定(?:单阶段)?负载|阶梯加压/i.test(text);
-  return Boolean(capacityBoundary) && !/失败|退化|恶化|超时|错误|目标未通过/i.test(text);
+  return Boolean(capacityBoundary) && !hasPerformanceFailureSignal(text);
+}
+
+function hasPerformanceFailureSignal(text: string) {
+  if (/请求失败|失败请求|失败率(?:上升|恶化|超标|非零)|退化|恶化|超时|错误|目标未通过/i.test(text)) {
+    return true;
+  }
+  return [...text.matchAll(/失败率\s*(?:为|=|：|:|>|≥)?\s*(\d+(?:\.\d+)?)\s*%/gi)].some(
+    (match) => Number(match[1]) > 0,
+  );
 }
 
 function displayFindingStatement(
@@ -805,10 +826,20 @@ function isSupportedFinding(
 }
 
 function recommendationVerification(value: string) {
-  if (/knee_point.*非空|拐点.*非空/i.test(value)) {
-    return "复测后报告应给出容量拐点，或明确当前配置下已验证的最大稳定负载及对应 RPS、P95。";
+  if (exposesInternalCapacityFields(value) || /拐点.*非空/i.test(value)) {
+    return "复测后报告应给出容量拐点，或明确当前配置下已验证的最大稳定负载，并展示各级 P95、P99、失败率与吞吐量随负载变化的曲线。";
   }
   return value;
+}
+
+function recommendationAction(value: string) {
+  return exposesInternalCapacityFields(value) ? "补充分阶段阶梯加压复测。" : value;
+}
+
+function exposesInternalCapacityFields(value: string) {
+  return /load\.mode|stages|capacity_analysis|can_claim_stable_capacity|knee_point|\b(?:true|false|null)\b/i.test(
+    value,
+  );
 }
 
 function isSupportedRecommendation(

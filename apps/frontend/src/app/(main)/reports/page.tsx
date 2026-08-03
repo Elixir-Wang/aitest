@@ -28,6 +28,14 @@ import { useAuthStore } from "@/stores/auth-store";
 
 const REPORT_TABS = ["接口", "性能", "UI"];
 
+function reportTypeForTab(tab: string) {
+  return tab === "接口" ? "api" : "performance";
+}
+
+function formatPercent(value: number) {
+  return new Intl.NumberFormat("zh-CN", { style: "percent", maximumFractionDigits: 1 }).format(value);
+}
+
 export default function Page() {
   const currentUser = useAuthStore((state) => state.user);
   const [activeTab, setActiveTab] = useState("性能");
@@ -41,7 +49,8 @@ export default function Page() {
   const canDelete = currentUser?.role === "admin";
 
   useEffect(() => {
-    if (activeTab !== "性能") {
+    if (activeTab === "UI") {
+      setReports([]);
       setLoading(false);
       setError("");
       return;
@@ -49,7 +58,7 @@ export default function Page() {
     let disposed = false;
     setLoading(true);
     setError("");
-    listReportCenterItems()
+    listReportCenterItems("all", reportTypeForTab(activeTab))
       .then((items) => {
         if (!disposed) setReports(items);
       })
@@ -65,7 +74,7 @@ export default function Page() {
   }, [activeTab]);
 
   const filteredRows = useMemo(() => {
-    if (activeTab !== "性能") return [];
+    if (activeTab === "UI") return [];
     const keyword = searchText.trim().toLowerCase();
     if (!keyword) return reports;
     return reports.filter((report) =>
@@ -73,6 +82,7 @@ export default function Page() {
         report.project_name,
         report.test_name,
         report.name,
+        report.environment_name,
         verdictLabel(report.verdict),
         generationStatusLabel(report.generation_status),
       ].some((value) => value.toLowerCase().includes(keyword)),
@@ -108,7 +118,8 @@ export default function Page() {
     const idsToDelete = [...selectedIds];
     setDeleting(true);
     try {
-      const results = await Promise.allSettled(idsToDelete.map((id) => deleteReportCenterItem(id)));
+      const reportType = reportTypeForTab(activeTab);
+      const results = await Promise.allSettled(idsToDelete.map((id) => deleteReportCenterItem(id, reportType)));
       const deletedIds = idsToDelete.filter((_, index) => results[index]?.status === "fulfilled");
       const firstFailure = results.find((result) => result.status === "rejected");
       setReports((current) => current.filter((report) => !deletedIds.includes(report.id)));
@@ -149,7 +160,7 @@ export default function Page() {
               : undefined
           }
           onSearch={setSearchText}
-          placeholder="搜索项目、压测任务或报告结论"
+          placeholder={activeTab === "接口" ? "搜索接口批次、环境或结论" : "搜索项目、压测任务或报告结论"}
           title="报告列表"
           selectedCount={visibleSelectedIds.length}
         />
@@ -159,7 +170,7 @@ export default function Page() {
               <TableRow>
                 <TableHead className="w-10">
                   <Checkbox
-                    aria-label="选择全部性能报告"
+                    aria-label={`选择全部${activeTab}报告`}
                     checked={allVisibleSelected || (partiallyVisibleSelected ? "indeterminate" : false)}
                     disabled={!(canDelete && !loading && visibleRowIds.length > 0)}
                     onCheckedChange={(checked) => toggleAllVisible(Boolean(checked))}
@@ -167,14 +178,27 @@ export default function Page() {
                 </TableHead>
                 <TableHead>报告名称</TableHead>
                 <TableHead>结论</TableHead>
-                <TableHead>数据质量</TableHead>
-                <TableHead>生成状态</TableHead>
-                <TableHead>更新时间</TableHead>
+                {activeTab === "接口" ? (
+                  <>
+                    <TableHead>环境</TableHead>
+                    <TableHead>场景结果</TableHead>
+                    <TableHead>通过率</TableHead>
+                    <TableHead>完成时间</TableHead>
+                  </>
+                ) : (
+                  <>
+                    <TableHead>数据质量</TableHead>
+                    <TableHead>生成状态</TableHead>
+                    <TableHead>更新时间</TableHead>
+                  </>
+                )}
                 <TableHead className="w-16">操作</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {loading && activeTab === "性能" ? <TableLoadingRow colSpan={7} label="性能报告加载中" /> : null}
+              {loading && activeTab !== "UI" ? (
+                <TableLoadingRow colSpan={activeTab === "接口" ? 8 : 7} label={`${activeTab}报告加载中`} />
+              ) : null}
               {filteredRows.map((report) => (
                 <TableRow data-state={selectedIds.includes(report.id) ? "selected" : undefined} key={report.id}>
                   <TableCell>
@@ -199,20 +223,32 @@ export default function Page() {
                   <TableCell>
                     <StatusBadge tone={verdictTone(report.verdict)}>{verdictLabel(report.verdict)}</StatusBadge>
                   </TableCell>
-                  <TableCell>
-                    <StatusBadge tone={qualityTone(report.quality_status)}>
-                      {qualityLabel(report.quality_status)}
-                    </StatusBadge>
-                  </TableCell>
-                  <TableCell>
-                    <StatusBadge tone={generationStatusTone(report.generation_status)}>
-                      {isGenerationProcessing(report.generation_status) ? (
-                        <ProcessingState label={generationStatusLabel(report.generation_status)} />
-                      ) : (
-                        generationStatusLabel(report.generation_status)
-                      )}
-                    </StatusBadge>
-                  </TableCell>
+                  {report.report_type === "api" ? (
+                    <>
+                      <TableCell>{report.environment_name || "-"}</TableCell>
+                      <TableCell>
+                        {report.passed_count}/{report.scenario_count} 通过
+                      </TableCell>
+                      <TableCell>{formatPercent(report.pass_rate)}</TableCell>
+                    </>
+                  ) : (
+                    <>
+                      <TableCell>
+                        <StatusBadge tone={qualityTone(report.quality_status)}>
+                          {qualityLabel(report.quality_status)}
+                        </StatusBadge>
+                      </TableCell>
+                      <TableCell>
+                        <StatusBadge tone={generationStatusTone(report.generation_status)}>
+                          {isGenerationProcessing(report.generation_status) ? (
+                            <ProcessingState label={generationStatusLabel(report.generation_status)} />
+                          ) : (
+                            generationStatusLabel(report.generation_status)
+                          )}
+                        </StatusBadge>
+                      </TableCell>
+                    </>
+                  )}
                   <TableCell className="whitespace-nowrap text-muted-foreground">
                     {formatDateTime(report.updated_at)}
                   </TableCell>
@@ -233,19 +269,21 @@ export default function Page() {
                   </TableCell>
                 </TableRow>
               ))}
-              {!loading && error && activeTab === "性能" ? (
+              {!loading && error && activeTab !== "UI" ? (
                 <TableRow>
-                  <TableCell className="h-24 text-center text-destructive" colSpan={7}>
+                  <TableCell className="h-24 text-center text-destructive" colSpan={activeTab === "接口" ? 8 : 7}>
                     {error}
                   </TableCell>
                 </TableRow>
               ) : null}
               {!loading && !error && filteredRows.length === 0 ? (
                 <TableRow>
-                  <TableCell className="h-32 text-center text-muted-foreground" colSpan={7}>
+                  <TableCell className="h-32 text-center text-muted-foreground" colSpan={activeTab === "接口" ? 8 : 7}>
                     {activeTab === "性能"
                       ? "暂无性能报告。压测运行结束后，智能分析报告会自动归档到这里。"
-                      : `${activeTab}报告尚未接入。`}
+                      : activeTab === "接口"
+                        ? "暂无接口报告。批量运行完成后，一批一报告会自动归档到这里。"
+                        : `${activeTab}报告尚未接入。`}
                   </TableCell>
                 </TableRow>
               ) : null}
@@ -262,7 +300,7 @@ export default function Page() {
             </div>
             <AlertDialogTitle>删除选中的报告？</AlertDialogTitle>
             <AlertDialogDescription>
-              将永久删除 {selectedIds.length} 份性能分析报告。原始压测运行和采集数据不会被删除。
+              将删除 {selectedIds.length} 份{activeTab}报告。原始运行记录和执行证据不会被删除。
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

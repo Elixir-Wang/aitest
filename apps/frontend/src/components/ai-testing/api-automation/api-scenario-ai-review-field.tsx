@@ -37,6 +37,27 @@ function parseJsonValue(value: string): unknown {
   }
 }
 
+function unwrapObjectSource(properties: Record<string, ApiScenarioAiPlanValueSource> = {}): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(properties).map(([name, source]) => {
+      if (source.type === "literal") return [name, source.value];
+      if (source.type === "object") return [name, unwrapObjectSource(source.properties)];
+      return [name, source];
+    }),
+  );
+}
+
+function wrapObjectSource(value: Record<string, unknown>): Record<string, ApiScenarioAiPlanValueSource> {
+  return Object.fromEntries(
+    Object.entries(value).map(([name, child]) => [
+      name,
+      child && typeof child === "object" && !Array.isArray(child)
+        ? { type: "object", properties: wrapObjectSource(child as Record<string, unknown>) }
+        : { type: "literal", value: child },
+    ]),
+  );
+}
+
 function changeSourceType(
   type: ApiScenarioAiPlanValueSource["type"],
   options: ApiScenarioAiReviewSourceOptions,
@@ -208,9 +229,9 @@ function SourceValueEditor({
           onChange={(event) => {
             const parsed = parseJsonValue(event.target.value);
             if (parsed && typeof parsed === "object" && !Array.isArray(parsed))
-              onChange({ type: "object", properties: parsed as Record<string, ApiScenarioAiPlanValueSource> });
+              onChange({ type: "object", properties: wrapObjectSource(parsed as Record<string, unknown>) });
           }}
-          value={JSON.stringify(source.properties ?? {}, null, 2)}
+          value={JSON.stringify(unwrapObjectSource(source.properties), null, 2)}
         />
       );
   }

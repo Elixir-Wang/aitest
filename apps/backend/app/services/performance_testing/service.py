@@ -99,10 +99,12 @@ def preview_sse_rules(project_id: str, payload: PerformanceSseRulePreviewIn, act
 def create_performance_test(project_id: str, payload: PerformanceTestCreateIn, actor) -> dict[str, Any]:
     with connect() as db:
         _require_visible_project(db, project_id, actor)
-        endpoint, environment = _validate_references(
+        endpoint, scenario, environment = _validate_target_references(
             db,
             project_id,
+            target_type=payload.target_type,
             endpoint_id=payload.endpoint_id,
+            scenario_id=payload.scenario_id,
             api_environment_id=payload.api_environment_id,
         )
         request_config = payload.request_config.model_dump(mode="json")
@@ -113,7 +115,7 @@ def create_performance_test(project_id: str, payload: PerformanceTestCreateIn, a
         success_rules = _minimal_success_rules(
             [rule.model_dump(mode="json") for rule in payload.success_rules]
         )
-        if "success_rules" not in payload.model_fields_set:
+        if endpoint is not None and "success_rules" not in payload.model_fields_set:
             success_rules = _documented_success_rules(endpoint)
         test_id = f"perftest-{secrets.token_hex(8)}"
         data_config = payload.data_config.model_dump(mode="json")
@@ -129,6 +131,7 @@ def create_performance_test(project_id: str, payload: PerformanceTestCreateIn, a
                 description=payload.description.strip(),
                 target_type=payload.target_type,
                 endpoint_id=payload.endpoint_id,
+                scenario_id=payload.scenario_id,
                 api_environment_id=payload.api_environment_id,
                 request_config=request_config,
                 load_config=payload.load_config.model_dump(mode="json"),
@@ -158,7 +161,7 @@ def create_performance_test(project_id: str, payload: PerformanceTestCreateIn, a
         actor_name=operation_log_service.actor_display_name(actor),
         source="web",
         summary=f"创建性能测试：{payload.name}",
-        after={"name": payload.name, "endpoint_id": payload.endpoint_id},
+        after={"name": payload.name, "endpoint_id": payload.endpoint_id, "scenario_id": payload.scenario_id},
     )
     return result
 
@@ -193,12 +196,16 @@ def update_performance_test(
         current = _require_performance_test(db, project_id, test_id)
         current_data = performance_test_repo.serialize_performance_test(current)
         raw_fields = payload.model_dump(exclude_unset=True)
+        target_type = str(current["target_type"])
         endpoint_id = raw_fields.get("endpoint_id", current["endpoint_id"])
+        scenario_id = raw_fields.get("scenario_id", current["scenario_id"])
         api_environment_id = raw_fields.get("api_environment_id", current["api_environment_id"])
-        _, environment = _validate_references(
+        _, _, environment = _validate_target_references(
             db,
             project_id,
+            target_type=target_type,
             endpoint_id=endpoint_id,
+            scenario_id=scenario_id,
             api_environment_id=api_environment_id,
         )
         normalized_request_config = None
@@ -316,6 +323,38 @@ def _validate_references(
     if environment and environment["project_id"] != project_id:
         raise api_error(400, "PERFORMANCE_ENVIRONMENT_INVALID", "API 环境不存在或不属于当前项目。")
     return endpoint, environment
+
+
+def _validate_target_references(
+    db,
+    project_id: str,
+    *,
+    target_type: str,
+    endpoint_id: str | None,
+    scenario_id: str | None,
+    api_environment_id: str | None,
+) -> tuple[Any, Any, Any]:
+    endpoint = None
+    scenario = None
+    if target_type == "endpoint":
+        if not endpoint_id or scenario_id:
+            raise api_error(400, "PERFORMANCE_TARGET_INVALID", "接口性能测试必须且只能选择一个接口。")
+        endpoint = api_automation_repo.find_endpoint(db, endpoint_id)
+        if not endpoint or endpoint["project_id"] != project_id:
+            raise api_error(400, "PERFORMANCE_ENDPOINT_INVALID", "性能测试接口不存在或不属于当前项目。")
+    elif target_type == "scenario":
+        if not scenario_id or endpoint_id:
+            raise api_error(400, "PERFORMANCE_TARGET_INVALID", "场景性能测试必须且只能选择一个接口场景。")
+        scenario = db.execute("SELECT * FROM api_scenarios WHERE id = ?", (scenario_id,)).fetchone()
+        if not scenario or scenario["project_id"] != project_id:
+            raise api_error(400, "PERFORMANCE_SCENARIO_INVALID", "接口场景不存在或不属于当前项目。")
+    else:
+        raise api_error(400, "PERFORMANCE_TARGET_INVALID", "不支持的性能测试目标类型。")
+
+    environment = api_automation_repo.find_api_environment(db, api_environment_id) if api_environment_id else None
+    if not environment or environment["project_id"] != project_id:
+        raise api_error(400, "PERFORMANCE_ENVIRONMENT_INVALID", "API 环境不存在或不属于当前项目。")
+    return endpoint, scenario, environment
 
 
 def _documented_success_codes(endpoint) -> list[int]:

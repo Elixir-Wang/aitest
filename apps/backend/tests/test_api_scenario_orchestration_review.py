@@ -229,3 +229,49 @@ def test_review_ignores_sse_extractor_without_asset_event() -> None:
     assert review.validation["valid"] is True
     assert len(review.validation["warnings"]) == 2
     assert all("缺少资产明确提供的 event" in warning for warning in review.validation["warnings"])
+
+
+def test_review_normalizes_form_fields_to_multipart_asset_slots() -> None:
+    endpoint = {
+        "id": "apiend-sse",
+        "method": "POST",
+        "path": "/sse",
+        "parameters": [],
+        "request_body": {
+            "content": {
+                "multipart/form-data": {
+                    "schema": {
+                        "type": "object",
+                        "required": ["message_source"],
+                        "properties": {"message_source": {"type": "string"}},
+                    }
+                }
+            }
+        },
+        "responses": {"200": {"description": "ok"}},
+    }
+    proposal = PlannerProposal.model_validate(
+        {
+            "scenario_name": "SSE 对话",
+            "steps": [
+                {
+                    "client_step_id": "step-sse",
+                    "endpoint_id": "apiend-sse",
+                    "order": 1,
+                    "fields": [
+                        {
+                            "target": {"location": "form", "path": "/message_source"},
+                            "display_name": "message_source",
+                            "proposal": {"type": "literal", "value": "web_share"},
+                        }
+                    ],
+                }
+            ],
+        }
+    )
+
+    review = _build(proposal, [endpoint])
+
+    assert review.validation["valid"] is True
+    assert review.steps[0].field_groups[0].location == "multipart"
+    assert review.steps[0].field_groups[0].fields[0].path == "/message_source"

@@ -15,10 +15,14 @@ SCENARIO_TEST_FILE = "testcases/scenarios/test_scenario.py"
 def render_scenario_files(scenario_key: str, snapshot: dict[str, Any]) -> dict[str, str]:
     scenario_dir = f"scenarios/{scenario_key}"
     return {
-        "support/scenario.py": _scenario_py(),
+        **render_scenario_runtime_files(),
         f"{scenario_dir}/scenario.json": json.dumps(snapshot, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
         **render_scenario_entrypoint_files(),
     }
+
+
+def render_scenario_runtime_files() -> dict[str, str]:
+    return {"support/scenario.py": _scenario_py()}
 
 
 def render_scenario_entrypoint_files() -> dict[str, str]:
@@ -176,6 +180,9 @@ def _scenario_py() -> str:
             overrides = step.get("request_overrides") or {}
             _merge(request, overrides.get("request") or {})
             _merge(test_data, overrides.get("test_data") or {})
+            if "body" not in request and "json" in request:
+                request["body"] = request.pop("json")
+            _apply_endpoint_parameter_defaults(request, endpoint)
             for binding in step.get("bindings") or []:
                 value = _resolve_source(binding.get("source") or {}, variables, outputs)
                 value = _transform(value, binding.get("transform"))
@@ -198,7 +205,13 @@ def _scenario_py() -> str:
                 "headers": dict(getattr(response, "headers", {}) or {}),
             }
             if _is_sse_endpoint(endpoint):
-                snapshot["body"] = {"streaming": True, "captured": False}
+                events = _sse_events(response)
+                snapshot["body"] = {
+                    "streaming": True,
+                    "captured": True,
+                    "event_count": len(events),
+                    "events": [_sse_event_snapshot(event) for event in events],
+                }
                 return _redact(snapshot)
             try:
                 snapshot["body"] = response.json()
@@ -259,6 +272,23 @@ def _scenario_py() -> str:
             for key, value in values.items():
                 expanded = expanded.replace("{" + str(key) + "}", quote(str(_expand_runtime_value(value)), safe=""))
             return expanded
+
+
+        def _apply_endpoint_parameter_defaults(request, endpoint):
+            containers = {"header": "headers", "query": "query", "cookie": "cookies", "path": "path_params"}
+            for parameter in endpoint.get("parameters") or []:
+                container_name = containers.get(str(parameter.get("in") or ""))
+                name = str(parameter.get("name") or "")
+                schema = parameter.get("schema") or {}
+                enum_values = schema.get("enum") if isinstance(schema, dict) else None
+                if isinstance(enum_values, list) and len(enum_values) == 1:
+                    value = enum_values[0]
+                elif isinstance(schema, dict) and "default" in schema:
+                    value = schema["default"]
+                else:
+                    continue
+                if container_name and name:
+                    request.setdefault(container_name, {}).setdefault(name, value)
 
 
         def _expand_runtime_value(value):
@@ -366,7 +396,13 @@ def _scenario_py() -> str:
 
 
         def _sse_events(response):
+            cached = getattr(response, "_api_scenario_sse_events", None)
+            if cached is not None:
+                return cached
             events = []
+            if not callable(getattr(response, "iter_lines", None)):
+                response._api_scenario_sse_events = events
+                return events
             event_name = "message"
             data_lines = []
 
@@ -377,7 +413,7 @@ def _scenario_py() -> str:
                 event_name = "message"
                 data_lines = []
 
-            for raw_line in response.iter_lines(decode_unicode=True):
+            for raw_line in response.iter_lines(decode_unicode=False):
                 line = raw_line.decode("utf-8") if isinstance(raw_line, bytes) else str(raw_line)
                 if not line:
                     flush()
@@ -388,7 +424,17 @@ def _scenario_py() -> str:
                 elif line.startswith("data:"):
                     data_lines.append(line[5:].lstrip())
             flush()
+            response._api_scenario_sse_events = events
             return events
+
+
+        def _sse_event_snapshot(event):
+            data = event["data"]
+            try:
+                data = json.loads(data)
+            except (TypeError, json.JSONDecodeError):
+                pass
+            return {"event": event["event"], "data": data}
 
 
         def _extract_sse_event_json(events, extractor, path):

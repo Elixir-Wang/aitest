@@ -30,6 +30,7 @@ import {
   restoreApiAutomationScenarioRevision,
   saveApiAutomationScenarioVersion,
   saveApiScenarioAiPlanReview,
+  updateApiAutomationScenario,
 } from "@/lib/api-client";
 import { toast } from "@/lib/toast";
 
@@ -205,6 +206,7 @@ export function useApiScenarioEditor(projectId: string, scenarioId?: string) {
   const [endpoints, setEndpoints] = useState<ApiAutomationEndpoint[]>([]);
   const [environments, setEnvironments] = useState<ApiAutomationEnvironment[]>([]);
   const [selectedEnvironmentId, setSelectedEnvironmentId] = useState("");
+  const [environmentSaving, setEnvironmentSaving] = useState(false);
   const [activeStepId, setActiveStepId] = useState("");
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
@@ -253,10 +255,13 @@ export function useApiScenarioEditor(projectId: string, scenarioId?: string) {
         if (cancelled) return;
         setEndpoints(endpointRows);
         setEnvironments(environmentRows);
+        const persistedEnvironmentId = selectedScenario?.api_environment_id ?? "";
         setSelectedEnvironmentId(
           environmentRows.some((environment) => environment.id === initialEnvironmentId)
             ? initialEnvironmentId
-            : (environmentRows[0]?.id ?? ""),
+            : environmentRows.some((environment) => environment.id === persistedEnvironmentId)
+              ? persistedEnvironmentId
+              : (environmentRows[0]?.id ?? ""),
         );
         setRevisions(revisionRows);
         if (selectedScenario) applyScenario(selectedScenario);
@@ -403,6 +408,32 @@ export function useApiScenarioEditor(projectId: string, scenarioId?: string) {
     markDraftChanged();
   }
 
+  async function persistSelectedEnvironment(environmentId: string) {
+    const previousEnvironmentId = selectedEnvironmentId;
+    setSelectedEnvironmentId(environmentId);
+    if (!scenario || environmentId === previousEnvironmentId) return;
+    setEnvironmentSaving(true);
+    try {
+      const updated = await updateApiAutomationScenario(projectId, scenario.id, {
+        name: scenario.name,
+        description: scenario.description,
+        variables: scenario.variables,
+        api_environment_id: environmentId,
+      });
+      setScenario((current) =>
+        current
+          ? { ...current, api_environment_id: updated.api_environment_id, updated_at: updated.updated_at }
+          : updated,
+      );
+      toast.success("运行环境已保存");
+    } catch (error) {
+      setSelectedEnvironmentId(previousEnvironmentId);
+      toast.error(error instanceof Error ? error.message : "运行环境保存失败");
+    } finally {
+      setEnvironmentSaving(false);
+    }
+  }
+
   const saveScenario = useCallback(
     async (showToast = true) => {
       const draftVersion = draftVersionRef.current;
@@ -419,6 +450,7 @@ export function useApiScenarioEditor(projectId: string, scenarioId?: string) {
           name,
           description: draft.description.trim(),
           variables: draft.variables,
+          api_environment_id: selectedEnvironmentId || null,
         }));
       const saved = await saveApiAutomationScenarioVersion(projectId, target.id, {
         name,
@@ -436,7 +468,7 @@ export function useApiScenarioEditor(projectId: string, scenarioId?: string) {
       if (showToast) toast.success(`版本 v${saved.revision} 已保存`);
       return saved;
     },
-    [applyScenario, dirty, draft, projectId, refreshRevisions, router, scenario],
+    [applyScenario, dirty, draft, projectId, refreshRevisions, router, scenario, selectedEnvironmentId],
   );
 
   async function withBusy(action: () => Promise<void>) {
@@ -491,6 +523,7 @@ export function useApiScenarioEditor(projectId: string, scenarioId?: string) {
           name,
           description: draft.description.trim(),
           variables: draft.variables,
+          api_environment_id: selectedEnvironmentId || null,
         }));
       if (creating) {
         applyScenario(saved);
@@ -700,9 +733,10 @@ export function useApiScenarioEditor(projectId: string, scenarioId?: string) {
     loading,
     loadError,
     busy,
+    environmentSaving,
     dirty,
     actions: {
-      setSelectedEnvironmentId,
+      persistSelectedEnvironment,
       setActiveStepId,
       setRunDrawerOpen,
       updateScenarioMeta,

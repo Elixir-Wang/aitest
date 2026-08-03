@@ -46,9 +46,10 @@ export function ScriptReview({ projectId, testId, scriptId }: { projectId: strin
         setScript(result);
         const preview = result.runtime_preview;
         const planRequest = (result.plan.request ?? {}) as { headers?: unknown; body?: unknown };
-        const requestHeaders = preview?.request?.headers ?? planRequest.headers ?? {};
-        const requestBody = preview?.request?.body ?? planRequest.body ?? null;
-        const rules = preview?.success_rules ?? result.plan.success_rules ?? [];
+        const requestPreview = preview && "request" in preview ? preview : null;
+        const requestHeaders = requestPreview?.request.headers ?? planRequest.headers ?? {};
+        const requestBody = requestPreview?.request.body ?? planRequest.body ?? null;
+        const rules = requestPreview?.success_rules ?? result.plan.success_rules ?? [];
         setHeaders(JSON.stringify(requestHeaders, null, 2));
         setBody(JSON.stringify(requestBody, null, 2));
         setSuccessRules(JSON.stringify(rules, null, 2));
@@ -99,6 +100,7 @@ export function ScriptReview({ projectId, testId, scriptId }: { projectId: strin
     );
   }
   async function saveConfiguration() {
+    if (!script || script.plan.target_type === "scenario") return;
     setSaving(true);
     try {
       const updated = await updatePerformanceScriptConfiguration(projectId, testId, scriptId, {
@@ -108,9 +110,10 @@ export function ScriptReview({ projectId, testId, scriptId }: { projectId: strin
       setScript(updated);
       const preview = updated.runtime_preview;
       const planRequest = (updated.plan.request ?? {}) as { headers?: unknown; body?: unknown };
-      setHeaders(JSON.stringify(preview?.request?.headers ?? planRequest.headers ?? {}, null, 2));
-      setBody(JSON.stringify(preview?.request?.body ?? planRequest.body ?? null, null, 2));
-      setSuccessRules(JSON.stringify(preview?.success_rules ?? updated.plan.success_rules ?? [], null, 2));
+      const requestPreview = preview && "request" in preview ? preview : null;
+      setHeaders(JSON.stringify(requestPreview?.request.headers ?? planRequest.headers ?? {}, null, 2));
+      setBody(JSON.stringify(requestPreview?.request.body ?? planRequest.body ?? null, null, 2));
+      setSuccessRules(JSON.stringify(requestPreview?.success_rules ?? updated.plan.success_rules ?? [], null, 2));
       toast.success("脚本配置已重新渲染并校验");
     } catch (error) {
       toast.error(error instanceof SyntaxError ? "配置必须是有效 JSON" : apiErrorMessage(error));
@@ -177,22 +180,47 @@ export function ScriptReview({ projectId, testId, scriptId }: { projectId: strin
             <div>
               <div className="flex items-center gap-2">
                 <Braces className="size-4 text-muted-foreground" />
-                <h2 className="font-semibold text-sm">结构化请求配置</h2>
+                <h2 className="font-semibold text-sm">
+                  {script.plan.target_type === "scenario" ? "接口场景配置" : "结构化请求配置"}
+                </h2>
               </div>
               <p className="mt-1 text-muted-foreground text-xs leading-5">
-                调整请求参数后保存，系统会重新生成脚本并执行校验。
+                {script.plan.target_type === "scenario"
+                  ? "脚本使用生成时的场景当前保存版本；场景修改后请手动重新生成脚本。"
+                  : "调整请求参数后保存，系统会重新生成脚本并执行校验。"}
               </p>
             </div>
-            <Button disabled={saving} onClick={saveConfiguration} size="sm" variant="outline">
-              {saving ? <LoaderCircle className="size-3.5 animate-spin" /> : <Save className="size-3.5" />}
-              保存并校验
-            </Button>
+            {script.plan.target_type === "endpoint" ? (
+              <Button disabled={saving} onClick={saveConfiguration} size="sm" variant="outline">
+                {saving ? <LoaderCircle className="size-3.5 animate-spin" /> : <Save className="size-3.5" />}
+                保存并校验
+              </Button>
+            ) : null}
           </div>
-          <div className="min-h-0 flex-1 divide-y overflow-y-auto">
-            <JsonField disabled={false} label="Headers" onChange={setHeaders} value={headers} />
-            <JsonField disabled={false} label="Body" onChange={setBody} value={body} />
-            <JsonField disabled={false} label="成功规则" onChange={setSuccessRules} rows={9} value={successRules} />
-          </div>
+          {script.plan.target_type === "scenario" ? (
+            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4 text-sm">
+              <div className="border bg-muted/30 p-4">
+                <p className="font-medium">{script.plan.scenario_name}</p>
+                <p className="mt-1 text-muted-foreground text-xs">
+                  当前版本 v{script.plan.scenario_revision ?? "-"} · {script.plan.steps?.length ?? 0} 个步骤
+                </p>
+              </div>
+              <div className="space-y-2">
+                {(script.plan.steps ?? []).map((step, index) => (
+                  <div className="flex items-center justify-between gap-3 border px-3 py-2" key={String(step.id ?? index)}>
+                    <span>{String(step.name ?? `步骤 ${index + 1}`)}</span>
+                    <span className="text-muted-foreground text-xs">{String(step.step_type ?? "")}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <div className="min-h-0 flex-1 divide-y overflow-y-auto">
+              <JsonField disabled={false} label="Headers" onChange={setHeaders} value={headers} />
+              <JsonField disabled={false} label="Body" onChange={setBody} value={body} />
+              <JsonField disabled={false} label="成功规则" onChange={setSuccessRules} rows={9} value={successRules} />
+            </div>
+          )}
           {(script.validation_result.errors ?? []).length > 0 ? (
             <div className="space-y-1 border-t bg-destructive/5 px-4 py-3">
               {(script.validation_result.errors ?? []).map((error) => (

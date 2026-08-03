@@ -959,20 +959,24 @@ def create_api_run(
     status: str = "queued",
     parent_run_id: str | None = None,
     source_repair_attempt_id: str | None = None,
+    batch_run_id: str | None = None,
+    batch_position: int | None = None,
 ) -> str:
     db.execute(
         """
         INSERT INTO api_automation_runs (
-          id, project_id, api_environment_id, task_id, status,
+          id, project_id, api_environment_id, batch_run_id, batch_position, task_id, status,
           script_ids_json, target_type, target_ids_json, execution_snapshot_json, command_summary,
           parent_run_id, source_repair_attempt_id, created_by
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             run_id,
             project_id,
             api_environment_id,
+            batch_run_id,
+            batch_position,
             task_id,
             status,
             dumps_json(script_ids),
@@ -986,6 +990,184 @@ def create_api_run(
         ),
     )
     return run_id
+
+
+def create_api_scenario_suite(
+    db: Connection,
+    *,
+    suite_id: str,
+    project_id: str,
+    api_environment_id: str,
+    name: str,
+    description: str,
+    created_by: str,
+) -> str:
+    db.execute(
+        """
+        INSERT INTO api_scenario_suites (
+          id, project_id, api_environment_id, name, description, created_by
+        ) VALUES (?, ?, ?, ?, ?, ?)
+        """,
+        (suite_id, project_id, api_environment_id, name, description, created_by),
+    )
+    return suite_id
+
+
+def replace_api_scenario_suite_items(db: Connection, suite_id: str, scenario_ids: list[str]) -> None:
+    db.execute("DELETE FROM api_scenario_suite_items WHERE suite_id = ?", (suite_id,))
+    db.executemany(
+        "INSERT INTO api_scenario_suite_items (suite_id, scenario_id, position) VALUES (?, ?, ?)",
+        [(suite_id, scenario_id, position) for position, scenario_id in enumerate(scenario_ids)],
+    )
+
+
+def find_api_scenario_suite(db: Connection, suite_id: str) -> Row | None:
+    return db.execute("SELECT * FROM api_scenario_suites WHERE id = ?", (suite_id,)).fetchone()
+
+
+def list_api_scenario_suites(db: Connection, project_id: str) -> list[Row]:
+    return db.execute(
+        """
+        SELECT * FROM api_scenario_suites
+        WHERE project_id = ?
+        ORDER BY updated_at DESC, created_at DESC
+        """,
+        (project_id,),
+    ).fetchall()
+
+
+def list_api_scenario_suite_items(db: Connection, suite_id: str) -> list[Row]:
+    return db.execute(
+        """
+        SELECT scenarios.*, items.position
+        FROM api_scenario_suite_items AS items
+        JOIN api_scenarios AS scenarios ON scenarios.id = items.scenario_id
+        WHERE items.suite_id = ?
+        ORDER BY items.position ASC
+        """,
+        (suite_id,),
+    ).fetchall()
+
+
+def update_api_scenario_suite(
+    db: Connection,
+    suite_id: str,
+    *,
+    api_environment_id: str,
+    name: str,
+    description: str,
+) -> None:
+    db.execute(
+        """
+        UPDATE api_scenario_suites
+        SET api_environment_id = ?, name = ?, description = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+        """,
+        (api_environment_id, name, description, suite_id),
+    )
+
+
+def delete_api_scenario_suite(db: Connection, suite_id: str) -> None:
+    db.execute("DELETE FROM api_scenario_suites WHERE id = ?", (suite_id,))
+
+
+def find_latest_api_batch_run_for_suite(db: Connection, suite_id: str) -> Row | None:
+    return db.execute(
+        """
+        SELECT * FROM api_batch_runs
+        WHERE suite_id = ?
+        ORDER BY created_at DESC, id DESC
+        LIMIT 1
+        """,
+        (suite_id,),
+    ).fetchone()
+
+
+def create_api_batch_run(
+    db: Connection,
+    *,
+    batch_run_id: str,
+    suite_id: str | None = None,
+    project_id: str,
+    api_environment_id: str,
+    name: str,
+    created_by: str,
+) -> str:
+    db.execute(
+        """
+        INSERT INTO api_batch_runs (
+          id, suite_id, project_id, api_environment_id, name, status, created_by
+        ) VALUES (?, ?, ?, ?, ?, 'queued', ?)
+        """,
+        (batch_run_id, suite_id, project_id, api_environment_id, name, created_by),
+    )
+    return batch_run_id
+
+
+def find_api_batch_run(db: Connection, batch_run_id: str) -> Row | None:
+    return db.execute("SELECT * FROM api_batch_runs WHERE id = ?", (batch_run_id,)).fetchone()
+
+
+def list_batch_api_runs(db: Connection, batch_run_id: str) -> list[Row]:
+    return db.execute(
+        """
+        SELECT * FROM api_automation_runs
+        WHERE batch_run_id = ?
+        ORDER BY batch_position ASC, created_at ASC
+        """,
+        (batch_run_id,),
+    ).fetchall()
+
+
+def attach_api_run_to_batch(db: Connection, run_id: str, batch_run_id: str, batch_position: int) -> None:
+    db.execute(
+        """
+        UPDATE api_automation_runs
+        SET batch_run_id = ?, batch_position = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+        """,
+        (batch_run_id, batch_position, run_id),
+    )
+
+
+def list_api_batch_runs(db: Connection, project_id: str) -> list[Row]:
+    return db.execute(
+        """
+        SELECT * FROM api_batch_runs
+        WHERE project_id = ?
+        ORDER BY created_at DESC, id DESC
+        """,
+        (project_id,),
+    ).fetchall()
+
+
+def update_api_batch_run(
+    db: Connection,
+    batch_run_id: str,
+    *,
+    status: str,
+    result: str | None = None,
+    error_message: str | None = None,
+    started: bool = False,
+    finished: bool = False,
+) -> None:
+    assignments = ["status = ?", "updated_at = CURRENT_TIMESTAMP"]
+    values: list[Any] = [status]
+    if result is not None:
+        assignments.append("result = ?")
+        values.append(result)
+    if error_message is not None:
+        assignments.append("error_message = ?")
+        values.append(error_message)
+    if started:
+        assignments.append("started_at = COALESCE(started_at, CURRENT_TIMESTAMP)")
+    if finished:
+        assignments.append("finished_at = CURRENT_TIMESTAMP")
+    values.append(batch_run_id)
+    db.execute(
+        f"UPDATE api_batch_runs SET {', '.join(assignments)} WHERE id = ?",
+        tuple(values),
+    )
 
 
 def create_repair_session(
