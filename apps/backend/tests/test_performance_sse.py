@@ -5,9 +5,10 @@ from pydantic import ValidationError
 
 from app.agents.performance_testing.script_generation.planner import build_default_plan
 from app.schemas.performance_test import PerformanceRequestConfig
+from app.schemas.performance_test import PerformanceGoal, PerformanceTestCreateIn
 from app.services.performance_testing.headless_worker import summarize_sse_measurements
 from app.services.performance_testing.script_renderer import render_locust_script
-from app.services.performance_testing.sse import event_matches, parse_sse_events
+from app.services.performance_testing.sse import event_matches, parse_sse_events, validate_metric_rule
 
 
 def _sse_config() -> dict:
@@ -47,7 +48,6 @@ def test_sse_parser_preserves_multiline_data_and_matches_wildcard_path() -> None
             "\n",
         ]
     )
-
     assert len(events) == 1
     assert events[0].event_name == "message"
     assert event_matches(
@@ -55,6 +55,18 @@ def test_sse_parser_preserves_multiline_data_and_matches_wildcard_path() -> None
         {"event_name": "message", "source": "data_json", "path": "$.choices[*].delta.content", "operator": "non_empty"},
     )
 
+
+def test_sse_parser_and_regex_rules_enforce_resource_safety_limits() -> None:
+    with pytest.raises(ValueError, match="sse_stream_too_large"):
+        parse_sse_events(["data: 123456\n", "\n"], max_stream_bytes=8)
+
+    with pytest.raises(ValueError, match="高风险结构"):
+        validate_metric_rule(
+            {
+                "id": "unsafe_regex",
+                "match": {"source": "data_text", "operator": "matches", "expected": "(a+)+"},
+            }
+        )
 
 def test_sse_config_rejects_invalid_path_and_duplicate_metric_id() -> None:
     config = _sse_config()
@@ -66,6 +78,29 @@ def test_sse_config_rejects_invalid_path_and_duplicate_metric_id() -> None:
     invalid["metrics"][0]["match"]["path"] = "$.choices[?(@.x)]"
     with pytest.raises(ValidationError, match="JSONPath"):
         PerformanceRequestConfig(transport="sse", sse=invalid)
+
+
+def test_sse_metric_goals_are_unique_and_reference_configured_metrics() -> None:
+    with pytest.raises(ValidationError, match="只能配置一个"):
+        PerformanceGoal(
+            sse_metric_goals=[
+                {"metric_id": "first_content", "percentile": "p95", "target_ms": 1000},
+                {"metric_id": "first_content", "percentile": "p95", "target_ms": 1200},
+            ]
+        )
+
+    with pytest.raises(ValidationError, match="不存在的指标"):
+        PerformanceTestCreateIn(
+            name="SSE test",
+            endpoint_id="endpoint-1",
+            api_environment_id="env-1",
+            request_config={"transport": "sse", "sse": _sse_config()},
+            performance_goal={
+                "sse_metric_goals": [
+                    {"metric_id": "unknown_metric", "percentile": "p95", "target_ms": 1000}
+                ]
+            },
+        )
 
 
 def test_sse_renderer_streams_and_keeps_measurements_separate() -> None:
@@ -87,6 +122,8 @@ def test_sse_renderer_streams_and_keeps_measurements_separate() -> None:
     assert "response.iter_lines" in source
     assert "SSE_MEASUREMENT_SINK" in source
     assert "events.request.fire" not in source
+    assert "sse_stream_too_large" in source
+    assert 'quality = {"parse_error_count": 0}' in source
 
 
 def test_sse_measurement_summary_keeps_missing_and_percentiles(tmp_path: Path) -> None:
@@ -96,7 +133,7 @@ def test_sse_measurement_summary_keeps_missing_and_percentiles(tmp_path: Path) -
             [
                 '{"metrics":{"first_content":100,"first_tool_call":200},"missing_metric_ids":[],"failure_reason":""}',
                 '{"metrics":{"first_content":300},"missing_metric_ids":["first_tool_call"],"failure_reason":""}',
-                '{"metrics":{"first_content":500},"missing_metric_ids":["first_tool_call"],"failure_reason":"sse_stream_timeout"}',
+                '{"metrics":{"first_content":500},"missing_metric_ids":["first_tool_call"],"failure_reason":"sse_stream_timeout","parse_error_count":2}',
             ]
         ),
         encoding="utf-8",
@@ -112,3 +149,21 @@ def test_sse_measurement_summary_keeps_missing_and_percentiles(tmp_path: Path) -
     assert tool["matched_count"] == 1
     assert tool["missing_count"] == 2
     assert tool["failure_count"] == 1
+    assert summary["schema_version"] == "v1"
+    assert summary["checksum"].startswith("sha256:")
+    assert summary["failure_reasons"] == {"sse_stream_timeout": 1}
+    assert summary["parse_error_count"] == 2
+    assert summary["timeout_count"] == 1
+
+
+def test_sse_measurement_summary_reports_truncated_storage(tmp_path: Path) -> None:
+    path = tmp_path / "sse-measurements.jsonl"
+    path.write_text('{"schema_version":"v1","metrics":{},"missing_metric_ids":[]}\n', encoding="utf-8")
+    path.with_name("sse-measurements.meta.json").write_text(
+        '{"schema_version":"v1","truncated":true}', encoding="utf-8"
+    )
+
+    summary = summarize_sse_measurements(path)
+
+    assert summary["truncated"] is True
+    assert summary["attempt_count"] == 1

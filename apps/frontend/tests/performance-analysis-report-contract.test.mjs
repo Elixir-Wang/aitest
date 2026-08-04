@@ -118,6 +118,15 @@ test("performance report renders endpoint metrics and degrades without inventing
   assert.match(reportSource, /未使用全局指标推算接口结果/);
 });
 
+test("performance report separates SSE event metrics from HTTP response metrics", () => {
+  assert.match(reportSource, /metric\.sse_metrics\?\.metrics/);
+  assert.match(reportSource, /title="SSE 事件指标"/);
+  assert.match(reportSource, /item\.missing_count/);
+  assert.match(reportSource, /item\.p95_ms/);
+  assert.match(reportSource, /测量文件达到大小上限/);
+  assert.match(reportSource, /JSON 解析错误/);
+});
+
 test("performance report hides empty analytical sections", () => {
   assert.match(reportSource, /objectives\.length \? \(/);
   assert.match(reportSource, /stageAnalysis\.length > 1 \? \(/);

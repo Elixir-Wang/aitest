@@ -151,8 +151,22 @@ test("UI automation run detail exposes logs and browser evidence", () => {
   assert.match(runDetailSource, /运行日志/);
   assert.match(runDetailSource, /浏览器证据/);
   assert.match(runDetailSource, /参数与步骤结果/);
+  assert.doesNotMatch(runDetailSource, /按参数实例查看每个业务步骤的执行结果。/);
+  assert.match(runDetailSource, /apiRequest<ExplorationEnvironment\[\]>/);
+  assert.match(runDetailSource, /<DetailValue label="运行环境" value={environmentName \|\| "加载中…"} \/>/);
+  assert.match(
+    runDetailSource,
+    /<DetailValue label="执行人" mono value={run.created_by} \/>\s*<DetailValue label="运行 ID" mono value={run.id} \/>/,
+  );
+  assert.match(runDetailSource, /ordinal={start \+ visibleIndex \+ 1}/);
+  assert.doesNotMatch(runDetailSource, /失败于 \$\{iteration\.failed_step_id\}/);
   assert.match(runDetailSource, /filteredIterations/);
   assert.match(runDetailSource, /selectedIteration/);
+  assert.match(runDetailSource, /item\.status === "cancelled"/);
+  assert.match(runDetailSource, /step\.status === "cancelled" && Boolean\(step\.started_at\)/);
+  assert.match(runDetailSource, /执行中被停止/);
+  assert.match(runDetailSource, /因运行停止未执行/);
+  assert.match(runDetailSource, /旧版资产缺少业务步骤映射/);
   assert.match(runDetailSource, /step-artifacts/);
   assert.match(runDetailSource, /iteration\.error/);
   assert.match(runDetailSource, /该错误发生在首个业务步骤开始前/);

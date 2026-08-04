@@ -38,6 +38,7 @@ import { chineseCompletionTone, StatusBadge } from "@/components/ui/status-badge
 import {
   API_BASE_URL,
   apiBlobRequest,
+  apiRequest,
   createUiAutomationExecutionRun,
   formatDateTime,
   getUiAutomationExecutionRun,
@@ -51,6 +52,7 @@ import {
   type UiAutomationRunDetail as UiAutomationRunDetailData,
   type UiAutomationStepResult,
 } from "@/lib/api-client";
+import type { ExplorationEnvironment } from "@/lib/exploration-types";
 import { toast } from "@/lib/toast";
 import { moduleBreadcrumbs } from "@/navigation/breadcrumbs";
 
@@ -67,6 +69,7 @@ export function UiAutomationRunDetail({
   runId: string;
 }) {
   const [run, setRun] = useState<UiAutomationExecutionRun | null>(null);
+  const [environmentName, setEnvironmentName] = useState("");
   const [detail, setDetail] = useState<UiAutomationRunDetailData | null>(null);
   const [logs, setLogs] = useState({ stdout: "", stderr: "" });
   const [screenshotUrls, setScreenshotUrls] = useState<string[]>([]);
@@ -108,6 +111,25 @@ export function UiAutomationRunDetail({
   useEffect(() => {
     void loadDetail();
   }, [loadDetail]);
+
+  useEffect(() => {
+    if (!run?.environment_id) return;
+    let disposed = false;
+    setEnvironmentName("");
+    void apiRequest<ExplorationEnvironment[]>(`/environments?project_id=${projectId}`)
+      .then((environments) => {
+        if (disposed) return;
+        setEnvironmentName(
+          environments.find((environment) => environment.id === run.environment_id)?.name ?? "已删除环境",
+        );
+      })
+      .catch(() => {
+        if (!disposed) setEnvironmentName("环境信息不可用");
+      });
+    return () => {
+      disposed = true;
+    };
+  }, [projectId, run?.environment_id]);
 
   useEffect(() => {
     if (!activeStatuses.has(run?.status ?? "")) return;
@@ -194,6 +216,11 @@ export function UiAutomationRunDetail({
     if (iterations.length === 0 || iterations.some((item) => item.iteration_id === selectedIterationId)) return;
     const preferred =
       iterations.find((item) => item.status === "running") ??
+      iterations.find(
+        (item) =>
+          item.status === "cancelled" &&
+          item.steps.some((step) => step.status === "cancelled" && Boolean(step.started_at)),
+      ) ??
       iterations.find((item) => item.status === "failed" || item.status === "infrastructure_error") ??
       iterations[0];
     setSelectedIterationId(preferred.iteration_id);
@@ -342,12 +369,13 @@ export function UiAutomationRunDetail({
           <>
             <div className="grid gap-x-6 gap-y-5 border-b pb-5 sm:grid-cols-2 lg:grid-cols-4">
               <DetailValue label="状态" value={statusLabel(run.status)} />
-              <DetailValue label="运行环境" mono value={run.environment_id} />
+              <DetailValue label="运行环境" value={environmentName || "加载中…"} />
               <DetailValue label="开始时间" value={formatDateTime(run.started_at || run.created_at)} />
               <DetailValue label="完成时间" value={run.finished_at ? formatDateTime(run.finished_at) : "-"} />
               <DetailValue label="退出码" value={String(run.result.exitcode ?? "-")} />
               <DetailValue label="截图" value={String(run.screenshot_paths.length)} />
               <DetailValue label="执行人" mono value={run.created_by} />
+              <DetailValue label="运行 ID" mono value={run.id} />
             </div>
 
             {run.error_message ? (
@@ -539,12 +567,7 @@ function ExecutionResultPanel({
   return (
     <section className="space-y-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <SectionTitle title="参数与步骤结果" />
-          <p className="text-muted-foreground text-xs">
-            {detail.incomplete ? "运行被中断，以下结果来自已保存事件。" : "按参数实例查看每个业务步骤的执行结果。"}
-          </p>
-        </div>
+        <SectionTitle title="参数与步骤结果" />
         <div className="flex flex-wrap gap-x-4 gap-y-1 font-mono text-xs tabular-nums">
           <SummaryValue label="总计" value={summary.total ?? 0} />
           <SummaryValue label="通过" tone="text-emerald-600 dark:text-emerald-400" value={summary.passed ?? 0} />
@@ -617,7 +640,7 @@ function ExecutionResultPanel({
   );
 }
 
-const ITERATION_ROW_HEIGHT = 64;
+const ITERATION_ROW_HEIGHT = 48;
 const VIRTUALIZATION_THRESHOLD = 100;
 const VIRTUALIZATION_OVERSCAN = 6;
 
@@ -649,6 +672,7 @@ function IterationList({
       iteration={iteration}
       key={iteration.iteration_id}
       onSelect={onSelect}
+      ordinal={start + visibleIndex + 1}
       selected={selectedIterationId === iteration.iteration_id}
       style={
         shouldVirtualize
@@ -679,18 +703,20 @@ function IterationList({
 
 function IterationButton({
   iteration,
+  ordinal,
   selected,
   onSelect,
   style,
 }: {
   iteration: UiAutomationIterationResult;
+  ordinal: number;
   selected: boolean;
   onSelect: (value: string) => void;
   style?: CSSProperties;
 }) {
   return (
     <button
-      className={`grid w-full grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-2 px-2.5 py-2.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+      className={`grid w-full grid-cols-[auto_auto_minmax(0,1fr)_auto] items-center gap-2 px-2.5 py-2.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
         selected ? "bg-accent text-accent-foreground" : "hover:bg-muted/70"
       }`}
       onClick={() => onSelect(iteration.iteration_id)}
@@ -698,15 +724,9 @@ function IterationButton({
       type="button"
     >
       <IterationStatusIcon status={iteration.status} />
-      <span className="min-w-0">
-        <span className="line-clamp-2 block break-all font-medium text-xs leading-5">
-          {parameterSummary(iteration)}
-        </span>
-        <span className="mt-0.5 block truncate font-mono text-[10px] text-muted-foreground">
-          {iteration.failed_step_id ? `失败于 ${iteration.failed_step_id}` : iteration.iteration_id}
-        </span>
-      </span>
-      <span className="pt-0.5 font-mono text-[10px] text-muted-foreground tabular-nums">
+      <span className="font-mono text-muted-foreground text-xs tabular-nums">{ordinal}.</span>
+      <span className="min-w-0 truncate font-medium text-xs leading-5">{parameterSummary(iteration)}</span>
+      <span className="font-mono text-[10px] text-muted-foreground tabular-nums">
         {formatDuration(iteration.duration_ms)}
       </span>
     </button>
@@ -725,6 +745,12 @@ function IterationSteps({
   onToggleStep: (value: string) => void;
 }) {
   const visibleSteps = iteration.steps.filter((step) => step.visible);
+  const legacyTechnicalSteps =
+    visibleSteps.length > 0 &&
+    visibleSteps.every(
+      (step) =>
+        step.title === step.step_id && step.operation_ids.length === 1 && step.operation_ids[0] === step.step_id,
+    );
   return (
     <div>
       <header className="border-b px-4 py-3.5 sm:px-5">
@@ -737,13 +763,11 @@ function IterationSteps({
             {formatDuration(iteration.duration_ms)}
           </span>
         </div>
-        <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-muted-foreground text-xs">
-          {Object.entries(iteration.parameters).map(([key, value]) => (
-            <span key={key}>
-              <span className="font-mono">{key}</span> = <span className="break-all">{String(value)}</span>
-            </span>
-          ))}
-        </div>
+        {legacyTechnicalSteps ? (
+          <p className="mt-2 text-amber-700 text-xs dark:text-amber-300">
+            旧版资产缺少业务步骤映射，当前按技术动作展示；重新生成资产后可查看业务步骤名称与动作分组。
+          </p>
+        ) : null}
       </header>
 
       {visibleSteps.length ? (
@@ -764,7 +788,11 @@ function IterationSteps({
                     <span className="block font-medium text-sm leading-5">
                       {index + 1}. {step.title || step.step_id}
                     </span>
-                    <span className="mt-0.5 block font-mono text-[10px] text-muted-foreground">{step.step_id}</span>
+                    <span className="mt-0.5 block text-[10px] text-muted-foreground">
+                      <span className="font-mono">{step.step_id}</span>
+                      <span aria-hidden="true"> · </span>
+                      <span>{stepResultLabel(step)}</span>
+                    </span>
                   </span>
                   <span className="pt-0.5 font-mono text-muted-foreground text-xs tabular-nums">
                     {formatDuration(step.duration_ms)}
@@ -871,6 +899,19 @@ function StepStatusIcon({ status }: { status: string }) {
   if (status === "failed") return <XCircle className="mt-0.5 size-4 text-red-500" />;
   if (status === "cancelled") return <Square className="mt-0.5 size-3.5 text-muted-foreground" />;
   return <Clock3 className="mt-0.5 size-4 text-muted-foreground" />;
+}
+
+function stepResultLabel(step: UiAutomationStepResult) {
+  if (step.status === "cancelled") return step.started_at ? "执行中被停止" : "因运行停止未执行";
+  return (
+    {
+      pending: "等待执行",
+      running: "执行中",
+      passed: "通过",
+      failed: "失败",
+      skipped: "已跳过",
+    }[step.status] ?? step.status
+  );
 }
 
 function parameterSummary(iteration: UiAutomationIterationResult) {

@@ -7,6 +7,7 @@ from app.schemas.performance_test import PerformanceSseMetricGenerateIn
 from app.services.performance_testing.sse import SseEvent
 from app.services.performance_testing.sse_metric_generation import (
     CapturedSseEvent,
+    _scenario_execution_probe,
     build_deterministic_sse_config,
     capture_sse_events,
     execute_sse_probe,
@@ -195,6 +196,20 @@ def test_capture_uses_client_receive_offsets_and_stops_on_event_limit() -> None:
     assert truncated is True
 
 
+def test_capture_enforces_total_stream_duration() -> None:
+    class FakeResponse:
+        def iter_lines(self, decode_unicode: bool = False):
+            return iter(['data: {"data":{"event_type":"answer"}}', ""])
+
+    with pytest.raises(ValueError, match="sse_stream_timeout"):
+        capture_sse_events(
+            FakeResponse(),
+            started_at=100.0,
+            clock=lambda: 102.0,
+            max_stream_seconds=1,
+        )
+
+
 def test_generation_input_accepts_unsaved_request_values_and_bounds_stream_time() -> None:
     payload = PerformanceSseMetricGenerateIn(
         endpoint_id="endpoint-1",
@@ -212,6 +227,78 @@ def test_generation_input_accepts_unsaved_request_values_and_bounds_stream_time(
             endpoint_id="endpoint-1",
             api_environment_id="environment-1",
             max_stream_seconds=601,
+        )
+    scenario_payload = PerformanceSseMetricGenerateIn(
+        scenario_id="scenario-1",
+        scenario_step_id="step-stream",
+        api_environment_id="environment-1",
+    )
+    assert scenario_payload.scenario_step_id == "step-stream"
+
+
+def test_scenario_probe_consumes_formal_scenario_execution_result() -> None:
+    result = _scenario_execution_probe(
+        {
+            "status": "passed",
+            "scenario_result": {
+                "status": "passed",
+                "steps": [
+                    {
+                        "step_id": "stream",
+                        "name": "流式回答",
+                        "status": "passed",
+                        "response": {
+                            "status_code": 200,
+                            "headers": {"Content-Type": "text/event-stream"},
+                            "body": {
+                                "streaming": True,
+                                "truncated": False,
+                                "events": [
+                                    {
+                                        "event": "message",
+                                        "data": {"data": {"event_type": "call_llm_start"}},
+                                        "received_offset_ms": 341,
+                                    },
+                                    {
+                                        "event": "message",
+                                        "data": {"data": {"event_type": "answer", "answer": "ok"}},
+                                        "received_offset_ms": 2999,
+                                    },
+                                ],
+                            },
+                        },
+                    }
+                ],
+            },
+        },
+        "stream",
+    )
+
+    assert result["status_code"] == 200
+    assert [event.received_offset_ms for event in result["events"]] == [341, 2999]
+    assert json.loads(result["events"][1].event.data_text)["data"]["answer"] == "ok"
+
+
+def test_scenario_probe_surfaces_formal_step_failure_evidence() -> None:
+    with pytest.raises(ValueError, match="invalid parameter"):
+        _scenario_execution_probe(
+            {
+                "status": "failed",
+                "error_message": "pytest failed",
+                "scenario_result": {
+                    "status": "failed",
+                    "steps": [
+                        {
+                            "step_id": "prepare",
+                            "name": "准备会话",
+                            "status": "failed",
+                            "error": "未提取到必填变量",
+                            "response": {"body": {"code": "400000", "message": "invalid parameter"}},
+                        }
+                    ],
+                },
+            },
+            "stream",
         )
 
 

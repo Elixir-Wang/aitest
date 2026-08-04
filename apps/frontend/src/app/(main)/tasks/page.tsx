@@ -171,7 +171,6 @@ export default function Page() {
       breadcrumbs={moduleBreadcrumbs("tasks")}
       description="汇总需求分析、探索、知识库、用例、UI 自动化和失败诊断任务。"
       projectScope="all"
-      tabs={["全部任务", "等待人工", "失败任务"]}
       title="任务中心"
     >
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">

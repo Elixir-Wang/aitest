@@ -13,6 +13,7 @@ class PerformanceRequestConfig(BaseModel):
     random_seed: int | None = None
     transport: Literal["http", "sse"] = "http"
     sse: "PerformanceSseConfig | None" = None
+    scenario_step_id: str | None = Field(default=None, min_length=1, max_length=120)
 
     @model_validator(mode="after")
     def validate_sse(self) -> "PerformanceRequestConfig":
@@ -20,6 +21,8 @@ class PerformanceRequestConfig(BaseModel):
             raise ValueError("SSE 请求必须配置 sse")
         if self.transport == "http" and self.sse is not None:
             raise ValueError("HTTP 请求不能配置 sse")
+        if self.transport == "http" and self.scenario_step_id is not None:
+            raise ValueError("HTTP 请求不能配置 SSE 场景步骤")
         return self
 
 
@@ -149,6 +152,15 @@ class PerformanceCircuitBreaker(BaseModel):
     consecutive_windows: int = Field(default=3, ge=1)
 
 
+class PerformanceSseMetricGoal(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    metric_id: str = Field(min_length=1, max_length=64, pattern=r"^[a-z][a-z0-9_]{0,63}$")
+    percentile: Literal["p95", "p99"]
+    operator: Literal["lte"] = "lte"
+    target_ms: float = Field(gt=0)
+
+
 class PerformanceGoal(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -156,6 +168,14 @@ class PerformanceGoal(BaseModel):
     max_average_response_time_ms: float = Field(default=1000.0, gt=0)
     max_p95_response_time_ms: float | None = Field(default=None, gt=0)
     min_average_rps: float | None = Field(default=None, ge=0)
+    sse_metric_goals: list[PerformanceSseMetricGoal] = Field(default_factory=list, max_length=20)
+
+    @model_validator(mode="after")
+    def validate_sse_metric_goals(self) -> "PerformanceGoal":
+        keys = [(goal.metric_id, goal.percentile) for goal in self.sse_metric_goals]
+        if len(set(keys)) != len(keys):
+            raise ValueError("同一 SSE 指标和分位数只能配置一个性能目标")
+        return self
 
 
 class PerformanceSuccessRule(BaseModel):
@@ -217,6 +237,18 @@ class PerformanceTestCreateIn(BaseModel):
             raise ValueError("接口性能测试必须且只能选择一个接口")
         if self.target_type == "scenario" and (not self.scenario_id or self.endpoint_id):
             raise ValueError("场景性能测试必须且只能选择一个接口场景")
+        if self.target_type == "endpoint" and self.request_config.scenario_step_id is not None:
+            raise ValueError("单接口性能测试不能配置场景步骤")
+        if (
+            self.target_type == "scenario"
+            and self.request_config.transport == "sse"
+            and not self.request_config.scenario_step_id
+        ):
+            raise ValueError("场景 SSE 性能测试必须选择一个接口步骤")
+        validate_sse_goal_references(
+            self.request_config.model_dump(mode="json"),
+            self.performance_goal.model_dump(mode="json", exclude_none=True),
+        )
         return self
 
 
@@ -258,7 +290,9 @@ class PerformanceSseRulePreviewIn(BaseModel):
 class PerformanceSseMetricGenerateIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    endpoint_id: str = Field(min_length=1)
+    endpoint_id: str | None = Field(default=None, min_length=1)
+    scenario_id: str | None = Field(default=None, min_length=1)
+    scenario_step_id: str | None = Field(default=None, min_length=1, max_length=120)
     api_environment_id: str = Field(min_length=1)
     path_parameters: dict[str, Any] = Field(default_factory=dict)
     query_parameters: dict[str, Any] = Field(default_factory=dict)
@@ -266,6 +300,14 @@ class PerformanceSseMetricGenerateIn(BaseModel):
     body: Any = None
     max_stream_seconds: float = Field(default=60, gt=0, le=600)
     candidate_sse: PerformanceSseConfig | None = None
+
+    @model_validator(mode="after")
+    def validate_target(self) -> "PerformanceSseMetricGenerateIn":
+        endpoint_target = bool(self.endpoint_id) and not self.scenario_id and not self.scenario_step_id
+        scenario_target = bool(self.scenario_id) and bool(self.scenario_step_id) and not self.endpoint_id
+        if not endpoint_target and not scenario_target:
+            raise ValueError("SSE 指标生成必须选择单接口，或选择接口场景及其目标步骤")
+        return self
 
 
 class PerformanceEndpointSummary(BaseModel):
@@ -337,3 +379,19 @@ class PerformanceScriptOut(BaseModel):
     created_at: str
     updated_at: str
     runtime_preview: dict[str, Any] | None = None
+
+
+def validate_sse_goal_references(request_config: dict[str, Any], performance_goal: dict[str, Any]) -> None:
+    goals = performance_goal.get("sse_metric_goals") or []
+    if not goals:
+        return
+    if request_config.get("transport") != "sse" or not isinstance(request_config.get("sse"), dict):
+        raise ValueError("SSE 指标目标只能用于 SSE 性能测试")
+    metric_ids = {
+        str(metric.get("id") or "")
+        for metric in request_config["sse"].get("metrics") or []
+        if isinstance(metric, dict)
+    }
+    unknown = sorted({str(goal.get("metric_id") or "") for goal in goals if goal.get("metric_id") not in metric_ids})
+    if unknown:
+        raise ValueError(f"SSE 指标目标引用了不存在的指标: {', '.join(unknown)}")

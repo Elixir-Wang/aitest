@@ -1,4 +1,5 @@
 import json
+import math
 import os
 import re
 import shutil
@@ -64,6 +65,9 @@ def run_script_suite(
     timeout: int,
     test_paths: list[str] | None = None,
     scenario_file: str | None = None,
+    scenario_probe_target_step_id: str | None = None,
+    scenario_probe_max_stream_seconds: float | None = None,
+    scenario_probe_max_events: int = 200,
 ) -> dict[str, Any]:
     suite_path = suite_path.resolve()
     run_dir = run_dir.resolve()
@@ -72,8 +76,19 @@ def run_script_suite(
     _write_runtime_env(run_dir, environment)
     process_env = _build_process_env(environment)
     process_env.pop("API_SCENARIO_FILE", None)
+    process_env.pop("API_SCENARIO_PROBE_TARGET_STEP_ID", None)
+    process_env.pop("API_SCENARIO_PROBE_MAX_STREAM_SECONDS", None)
+    process_env.pop("API_SCENARIO_PROBE_MAX_EVENTS", None)
     if scenario_file:
         process_env["API_SCENARIO_FILE"] = scenario_file
+    if scenario_probe_target_step_id:
+        process_env["API_SCENARIO_PROBE_TARGET_STEP_ID"] = scenario_probe_target_step_id
+        process_env["API_SCENARIO_PROBE_MAX_EVENTS"] = str(scenario_probe_max_events)
+        if scenario_probe_max_stream_seconds is not None:
+            process_env["API_SCENARIO_PROBE_MAX_STREAM_SECONDS"] = str(scenario_probe_max_stream_seconds)
+            process_env["API_TIMEOUT_SECONDS"] = str(
+                math.ceil(max(float(process_env.get("API_TIMEOUT_SECONDS", "30")), scenario_probe_max_stream_seconds))
+            )
     scenario_result_path = run_dir / "scenario-result.json"
     observation_result_path = run_dir / "observations.json"
     process_env["API_SCENARIO_RESULT_PATH"] = str(scenario_result_path)

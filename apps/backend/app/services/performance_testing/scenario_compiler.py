@@ -17,6 +17,9 @@ def build_scenario_plan(
 
     load_config = dict(performance_test.get("load_config") or {})
     data_config = dict(performance_test.get("data_config") or {})
+    performance_request_config = dict(performance_test.get("request_config") or {})
+    scenario_sse_step_id = performance_request_config.get("scenario_step_id")
+    matched_sse_step = False
     compiled_steps = []
     for index, step in enumerate(steps, start=1):
         step_type = str(step.get("step_type") or "api_request")
@@ -43,6 +46,12 @@ def build_scenario_plan(
             method = str(request.get("method") or endpoint.get("method") or "GET").upper()
             path = str(request.get("path") or endpoint.get("path") or "/")
             headers = {**dict(request.get("headers") or {}), **environment_headers}
+            transport = request.get("transport", "http")
+            sse = request.get("sse")
+            if scenario_sse_step_id == compiled["id"]:
+                transport = performance_request_config.get("transport", "http")
+                sse = performance_request_config.get("sse")
+                matched_sse_step = True
             compiled["request"] = {
                 "method": method,
                 "path": path,
@@ -50,12 +59,18 @@ def build_scenario_plan(
                 "path_parameters": request.get("path_parameters") or request.get("path_params") or {},
                 "query_parameters": request.get("query_parameters") or request.get("query") or {},
                 "headers": headers,
+                "cookies": request.get("cookies") or {},
                 "body": request.get("body", request.get("json")),
+                "form": request.get("form"),
+                "multipart_form": request.get("multipart_form"),
                 "timeout_seconds": load_config.get("request_timeout_seconds", 30),
-                "transport": request.get("transport", "http"),
-                "sse": request.get("sse"),
+                "transport": transport,
+                "sse": sse,
             }
         compiled_steps.append(compiled)
+
+    if performance_request_config.get("transport") == "sse" and not matched_sse_step:
+        raise api_error(400, "PERFORMANCE_SCENARIO_SSE_STEP_INVALID", "场景 SSE 目标步骤不存在或不是接口请求步骤。")
 
     return LocustScriptPlan.model_validate(
         {

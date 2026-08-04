@@ -64,6 +64,16 @@ const ASSET_ROOT = "/assets/silicon-office-v2";
 const POLL_INTERVAL_MS = 2_000;
 const EMPLOYEE_POLL_INTERVAL_MS = 10 * 60 * 1_000;
 const ROOM_CAPACITY = 4;
+const CEO_ID = "office-ceo";
+const CEO_PROFILE = {
+  id: CEO_ID,
+  displayName: "王总",
+  role: "AI 测试负责人",
+  departmentName: "管理中心",
+  seatCode: "CEO-01",
+  avatar: `${ASSET_ROOT}/portraits/ceo-wang-avatar.png`,
+  responsibilities: ["战略规划", "团队管理"],
+} as const;
 
 const BUILT_IN_CHARACTER_IDS = [
   "document_editor",
@@ -223,7 +233,9 @@ export function SiliconOfficeDashboard({ embedded = false }: { embedded?: boolea
     const result = await apiRequest<SiliconEmployee[]>("/agents/employees");
     if (requestId !== employeeRequestRef.current) return;
     setEmployees(result);
-    setSelectedId((current) => (result.some((employee) => employee.id === current) ? current : (result[0]?.id ?? "")));
+    setSelectedId((current) =>
+      current === CEO_ID || result.some((employee) => employee.id === current) ? current : (result[0]?.id ?? ""),
+    );
   }, []);
 
   const loadTasks = useCallback(async () => {
@@ -292,6 +304,7 @@ export function SiliconOfficeDashboard({ embedded = false }: { embedded?: boolea
     () => employeeViewModels.find((employee) => employee.id === selectedId) ?? employeeViewModels[0] ?? null,
     [employeeViewModels, selectedId],
   );
+  const executiveSelected = selectedId === CEO_ID;
   const metricCards = useMemo<Metric[]>(
     () => [
       {
@@ -340,7 +353,7 @@ export function SiliconOfficeDashboard({ embedded = false }: { embedded?: boolea
                   key={room.id}
                   onSelect={setSelectedId}
                   room={room}
-                  selectedId={selectedEmployee?.id ?? ""}
+                  selectedId={selectedId}
                   statusUnknown={statusUnknown}
                 />
               ))}
@@ -348,14 +361,18 @@ export function SiliconOfficeDashboard({ embedded = false }: { embedded?: boolea
             <StatusLegend statusUnknown={statusUnknown} />
           </div>
         </div>
-        <EmployeeDetailPanel
-          employee={selectedEmployee}
-          error={error}
-          loading={loading}
-          onClose={() => setSelectedId("")}
-          onRefresh={() => void loadWorkspace()}
-          statusUnknown={statusUnknown}
-        />
+        {executiveSelected ? (
+          <ExecutiveDetailPanel onClose={() => setSelectedId("")} />
+        ) : (
+          <EmployeeDetailPanel
+            employee={selectedEmployee}
+            error={error}
+            loading={loading}
+            onClose={() => setSelectedId("")}
+            onRefresh={() => void loadWorkspace()}
+            statusUnknown={statusUnknown}
+          />
+        )}
       </section>
     </main>
   );
@@ -458,9 +475,34 @@ function OfficeRoom({
             src={room.monitorForeground}
           />
         ) : null}
-        {room.executive ? <div className={styles.executiveHotspot} /> : null}
+        {room.executive ? (
+          <button
+            aria-label={`查看${CEO_PROFILE.displayName}详情`}
+            className={[styles.executiveHotspot, styles.idle, selectedId === CEO_ID ? styles.selected : ""].join(" ")}
+            onClick={(event) => {
+              event.stopPropagation();
+              onSelect(CEO_ID);
+            }}
+            type="button"
+          >
+            <ExecutiveNameplate />
+          </button>
+        ) : null}
       </div>
     </article>
+  );
+}
+
+function ExecutiveNameplate() {
+  return (
+    <span className={styles.nameplate}>
+      <span className={styles.nameCopy}>
+        <strong>CEO {CEO_PROFILE.displayName}</strong>
+        <small>
+          <i /> 空闲
+        </small>
+      </span>
+    </span>
   );
 }
 
@@ -658,26 +700,7 @@ function EmployeeDetailPanel({
           </div>
         </DetailSection>
 
-        <DetailSection title="当前工作">
-          {currentTask ? <TaskCard task={currentTask} /> : <p>当前空闲，等待任务。</p>}
-        </DetailSection>
-
-        <DetailSection title="并行任务">
-          {parallelTasks.length > 0 ? (
-            <ol className={styles.timeline}>
-              {parallelTasks.map((task) => (
-                <li key={task.id}>
-                  <span className={styles.timelineDot} />
-                  <time>{formatDateTime(task.updated_at)}</time>
-                  <span className={styles.timelineTask}>{task.title}</span>
-                  <em>{task.status_label}</em>
-                </li>
-              ))}
-            </ol>
-          ) : (
-            <p>当前没有并行任务。</p>
-          )}
-        </DetailSection>
+        <WorkloadSection currentTask={currentTask} parallelTasks={parallelTasks} statusUnknown={statusUnknown} />
       </div>
 
       <footer className={styles.detailActions}>
@@ -702,6 +725,58 @@ function EmployeeDetailPanel({
   );
 }
 
+function ExecutiveDetailPanel({ onClose }: { onClose: () => void }) {
+  return (
+    <aside className={styles.detailPanel}>
+      <header className={styles.detailHeader}>
+        <h2>负责人详情</h2>
+        <button aria-label="关闭负责人详情" onClick={onClose} type="button">
+          <X aria-hidden="true" />
+        </button>
+      </header>
+
+      <div className={styles.profile}>
+        <div className={styles.profileAvatar}>
+          <Image
+            alt={`${CEO_PROFILE.displayName}的头像`}
+            className={styles.profileAvatarImage}
+            fill
+            sizes="72px"
+            src={CEO_PROFILE.avatar}
+          />
+        </div>
+        <div>
+          <h3>{CEO_PROFILE.displayName}</h3>
+          <p className={styles.profileMeta}>
+            <Building2 aria-hidden="true" />
+            {CEO_PROFILE.departmentName} · {CEO_PROFILE.role}
+          </p>
+          <p className={styles.profileMeta}>
+            <MapPin aria-hidden="true" />
+            办公室：{CEO_PROFILE.seatCode}
+          </p>
+        </div>
+      </div>
+
+      <div className={styles.detailBody}>
+        <DetailSection title="管理职责">
+          <div className={styles.skillList}>
+            {CEO_PROFILE.responsibilities.map((responsibility) => (
+              <span key={responsibility}>{responsibility}</span>
+            ))}
+          </div>
+        </DetailSection>
+        <DetailSection title="角色说明">
+          <div className={styles.taskDetail}>
+            <strong>AI 测试团队负责人</strong>
+            <p>负责团队战略规划与整体协作管理。</p>
+          </div>
+        </DetailSection>
+      </div>
+    </aside>
+  );
+}
+
 function TaskCard({ task }: { task: ApiTaskItem }) {
   return (
     <div className={styles.taskDetail}>
@@ -713,6 +788,72 @@ function TaskCard({ task }: { task: ApiTaskItem }) {
         {task.status_label} · 更新于 {formatDateTime(task.updated_at)}
       </p>
     </div>
+  );
+}
+
+function WorkloadSection({
+  currentTask,
+  parallelTasks,
+  statusUnknown,
+}: {
+  currentTask: ApiTaskItem | null;
+  parallelTasks: ApiTaskItem[];
+  statusUnknown: boolean;
+}) {
+  return (
+    <section className={styles.detailSection}>
+      <div className={styles.workloadHeading}>
+        <h4>工作安排</h4>
+        <span data-status={statusUnknown ? "error" : currentTask ? "running" : "idle"}>
+          <i />
+          {statusUnknown ? "状态待同步" : currentTask ? "执行中" : "待命中"}
+        </span>
+      </div>
+
+      <div className={styles.workloadPanel}>
+        <div className={styles.workloadItem} data-active={currentTask ? "true" : "false"}>
+          <span aria-hidden="true" className={styles.workloadMarker} />
+          <div className={styles.workloadLabel}>
+            <span>当前工作</span>
+            <small>{currentTask ? "正在执行" : "空闲"}</small>
+          </div>
+          <div className={styles.workloadContent}>
+            {currentTask ? (
+              <TaskCard task={currentTask} />
+            ) : (
+              <div className={styles.workloadEmpty}>
+                <strong>{statusUnknown ? "等待状态同步" : "等待任务分配"}</strong>
+                <p>{statusUnknown ? "刷新后将恢复实时工作状态。" : "新任务到达后将在这里显示执行进度。"}</p>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className={styles.workloadItem} data-active={parallelTasks.length > 0 ? "true" : "false"}>
+          <span aria-hidden="true" className={styles.workloadMarker} />
+          <div className={styles.workloadLabel}>
+            <span>并行任务</span>
+            <small>{parallelTasks.length} 项</small>
+          </div>
+          <div className={styles.workloadContent}>
+            {parallelTasks.length > 0 ? (
+              <ol className={styles.timeline}>
+                {parallelTasks.map((task) => (
+                  <li key={task.id}>
+                    <span className={styles.timelineDot} />
+                    <time>{formatDateTime(task.updated_at)}</time>
+                    <span className={styles.timelineTask}>{task.title}</span>
+                    <em>{task.status_label}</em>
+                  </li>
+                ))}
+              </ol>
+            ) : (
+              <p className={styles.workloadQueueEmpty}>暂无排队任务</p>
+            )}
+          </div>
+        </div>
+      </div>
+    </section>
   );
 }
 

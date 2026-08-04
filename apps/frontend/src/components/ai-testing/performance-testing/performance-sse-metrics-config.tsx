@@ -29,7 +29,10 @@ type RequestValues = Pick<
 
 type PerformanceSseMetricsConfigProps = {
   projectId: string;
-  endpointId: string;
+  targetType: "endpoint" | "scenario";
+  endpointId?: string;
+  scenarioId?: string;
+  scenarioStepId?: string;
   environmentId: string;
   maxStreamSeconds: number;
   value: PerformanceSseConfig | null;
@@ -39,7 +42,10 @@ type PerformanceSseMetricsConfigProps = {
 
 export function PerformanceSseMetricsConfig({
   projectId,
+  targetType,
   endpointId,
+  scenarioId,
+  scenarioStepId,
   environmentId,
   maxStreamSeconds,
   value,
@@ -57,14 +63,17 @@ export function PerformanceSseMetricsConfig({
   );
 
   async function run(candidate?: PerformanceSseConfig) {
-    if (!projectId || !endpointId || !environmentId) {
-      toast.error("请先选择项目、接口和环境");
+    const hasTarget = targetType === "endpoint" ? Boolean(endpointId) : Boolean(scenarioId && scenarioStepId);
+    if (!projectId || !hasTarget || !environmentId) {
+      toast.error(targetType === "endpoint" ? "请先选择项目、接口和环境" : "请先选择项目、场景、SSE 步骤和环境");
       return;
     }
     setLoading(true);
     try {
       const generated = await generatePerformanceSseMetrics(projectId, {
-        endpoint_id: endpointId,
+        ...(targetType === "endpoint"
+          ? { endpoint_id: endpointId }
+          : { scenario_id: scenarioId, scenario_step_id: scenarioStepId }),
         api_environment_id: environmentId,
         ...getRequestValues(),
         max_stream_seconds: maxStreamSeconds,

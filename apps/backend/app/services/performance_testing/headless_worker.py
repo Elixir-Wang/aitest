@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import hashlib
 import json
 import os
 import re
@@ -435,8 +436,24 @@ def summarize_sse_measurements(path: Path) -> dict[str, Any]:
     """Return independent SSE timing aggregates without touching Locust HTTP stats."""
     buckets: dict[str, dict[str, Any]] = {}
     attempts = 0
+    meta_path = path.with_name("sse-measurements.meta.json")
+    truncated = False
+    if meta_path.is_file():
+        try:
+            truncated = bool(json.loads(meta_path.read_text(encoding="utf-8")).get("truncated"))
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+            truncated = True
     if not path.exists():
-        return {"attempt_count": 0, "metrics": []}
+        return {
+            "schema_version": "v1",
+            "attempt_count": 0,
+            "truncated": truncated,
+            "checksum": "",
+            "failure_reasons": {},
+            "metrics": [],
+        }
+    failure_reasons: dict[str, int] = {}
+    parse_error_count = 0
     for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
         try:
             measurement = json.loads(line)
@@ -445,9 +462,13 @@ def summarize_sse_measurements(path: Path) -> dict[str, Any]:
         if not isinstance(measurement, dict):
             continue
         attempts += 1
+        parse_error_count += int(measurement.get("parse_error_count") or 0)
         values = measurement.get("metrics") if isinstance(measurement.get("metrics"), dict) else {}
         missing = {str(item) for item in measurement.get("missing_metric_ids", []) if isinstance(item, str)}
         failed = bool(measurement.get("failure_reason"))
+        if failed:
+            reason = str(measurement.get("failure_reason") or "unknown")
+            failure_reasons[reason] = failure_reasons.get(reason, 0) + 1
         for metric_id in set(values) | missing:
             bucket = buckets.setdefault(metric_id, {"metric_id": metric_id, "values": [], "missing_count": 0, "failure_count": 0})
             if metric_id in missing:
@@ -474,7 +495,17 @@ def summarize_sse_measurements(path: Path) -> dict[str, Any]:
                 "p99_ms": _percentile(values, 0.99),
             }
         )
-    return {"attempt_count": attempts, "metrics": metrics}
+    return {
+        "schema_version": "v1",
+        "attempt_count": attempts,
+        "truncated": truncated,
+        "checksum": "sha256:" + hashlib.sha256(path.read_bytes()).hexdigest(),
+        "failure_reasons": failure_reasons,
+        "parse_error_count": parse_error_count,
+        "timeout_count": failure_reasons.get("sse_stream_timeout", 0),
+        "end_rule_not_matched_count": failure_reasons.get("sse_end_rule_not_matched", 0),
+        "metrics": metrics,
+    }
 
 
 def _percentile(values: list[float], quantile: float) -> float | None:

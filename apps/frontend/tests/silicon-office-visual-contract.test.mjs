@@ -76,6 +76,19 @@ test("employee detail uses photographic assets and the reference action layout",
   assert.ok(dashboardStyles.includes("border-right: 1px solid #edf1f6"));
 });
 
+test("employee workload uses a unified status rail instead of abrupt empty paragraphs", () => {
+  assert.match(dashboardSource, /WorkloadSection/);
+  assert.match(dashboardSource, /工作安排/);
+  assert.match(dashboardSource, /等待任务分配/);
+  assert.match(dashboardSource, /暂无排队任务/);
+  assert.doesNotMatch(dashboardSource, /当前空闲，等待任务。/);
+  assert.doesNotMatch(dashboardSource, /当前没有并行任务。/);
+  assert.match(dashboardStyles, /\.workloadPanel[\s\S]*?border: 1px solid #e8edf4/);
+  assert.match(dashboardStyles, /\.workloadItem[\s\S]*?grid-template-columns: 12px 72px minmax\(0, 1fr\)/);
+  assert.match(dashboardStyles, /\.workloadItem:first-child::after/);
+  assert.match(dashboardStyles, /\.darkTheme \.workloadPanel/);
+});
+
 test("employee detail keeps capability and workstation metadata without fake contact data", () => {
   assert.match(dashboardSource, /Building2 aria-hidden="true"/);
   assert.match(dashboardSource, /MapPin aria-hidden="true"/);
@@ -129,6 +142,20 @@ test("office rooms use original furniture scenes and a centered CEO office", () 
   assert.match(dashboardSource, /-room-monitor-foreground\.png/);
   assert.match(dashboardSource, /ceo-office-unified\.png/);
   assert.match(dashboardStyles, /\.executiveHotspot[\s\S]*?top: 38%/);
+});
+
+test("CEO office exposes a clickable Wang executive nameplate without entering employee metrics", () => {
+  assert.match(dashboardSource, /const CEO_ID = "office-ceo"/);
+  assert.match(dashboardSource, /const CEO_PROFILE = \{/);
+  assert.match(dashboardSource, /displayName: "王总"/);
+  assert.match(dashboardSource, /ceo-wang-avatar\.png/);
+  assert.match(dashboardSource, /aria-label=\{`查看\$\{CEO_PROFILE\.displayName\}详情`\}/);
+  assert.match(dashboardSource, /onSelect\(CEO_ID\)/);
+  assert.match(dashboardSource, /<strong>CEO \{CEO_PROFILE\.displayName\}<\/strong>/);
+  assert.match(dashboardSource, /<i \/> 空闲/);
+  assert.match(dashboardSource, /<ExecutiveDetailPanel/);
+  assert.match(dashboardStyles, /\.executiveHotspot[\s\S]*?pointer-events: auto/);
+  assert.match(dashboardStyles, /\.executiveHotspot \.nameplate/);
 });
 
 test("office visual uses unique employee assets and layered desk occlusion", () => {

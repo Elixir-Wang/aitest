@@ -27,15 +27,21 @@ class SseEvent:
             return None
 
 
-def parse_sse_events(chunks: Iterable[str], *, max_frame_bytes: int = 262_144) -> list[SseEvent]:
+def parse_sse_events(
+    chunks: Iterable[str], *, max_frame_bytes: int = 262_144, max_stream_bytes: int = 4_194_304
+) -> list[SseEvent]:
     """Parse already-decoded SSE lines; an empty line commits the current frame."""
     events: list[SseEvent] = []
     event_name = ""
     data_lines: list[str] = []
     frame_size = 0
+    stream_size = 0
     first_line = True
     for raw_line in chunks:
         line = raw_line.rstrip("\r\n")
+        stream_size += len(raw_line.encode("utf-8"))
+        if stream_size > max_stream_bytes:
+            raise ValueError("sse_stream_too_large")
         if first_line:
             line = line.removeprefix("\ufeff")
             first_line = False
@@ -117,6 +123,13 @@ def validate_metric_rule(rule: dict[str, Any]) -> dict[str, Any]:
         expected = str(match.get("expected") or "")
         if len(expected) > 256:
             raise ValueError("正则表达式不能超过 256 个字符")
+        if not expected:
+            raise ValueError("正则表达式不能为空")
+        if re.search(
+            r"\\[1-9]|\(\?[=!<]|\(\?P=|\([^)]*(?:\*|\+|\{\d+(?:,\d*)?\})[^)]*\)\s*(?:\*|\+|\{)",
+            expected,
+        ):
+            raise ValueError("正则表达式包含不支持的高风险结构")
         re.compile(expected)
     if rule.get("missing_policy", "record_null") not in {"record_null", "fail_request", "ignore"}:
         raise ValueError("不支持的 SSE 指标缺失策略")

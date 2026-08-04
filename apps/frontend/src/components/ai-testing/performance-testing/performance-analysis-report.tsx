@@ -9,6 +9,7 @@ import {
   AlertTriangle,
   CheckCircle2,
   CircleHelp,
+  Clock3,
   Gauge,
   LoaderCircle,
   RefreshCw,
@@ -94,6 +95,7 @@ export function PerformanceAnalysisReport({
   const quality = metric.quality ?? {};
   const testScope = metric.test_scope ?? {};
   const endpointMetrics = metric.endpoint_metrics ?? [];
+  const sseMetrics = metric.sse_metrics?.metrics ?? [];
   const objectives = metric.objectives ?? [];
   const stageAnalysis = metric.stage_analysis ?? [];
   const capacityAnalysis = metric.capacity_analysis ?? {};
@@ -212,6 +214,55 @@ export function PerformanceAnalysisReport({
           </div>
         </div>
       </section>
+
+      {sseMetrics.length ? (
+        <section className="space-y-4">
+          <SectionHeading icon={Clock3} title="SSE 事件指标" />
+          {metric.sse_metrics?.truncated ? (
+            <p className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-amber-900 text-sm dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-100">
+              测量文件达到大小上限，以下结果仅基于已保留样本。
+            </p>
+          ) : null}
+          {metric.sse_metrics?.parse_error_count ||
+          metric.sse_metrics?.timeout_count ||
+          metric.sse_metrics?.end_rule_not_matched_count ? (
+            <p className="text-muted-foreground text-sm">
+              数据质量：JSON 解析错误 {metric.sse_metrics.parse_error_count ?? 0}，流超时 {metric.sse_metrics.timeout_count ?? 0}
+              ，结束规则未命中 {metric.sse_metrics.end_rule_not_matched_count ?? 0}。
+            </p>
+          ) : null}
+          <div className="overflow-x-auto rounded-lg border">
+            <table className="w-full min-w-[48rem] text-sm">
+              <thead className="bg-muted/50 text-left text-muted-foreground text-xs">
+                <tr>
+                  <th className="px-4 py-3 font-medium">指标</th>
+                  <th className="px-4 py-3 font-medium">样本</th>
+                  <th className="px-4 py-3 font-medium">缺失</th>
+                  <th className="px-4 py-3 font-medium">失败</th>
+                  <th className="px-4 py-3 font-medium">平均</th>
+                  <th className="px-4 py-3 font-medium">P50</th>
+                  <th className="px-4 py-3 font-medium">P95</th>
+                  <th className="px-4 py-3 font-medium">P99</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {sseMetrics.map((item) => (
+                  <tr key={item.metric_id}>
+                    <td className="px-4 py-3 font-medium">{item.name || item.metric_id}</td>
+                    <td className="px-4 py-3 tabular-nums">{numberValue(item.matched_count)}</td>
+                    <td className="px-4 py-3 tabular-nums">{numberValue(item.missing_count)}</td>
+                    <td className="px-4 py-3 tabular-nums">{numberValue(item.failure_count)}</td>
+                    <td className="px-4 py-3 tabular-nums">{millisecondsValue(item.average_ms)}</td>
+                    <td className="px-4 py-3 tabular-nums">{millisecondsValue(item.p50_ms)}</td>
+                    <td className="px-4 py-3 tabular-nums">{millisecondsValue(item.p95_ms)}</td>
+                    <td className="px-4 py-3 tabular-nums">{millisecondsValue(item.p99_ms)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      ) : null}
 
       <section className="space-y-4">
         <SectionHeading icon={ShieldCheck} title="性能目标" />
@@ -906,6 +957,10 @@ function qualityLabel(value?: string) {
 }
 
 function metricLabel(value: string) {
+  if (value.startsWith("sse:")) {
+    const [, metricId, percentile] = value.split(":");
+    return `${metricId} ${percentile.replace("_ms", "").toUpperCase()}`;
+  }
   return (
     {
       failure_rate: "失败率",
@@ -919,7 +974,7 @@ function metricLabel(value: string) {
 function formatMetric(metric: string, value: number | null) {
   if (value === null || value === undefined) return "不可用";
   if (metric === "failure_rate") return `${(value * 100).toFixed(2)}%`;
-  if (metric.includes("response_time")) return `${value.toFixed(2)} ms`;
+  if (metric.includes("response_time") || metric.startsWith("sse:")) return `${value.toFixed(2)} ms`;
   if (metric === "requests_per_second") return `${value.toFixed(2)} RPS`;
   return value.toFixed(2);
 }

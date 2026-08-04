@@ -138,3 +138,107 @@
 - **WHEN** 用户请求性能对比
 - **THEN** 系统 SHALL 标记对应 SSE 指标不可比较并说明原因
 - **AND** SHALL NOT 将两者的时间指标合并为同一趋势或差异结论
+
+### Requirement: Evidence-based AI metric generation
+
+系统 SHALL 允许管理员基于当前项目内单接口或接口场景目标步骤的一次真实 SSE 探测生成声明式指标候选，并 SHALL NOT 在没有有效样本时猜测或生成指标规则。
+
+#### Scenario: Generate metrics from current unsaved request values
+
+- **GIVEN** 管理员已选择当前项目内的接口和环境
+- **AND** 性能测试表单包含尚未保存的 path、query、header 或 body 参数
+- **WHEN** 管理员请求生成 SSE 指标
+- **THEN** 系统 SHALL 使用当前表单参数执行一次流式请求
+- **AND** SHALL 使用客户端单调时钟记录事件相对请求开始的接收偏移
+- **AND** SHALL 基于捕获到的真实事件生成 `call_llm_start` 和 `first_answer` 候选指标
+
+#### Scenario: Probe does not produce a valid SSE sample
+
+- **WHEN** 探测请求失败、返回非成功状态、响应不是 `text/event-stream` 或没有有效事件
+- **THEN** 系统 SHALL 返回稳定的探测失败错误
+- **AND** SHALL NOT 调用模型生成无证据候选
+- **AND** SHALL NOT 修改当前性能测试配置
+
+#### Scenario: Scenario target requests AI metric generation
+
+- **GIVEN** 当前性能测试目标是接口场景
+- **AND** 用户已选择场景中的一个接口请求步骤作为 SSE 目标步骤
+- **WHEN** 用户请求生成 SSE 指标
+- **THEN** 系统 SHALL 按当前保存场景快照执行目标步骤之前的赋值、条件和 HTTP 请求步骤
+- **AND** SHALL 将前置步骤输出按既有绑定语义传递给目标步骤
+- **AND** SHALL 兼容场景已有的 JSON Pointer/JSONPath 输出提取，并保持 JSON、表单、multipart、Cookie 和 Header 请求编码
+- **AND** SHALL 在目标步骤以流式方式捕获 SSE 样本并生成候选指标
+- **AND** 正式 Locust 脚本 SHALL 只将该目标步骤作为 SSE 消费，其余步骤保持原传输行为
+
+### Requirement: Constrained generation and deterministic replay
+
+系统 SHALL 将 AI 输出限制为现有 `PerformanceSseConfig` 声明式契约，并 SHALL 在返回可应用候选前使用真实样本和运行时等价匹配语义完成确定性回放。
+
+#### Scenario: AI candidate matches the captured sample
+
+- **GIVEN** AI 候选通过 Schema、受限路径和操作符校验
+- **AND** 必需指标及配置的结束规则均在真实样本上命中
+- **WHEN** 服务端完成确定性回放
+- **THEN** 系统 SHALL 返回已验证候选及 `generation_source=ai`
+- **AND** SHALL 返回每条指标的命中数、首次事件序号和样本耗时
+- **AND** SHALL NOT 让模型决定或改写样本耗时
+
+#### Scenario: AI candidate is unavailable or invalid
+
+- **WHEN** 模型不可用、输出不符合 Schema、缺少必需指标或真实样本回放失败
+- **THEN** 系统 SHALL NOT 返回未验证的模型候选供用户直接应用
+- **AND** SHALL 尝试使用真实样本事件结构生成确定性候选
+- **AND** SHALL 返回 `generation_source=deterministic_fallback` 和明确 warning
+- **AND** 确定性候选的有效性 SHALL 仍由相同回放结果决定
+
+#### Scenario: User revalidates an edited candidate
+
+- **GIVEN** 用户修改了候选指标路径、事件名或期望值
+- **WHEN** 用户提交 `candidate_sse` 重新验证
+- **THEN** 系统 SHALL 重新执行真实探测并回放用户候选
+- **AND** SHALL 返回 `generation_source=user_validation` 和最新验证证据
+- **AND** SHALL NOT 再次调用模型改写该用户候选
+
+### Requirement: Explicit confirmation and stable script input
+
+系统 SHALL 将生成结果视为候选配置，只有通过验证且经用户明确应用后才进入现有性能测试保存流程；Locust 脚本生成 SHALL 只读取已保存配置。
+
+#### Scenario: User applies a verified candidate
+
+- **GIVEN** 候选配置的 `validation.valid` 为 `true`
+- **WHEN** 用户明确应用候选并保存性能测试
+- **THEN** 系统 SHALL 将候选写入现有 `request_config.sse`
+- **AND** 后续脚本生成 SHALL 复用该固定配置
+- **AND** SHALL NOT 在脚本生成阶段再次调用模型
+
+#### Scenario: User regenerates while a configuration exists
+
+- **GIVEN** 表单中已有已确认的 SSE 指标配置
+- **WHEN** 用户请求重新生成
+- **THEN** 前端 SHALL 在执行探测前请求确认
+- **AND** 新候选 SHALL NOT 自动覆盖当前配置
+- **AND** 取消或验证失败 SHALL 保留当前配置
+
+### Requirement: AI generation privacy and authorization
+
+系统 SHALL 限制 AI 指标生成的调用者、项目引用、模型输入和响应内容，不得泄露认证信息或完整 SSE 业务内容。
+
+#### Scenario: Build model input from captured events
+
+- **GIVEN** 探测事件包含认证信息、业务标识或回答正文
+- **WHEN** 系统构建 AI 输入
+- **THEN** 系统 SHALL 只保留匹配所需的受控事件结构、枚举值、内容非空标记和接收偏移
+- **AND** SHALL NOT 将认证信息、Cookie、Token、业务标识或完整回答正文发送给模型
+
+#### Scenario: Generate metrics with inaccessible references
+
+- **WHEN** 非管理员调用生成接口，或 endpoint/environment 不属于当前可见项目
+- **THEN** 系统 SHALL 拒绝请求
+- **AND** SHALL NOT 发起目标 SSE 请求
+- **AND** SHALL NOT 调用模型
+
+#### Scenario: Return a generation result
+
+- **WHEN** 系统完成探测和候选验证
+- **THEN** 响应 SHALL 只包含受控样本摘要、候选配置、验证证据、生成来源和警告
+- **AND** SHALL NOT 持久化或返回完整 SSE 事件流

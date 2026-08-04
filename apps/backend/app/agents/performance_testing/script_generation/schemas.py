@@ -14,7 +14,10 @@ class LocustRequestPlan(BaseModel):
     path_parameters: dict[str, Any] = Field(default_factory=dict)
     query_parameters: dict[str, Any] = Field(default_factory=dict)
     headers: dict[str, Any] = Field(default_factory=dict)
+    cookies: dict[str, Any] = Field(default_factory=dict)
     body: Any = None
+    form: dict[str, Any] | None = None
+    multipart_form: dict[str, Any] | None = None
     timeout_seconds: float = Field(gt=0, le=600)
     transport: Literal["http", "sse"] = "http"
     sse: dict[str, Any] | None = None

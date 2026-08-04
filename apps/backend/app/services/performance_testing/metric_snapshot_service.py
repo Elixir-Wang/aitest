@@ -11,7 +11,7 @@ from app.services.performance_testing.analysis_metrics import build_analysis_met
 from app.services.performance_testing.diagnosis_validation import require_valid_diagnosis_references
 
 
-CALCULATOR_VERSION = "performance-metrics-v4"
+CALCULATOR_VERSION = "performance-metrics-v5"
 
 
 def build_metric_snapshot(evidence: dict[str, Any]) -> dict[str, Any]:
@@ -25,7 +25,10 @@ def build_metric_snapshot(evidence: dict[str, Any]) -> dict[str, Any]:
     quality = _quality(run, summary, stats, evidence.get("missing_evidence") or [])
     test_scope = _test_scope(run, performance_test, endpoint, script, quality)
     endpoint_metrics = _endpoint_metrics(artifacts.get("result_stats"))
-    objectives = _objectives(performance_test.get("performance_goal") or {}, summary, quality["status"])
+    sse_metrics = _sse_metrics(artifacts.get("sse_metrics"), performance_test.get("request_config"))
+    objectives = _objectives(
+        performance_test.get("performance_goal") or {}, summary, quality["status"], sse_metrics
+    )
     verdict = _verdict(objectives, quality["status"])
     series = [_series_sample(item) for item in stats]
     peak_rps = max((float(item.get("requests_per_second") or 0) for item in stats), default=0.0)
@@ -37,6 +40,8 @@ def build_metric_snapshot(evidence: dict[str, Any]) -> dict[str, Any]:
         "performance_goal": performance_test.get("performance_goal") or {},
         "test_scope": test_scope,
         "endpoint_metrics": endpoint_metrics,
+        "sse_metrics": sse_metrics,
+        "sse_config": (performance_test.get("request_config") or {}).get("sse"),
     }
     source_fingerprint = "sha256:" + hashlib.sha256(
         json.dumps(snapshot_source, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
@@ -44,7 +49,7 @@ def build_metric_snapshot(evidence: dict[str, Any]) -> dict[str, Any]:
     analysis_metrics = build_analysis_metrics(evidence)
     evidence_index = _evidence_index(summary, objectives, quality) + _analysis_evidence_index(analysis_metrics)
     return {
-        "schema_version": 4,
+        "schema_version": 5,
         "calculator_version": CALCULATOR_VERSION,
         "run_id": str(run.get("id") or ""),
         "source_fingerprint": source_fingerprint,
@@ -52,6 +57,7 @@ def build_metric_snapshot(evidence: dict[str, Any]) -> dict[str, Any]:
         "test_scope": test_scope,
         "aggregate": summary,
         "endpoint_metrics": endpoint_metrics,
+        "sse_metrics": sse_metrics,
         "capacity": {
             "observed_peak_throughput": round(peak_rps, 4),
             "stable_throughput": stable_rps,
@@ -346,7 +352,12 @@ def _optional_float(value: Any) -> float | None:
         return None
 
 
-def _objectives(goal: dict[str, Any], summary: dict[str, Any], quality_status: str) -> list[dict[str, Any]]:
+def _objectives(
+    goal: dict[str, Any],
+    summary: dict[str, Any],
+    quality_status: str,
+    sse_metrics: dict[str, Any],
+) -> list[dict[str, Any]]:
     definitions = [
         ("max_fail_ratio", "failure_rate", "lte"),
         ("max_average_response_time_ms", "average_response_time_ms", "lte"),
@@ -374,7 +385,60 @@ def _objectives(goal: dict[str, Any], summary: dict[str, Any], quality_status: s
                 "status": status,
             }
         )
+    metrics_by_id = {
+        str(metric.get("metric_id") or ""): metric
+        for metric in sse_metrics.get("metrics") or []
+        if isinstance(metric, dict)
+    }
+    for definition in goal.get("sse_metric_goals") or []:
+        if not isinstance(definition, dict):
+            continue
+        metric_id = str(definition.get("metric_id") or "")
+        percentile = str(definition.get("percentile") or "")
+        metric = metrics_by_id.get(metric_id) or {}
+        actual = metric.get(f"{percentile}_ms") if int(metric.get("matched_count") or 0) > 0 else None
+        target = float(definition.get("target_ms") or 0)
+        if quality_status == "invalid" or actual is None:
+            status = "not_evaluated"
+        else:
+            status = "passed" if float(actual) <= target else "failed"
+        results.append(
+            {
+                "evidence_id": f"objective:sse:{metric_id}:{percentile}",
+                "metric": f"sse:{metric_id}:{percentile}_ms",
+                "operator": "lte",
+                "target": target,
+                "actual": actual,
+                "status": status,
+            }
+        )
     return results
+
+
+def _sse_metrics(raw: Any, request_config: Any = None) -> dict[str, Any]:
+    if not isinstance(raw, dict):
+        return {"schema_version": "v1", "attempt_count": 0, "truncated": False, "metrics": []}
+    configured_names = {
+        str(metric.get("id") or ""): str(metric.get("name") or metric.get("id") or "")
+        for metric in ((request_config or {}).get("sse") or {}).get("metrics") or []
+        if isinstance(metric, dict)
+    }
+    metrics = [
+        {**dict(item), "name": configured_names.get(str(item.get("metric_id") or ""), str(item.get("metric_id") or ""))}
+        for item in raw.get("metrics") or []
+        if isinstance(item, dict)
+    ]
+    return {
+        "schema_version": str(raw.get("schema_version") or "v1"),
+        "attempt_count": int(raw.get("attempt_count") or 0),
+        "truncated": bool(raw.get("truncated")),
+        "checksum": str(raw.get("checksum") or ""),
+        "parse_error_count": int(raw.get("parse_error_count") or 0),
+        "timeout_count": int(raw.get("timeout_count") or 0),
+        "end_rule_not_matched_count": int(raw.get("end_rule_not_matched_count") or 0),
+        "failure_reasons": dict(raw.get("failure_reasons") or {}),
+        "metrics": metrics,
+    }
 
 
 def _verdict(objectives: list[dict[str, Any]], quality_status: str) -> str:

@@ -43,6 +43,7 @@ const testDetailUrl = new URL(
   import.meta.url,
 );
 const apiClientSource = readFileSync(new URL("../src/lib/api-client.ts", import.meta.url), "utf8");
+const locustConsoleSource = readFileSync(locustConsoleUrl, "utf8");
 
 test("performance run page hosts the Locust-native console", () => {
   assert.equal(existsSync(pageUrl), true);
@@ -116,6 +117,13 @@ test("performance run restores Locust-native chart history", () => {
   assert.match(chartsSource, /failuresPerSecond/);
   assert.match(chartsSource, /p50ResponseTime/);
   assert.match(chartsSource, /p95ResponseTime/);
+});
+
+test("performance run exposes SSE data quality counters separately", () => {
+  assert.match(locustConsoleSource, /JSON 解析错误/);
+  assert.match(locustConsoleSource, /流超时/);
+  assert.match(locustConsoleSource, /结束规则未命中/);
+  assert.match(locustConsoleSource, /sse_metrics\.truncated/);
 });
 
 test("performance failure and exception tables use backend response fields", () => {

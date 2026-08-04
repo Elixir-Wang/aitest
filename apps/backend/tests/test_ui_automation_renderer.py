@@ -186,7 +186,7 @@ def test_render_plan_groups_explicit_business_steps(tmp_path):
     ].read_text(encoding="utf-8")
 
     assert source.count('with ui_case.step("business-login"') == 1
-    assert 'ui_case.define_steps([' in source
+    assert "UI_CASE_STEP_DEFINITIONS = [" in source
     assert 'operation_ids=["step-2", "step-3"]' in source
     assert source.index("username_input.fill") < source.index("submit_button.click")
 
@@ -195,19 +195,18 @@ def test_rendered_step_definitions_are_valid_python_literals(tmp_path):
     initialize_suite(tmp_path)
     source = render_automation_plan(tmp_path, _plan())["test_file"].read_text(encoding="utf-8")
     module = ast.parse(source)
-    define_call = next(
+    definitions_assignment = next(
         node
-        for node in ast.walk(module)
-        if isinstance(node, ast.Call)
-        and isinstance(node.func, ast.Attribute)
-        and node.func.attr == "define_steps"
+        for node in module.body
+        if isinstance(node, ast.Assign)
+        and any(isinstance(target, ast.Name) and target.id == "UI_CASE_STEP_DEFINITIONS" for target in node.targets)
     )
 
-    definitions = ast.literal_eval(define_call.args[0])
+    definitions = ast.literal_eval(definitions_assignment.value)
 
     assert definitions[0]["visible"] is True
     assert '"visible": true' not in source
-    assert "UI_AUTOMATION_INSTRUMENTATION_VERSION = 2" in source
+    assert "UI_AUTOMATION_INSTRUMENTATION_VERSION = 3" in source
 
 
 def test_render_plan_does_not_guess_business_step_for_v1_plan(tmp_path):

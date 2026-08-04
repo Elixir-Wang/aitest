@@ -1044,7 +1044,6 @@ export type ApiAutomationScenarioSuite = {
     id: string;
     name: string;
     description: string;
-    status: "draft" | "ready" | "archived";
     revision: number;
     position: number;
     step_count: number;
@@ -1285,7 +1284,6 @@ export type ApiAutomationScenario = {
   api_environment_id: string | null;
   name: string;
   description: string;
-  status: "draft" | "ready" | "archived";
   variables: Record<string, unknown>;
   revision: number;
   published_hash: string;
@@ -1374,6 +1372,7 @@ export type PerformanceRequestConfig = {
   random_seed: number | null;
   transport: "http" | "sse";
   sse: PerformanceSseConfig | null;
+  scenario_step_id: string | null;
 };
 
 export type PerformanceSseMatch = {
@@ -1419,7 +1418,9 @@ export type PerformanceSseMetricGenerationResult = {
 };
 
 export type PerformanceSseMetricGenerationPayload = {
-  endpoint_id: string;
+  endpoint_id?: string;
+  scenario_id?: string;
+  scenario_step_id?: string;
   api_environment_id: string;
   path_parameters: Record<string, unknown>;
   query_parameters: Record<string, unknown>;
@@ -1468,6 +1469,14 @@ export type PerformanceGoal = {
   max_average_response_time_ms?: number;
   max_p95_response_time_ms?: number;
   min_average_rps?: number;
+  sse_metric_goals?: PerformanceSseMetricGoal[];
+};
+
+export type PerformanceSseMetricGoal = {
+  metric_id: string;
+  percentile: "p95" | "p99";
+  operator: "lte";
+  target_ms: number;
 };
 
 export type PerformanceSuccessRule = {
@@ -1696,7 +1705,14 @@ export type PerformanceRunStats = {
   exceptions: PerformanceRunException[];
   events: Array<Record<string, unknown>>;
   sse_metrics: {
+    schema_version: string;
     attempt_count: number;
+    truncated: boolean;
+    checksum: string;
+    failure_reasons: Record<string, number>;
+    parse_error_count: number;
+    timeout_count: number;
+    end_rule_not_matched_count: number;
     metrics: Array<{
       metric_id: string;
       attempt_count: number;
@@ -1802,6 +1818,28 @@ export type PerformanceMetricSnapshot = {
     p95_response_time_ms?: number | null;
     p99_response_time_ms?: number | null;
   }>;
+  sse_metrics?: {
+    schema_version?: string;
+    attempt_count?: number;
+    truncated?: boolean;
+    checksum?: string;
+    parse_error_count?: number;
+    timeout_count?: number;
+    end_rule_not_matched_count?: number;
+    failure_reasons?: Record<string, number>;
+    metrics: Array<{
+      metric_id: string;
+      name?: string;
+      attempt_count: number;
+      matched_count: number;
+      missing_count: number;
+      failure_count: number;
+      average_ms: number | null;
+      p50_ms: number | null;
+      p95_ms: number | null;
+      p99_ms: number | null;
+    }>;
+  };
   capacity?: {
     observed_peak_throughput?: number;
     stable_throughput?: number | null;
@@ -2519,6 +2557,10 @@ export function generatePerformanceSseMetrics(
 
 export function listApiAutomationScenarioSuites(projectId: string) {
   return apiRequest<ApiAutomationScenarioSuite[]>(`/projects/${projectId}/api-scenario-suites`);
+}
+
+export function getApiAutomationScenarioSuite(projectId: string, suiteId: string) {
+  return apiRequest<ApiAutomationScenarioSuite>(`/projects/${projectId}/api-scenario-suites/${suiteId}`);
 }
 
 export function updateApiAutomationScenarioSuite(

@@ -473,10 +473,15 @@
   background: transparent;
   cursor: pointer;
   transform: translateX(-50%);
+  pointer-events: auto;
 }
 .executiveHotspot .nameplate {
   top: 52%;
   left: 84%;
+}
+.executiveHotspot:focus-visible {
+  outline: 2px solid #3475ec;
+  outline-offset: 2px;
 }
 
 .detailPanel {
@@ -658,6 +663,113 @@
   font-size: 13px;
   font-weight: 700;
 }
+.workloadHeading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+.workloadHeading h4 {
+  margin: 0;
+}
+.workloadHeading > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #7c899b;
+  font-size: 10px;
+  font-weight: 600;
+}
+.workloadHeading > span i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.workloadHeading > span[data-status="running"] {
+  color: #11a26d;
+}
+.workloadHeading > span[data-status="error"] {
+  color: #e14b5c;
+}
+.workloadPanel {
+  overflow: hidden;
+  border: 1px solid #e8edf4;
+  border-radius: 8px;
+  background: #fbfcfe;
+}
+.workloadItem {
+  position: relative;
+  display: grid;
+  grid-template-columns: 12px 72px minmax(0, 1fr);
+  gap: 10px;
+  padding: 13px 14px;
+}
+.workloadItem + .workloadItem {
+  border-top: 1px solid #edf1f6;
+}
+.workloadItem:first-child::after {
+  position: absolute;
+  top: 22px;
+  bottom: -22px;
+  left: 18px;
+  width: 1px;
+  background: #dfe6f0;
+  content: "";
+}
+.workloadMarker {
+  position: relative;
+  z-index: 1;
+  width: 8px;
+  height: 8px;
+  margin-top: 4px;
+  border: 2px solid #c5cfdd;
+  border-radius: 50%;
+  background: #fbfcfe;
+}
+.workloadItem[data-active="true"] .workloadMarker {
+  border-color: #3478f6;
+  background: #3478f6;
+  box-shadow: 0 0 0 3px #edf4ff;
+}
+.workloadLabel {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+}
+.workloadLabel span {
+  color: #34435a;
+  font-size: 11px;
+  font-weight: 700;
+}
+.workloadLabel small {
+  color: #97a2b2;
+  font-size: 9px;
+}
+.workloadContent {
+  min-width: 0;
+}
+.workloadEmpty {
+  display: grid;
+  gap: 3px;
+}
+.workloadEmpty strong {
+  color: #56657a;
+  font-size: 11px;
+  font-weight: 600;
+}
+.workloadEmpty p,
+.workloadQueueEmpty {
+  margin: 0;
+  color: #98a3b3;
+  font-size: 9px;
+  line-height: 1.5;
+}
+.workloadQueueEmpty {
+  padding-top: 2px;
+}
 .skillList {
   display: flex;
   flex-wrap: wrap;
@@ -761,6 +873,11 @@
   color: #6b7890;
   font-size: 10px;
 }
+.workloadContent .taskDetail {
+  padding: 0;
+  border-left: 0;
+  background: transparent;
+}
 
 .detailActions {
   display: grid;
@@ -835,7 +952,8 @@
 .darkTheme .metricValueRow strong,
 .darkTheme .detailHeader h2,
 .darkTheme .profile h3,
-.darkTheme .detailSection h4 {
+.darkTheme .detailSection h4,
+.darkTheme .workloadLabel span {
   color: #edf2f8;
 }
 
@@ -941,6 +1059,34 @@
 
 .darkTheme .skillList span {
   color: #b2bfd1;
+}
+
+.darkTheme .workloadPanel {
+  border-color: #303b4a;
+  background: #202733;
+}
+
+.darkTheme .workloadItem + .workloadItem {
+  border-top-color: #303b4a;
+}
+
+.darkTheme .workloadItem:first-child::after {
+  background: #3a4657;
+}
+
+.darkTheme .workloadMarker {
+  border-color: #526074;
+  background: #202733;
+}
+
+.darkTheme .workloadEmpty strong {
+  color: #c3cddd;
+}
+
+.darkTheme .workloadEmpty p,
+.darkTheme .workloadQueueEmpty,
+.darkTheme .workloadLabel small {
+  color: #8491a4;
 }
 
 .darkTheme .timeline li::before {

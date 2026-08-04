@@ -34,6 +34,7 @@ test("scenario tab renders a project-list style scenario list", () => {
   assert.match(scenarioListSource, /更新时间/);
   assert.match(scenarioListSource, /RowActions/);
   assert.match(scenarioListSource, /deleteApiAutomationScenario/);
+  assert.doesNotMatch(scenarioListSource, /scenario\.status|>状态</);
 });
 
 test("new scenarios use a list dialog and existing scenarios use dedicated editor routes", () => {

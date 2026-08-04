@@ -14,14 +14,25 @@ from generated_locustfile import *
 
 
 RUNTIME = json.loads(Path(__file__).with_name("runtime.json").read_text(encoding="utf-8"))
-PLAN["request"]["headers"] = {
-    **dict(PLAN["request"].get("headers") or {}),
-    **dict(RUNTIME["environment"].get("headers") or {}),
-}
+if PLAN.get("target_type") == "scenario":
+    for step in PLAN.get("steps") or []:
+        request = step.get("request")
+        if request is not None:
+            request["headers"] = {
+                **dict(request.get("headers") or {}),
+                **dict(RUNTIME["environment"].get("headers") or {}),
+            }
+else:
+    PLAN["request"]["headers"] = {
+        **dict(PLAN["request"].get("headers") or {}),
+        **dict(RUNTIME["environment"].get("headers") or {}),
+    }
 PerformanceUser.host = str(RUNTIME["environment"]["api_base_url"]).rstrip("/")
 
 EVENT_LOG = Path(__file__).with_name("locust-events.jsonl")
 SSE_MEASUREMENTS = Path(__file__).with_name("sse-measurements.jsonl")
+SSE_MEASUREMENT_META = Path(__file__).with_name("sse-measurements.meta.json")
+SSE_MEASUREMENT_MAX_BYTES = 64 * 1024 * 1024
 CONTROL_FILE = Path(__file__).with_name("locust-control.json")
 
 
@@ -35,8 +46,18 @@ def _append_event(payload):
 
 def _append_sse_measurement(payload):
     # Measurements intentionally contain only timings, IDs, and failure reasons.
+    if SSE_MEASUREMENTS.exists() and SSE_MEASUREMENTS.stat().st_size >= SSE_MEASUREMENT_MAX_BYTES:
+        SSE_MEASUREMENT_META.write_text(json.dumps({
+            "schema_version": "v1",
+            "truncated": True,
+            "max_bytes": SSE_MEASUREMENT_MAX_BYTES,
+        }), encoding="utf-8")
+        return
     with SSE_MEASUREMENTS.open("a", encoding="utf-8") as handle:
-        handle.write(json.dumps(payload, ensure_ascii=False, separators=(",", ":")) + "\\n")
+        handle.write(json.dumps({
+            "schema_version": "v1",
+            **payload,
+        }, ensure_ascii=False, separators=(",", ":")) + "\\n")
 
 
 generated.SSE_MEASUREMENT_SINK = _append_sse_measurement
@@ -91,6 +112,7 @@ def _control_loop(environment):
                         environment.runner.stats.reset_all()
                         environment.runner.exceptions = {}
                     SSE_MEASUREMENTS.write_text("", encoding="utf-8")
+                    SSE_MEASUREMENT_META.unlink(missing_ok=True)
                     last_command = command_id
         except (OSError, UnicodeDecodeError, json.JSONDecodeError):
             pass

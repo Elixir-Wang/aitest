@@ -311,9 +311,14 @@ def test_generated_scenario_runtime_captures_sse_events_once(monkeypatch) -> Non
         "streaming": True,
         "captured": True,
         "event_count": 2,
+        "truncated": False,
         "events": [
-            {"event": "message", "data": {"code": "000000", "data": {"answer": "你好"}}},
-            {"event": "done", "data": "[DONE]"},
+            {
+                "event": "message",
+                "data": {"code": "000000", "data": {"answer": "你好"}},
+                "received_offset_ms": 0,
+            },
+            {"event": "done", "data": "[DONE]", "received_offset_ms": 0},
         ],
     }
     assert extracted == {"code": "000000"}
@@ -673,6 +678,65 @@ def test_generated_segment_code_sse_flow_dispatches_dependency_and_dynamic_data(
     assert calls[0][1]["stream"] is True
 
 
+def test_generated_scenario_probe_reuses_secret_headers_and_stops_after_target(monkeypatch) -> None:
+    support_module = ModuleType("support")
+    assertions_module = ModuleType("support.assertions")
+    assertions_module.assert_response_assertions = lambda response, assertions: None
+    monkeypatch.setitem(sys.modules, "support", support_module)
+    monkeypatch.setitem(sys.modules, "support.assertions", assertions_module)
+    monkeypatch.setenv("API_HEADER_CYBERTRON_ROBOT_TOKEN", "token-value")
+    monkeypatch.setenv("API_SCENARIO_PROBE_TARGET_STEP_ID", "stream")
+    monkeypatch.setenv("API_SCENARIO_PROBE_MAX_EVENTS", "10")
+    namespace = {}
+    exec(renderer._scenario_py(), namespace)
+    calls = []
+
+    class FakeSseResponse:
+        status_code = 200
+        headers = {"Content-Type": "text/event-stream"}
+
+        def iter_lines(self, decode_unicode=False):
+            return iter([b"event: message", b'data: {"data":{"event_type":"answer"}}', b""])
+
+    class FakeClient:
+        def request(self, request_data, test_data):
+            calls.append(request_data)
+            return FakeSseResponse()
+
+    outputs = namespace["run_scenario"](
+        FakeClient(),
+        {
+            "steps": [
+                {
+                    "id": "stream",
+                    "endpoint": {
+                        "method": "POST",
+                        "path": "/sse",
+                        "responses": {"200": {"content": {"text/event-stream": {}}}},
+                    },
+                    "bindings": [
+                        {
+                            "target": "/request/headers/cybertron-robot-token",
+                            "source": {"type": "secret", "key": "cybertron_robot_token"},
+                        }
+                    ],
+                    "assertions": [{"type": "status_code", "expected": 200}],
+                },
+                {"id": "must-not-run", "endpoint": {"method": "GET", "path": "/unexpected"}},
+            ]
+        },
+    )
+
+    assert calls == [
+        {
+            "method": "POST",
+            "path": "/sse",
+            "headers": {"cybertron-robot-token": "token-value"},
+        }
+    ]
+    assert outputs == {"stream": {}}
+
+
 def test_generated_scenario_runtime_executes_assign_condition_and_wait(monkeypatch) -> None:
     support_module = ModuleType("support")
     assertions_module = ModuleType("support.assertions")
@@ -873,6 +937,88 @@ def test_generated_scenario_suite_collects_with_pytest(tmp_path) -> None:
 
     assert execution["status"] == "passed", execution["error_message"]
     assert json.loads(Path(execution["scenario_result_path"]).read_text(encoding="utf-8"))["status"] == "passed"
+
+
+def test_generated_scenario_suite_runs_in_sse_probe_mode(tmp_path) -> None:
+    files = renderer.render_scenario_files(
+        "probe_apiscn_1",
+        {
+            "id": "apiscn-1",
+            "name": "SSE 探测",
+            "variables": {},
+            "steps": [
+                {
+                    "id": "stream",
+                    "name": "流式回答",
+                    "endpoint": {
+                        "method": "POST",
+                        "path": "/stream",
+                        "responses": {"200": {"content": {"text/event-stream": {}}}},
+                    },
+                    "bindings": [
+                        {
+                            "target": "/request/headers/cybertron-robot-token",
+                            "source": {"type": "secret", "key": "cybertron_robot_token"},
+                        }
+                    ],
+                    "assertions": [{"type": "status_code", "expected": 200}],
+                },
+                {"id": "after", "name": "不应执行", "endpoint": {"method": "GET", "path": "/after"}},
+            ],
+        },
+    )
+    for file_key, content in files.items():
+        path = tmp_path / file_key
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content, encoding="utf-8")
+    (tmp_path / "pytest.ini").write_text(
+        "[pytest]\naddopts = --import-mode=importlib\npythonpath = .\ntestpaths = testcases\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "conftest.py").write_text(
+        """
+import pytest
+
+class Response:
+    status_code = 200
+    headers = {"Content-Type": "text/event-stream"}
+    def iter_lines(self, decode_unicode=False):
+        return iter([b"event: message", b'data: {"data":{"event_type":"answer"}}', b""])
+
+class Client:
+    def request(self, request_data, test_data):
+        assert request_data["headers"]["cybertron-robot-token"] == "secret-token"
+        return Response()
+
+@pytest.fixture
+def api_client():
+    return Client()
+""".lstrip(),
+        encoding="utf-8",
+    )
+
+    execution = run_script_suite(
+        run_id="probe-1",
+        project_id="project-1",
+        suite_path=tmp_path,
+        run_dir=tmp_path / "run",
+        environment={
+            "api_base_url": "https://api.example.test",
+            "headers": {"cybertron-robot-token": "secret-token"},
+        },
+        timeout=120,
+        test_paths=[renderer.SCENARIO_TEST_FILE],
+        scenario_file="scenarios/probe_apiscn_1/scenario.json",
+        scenario_probe_target_step_id="stream",
+        scenario_probe_max_stream_seconds=60,
+    )
+
+    assert execution["status"] == "passed", execution["error_message"]
+    result = json.loads(Path(execution["scenario_result_path"]).read_text(encoding="utf-8"))
+    assert [step["step_id"] for step in result["steps"]] == ["stream"]
+    event = result["steps"][0]["response"]["body"]["events"][0]
+    assert event["data"]["data"]["event_type"] == "answer"
+    assert event["received_offset_ms"] >= 0
 
 
 def test_generated_scenario_test_uses_shared_runtime_and_selected_data_file() -> None:

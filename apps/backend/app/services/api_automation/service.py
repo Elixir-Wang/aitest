@@ -2057,9 +2057,7 @@ def create_api_scenario_run(
         environment = api_automation_repo.find_api_environment(db, api_environment_id)
         if not environment or environment["project_id"] != project_id:
             raise api_error(404, "API_ENVIRONMENT_NOT_FOUND", "接口环境不存在。")
-        if scenario["status"] != "ready":
-            raise api_error(409, "API_SCENARIO_NOT_READY", "请先保存场景版本。")
-        snapshot = api_automation_repo.loads_json(scenario["published_snapshot_json"], {})
+        snapshot = _require_saved_scenario_snapshot(scenario, "请先保存场景版本。")
         serialized_snapshot = json.dumps(snapshot, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
         snapshot_hash = hashlib.sha256(serialized_snapshot.encode("utf-8")).hexdigest()
         if snapshot_hash != scenario["published_hash"]:
@@ -2112,6 +2110,56 @@ def create_api_scenario_run(
             created_by=actor["id"],
         )
         return _serialize_api_run(api_automation_repo.find_api_run(db, run_id), db)
+
+
+def execute_api_scenario_probe(
+    project_id: str,
+    scenario_id: str,
+    api_environment_id: str,
+    *,
+    target_step_id: str,
+    max_stream_seconds: float,
+    max_events: int = 200,
+) -> dict[str, Any]:
+    with connect() as db:
+        scenario = _require_scenario(db, project_id, scenario_id)
+        environment = api_automation_repo.find_api_environment(db, api_environment_id)
+        if not environment or environment["project_id"] != project_id:
+            raise api_error(404, "API_ENVIRONMENT_NOT_FOUND", "接口环境不存在。")
+        snapshot = _require_saved_scenario_snapshot(scenario, "请先保存场景版本。")
+        runtime_environment = _build_runtime_environment(db, api_environment_id)
+
+    with project_workspace_lock(project_id):
+        artifacts = materialize_scenario_snapshot(project_id, snapshot)
+    relative_test_path = str(artifacts["test_file_path"].relative_to(artifacts["suite_path"]))
+    relative_scenario_path = str(artifacts["data_file_path"].relative_to(artifacts["suite_path"]))
+    prefix_timeout = max(1, len(snapshot.get("steps") or [])) * int(runtime_environment.get("timeout_seconds", 30))
+    process_timeout = max(120, int(max_stream_seconds) + prefix_timeout + 30)
+
+    with tempfile.TemporaryDirectory(prefix="api-scenario-probe-") as temporary_dir:
+        result = run_script_suite(
+            run_id="api-scenario-probe",
+            project_id=project_id,
+            suite_path=artifacts["suite_path"],
+            run_dir=Path(temporary_dir),
+            environment=runtime_environment,
+            timeout=process_timeout,
+            test_paths=[relative_test_path],
+            scenario_file=relative_scenario_path,
+            scenario_probe_target_step_id=target_step_id,
+            scenario_probe_max_stream_seconds=max_stream_seconds,
+            scenario_probe_max_events=max_events,
+        )
+        scenario_result = {}
+        scenario_result_path_value = result.get("scenario_result_path")
+        if scenario_result_path_value and (scenario_result_path := Path(scenario_result_path_value)).is_file():
+            scenario_result = json.loads(scenario_result_path.read_text(encoding="utf-8"))
+        return {
+            "status": result["status"],
+            "summary": result["summary"],
+            "error_message": result["error_message"],
+            "scenario_result": scenario_result,
+        }
 
 
 def create_api_scenario_suite(project_id: str, payload: ApiScenarioSuiteCreateIn, actor) -> dict:
@@ -2200,13 +2248,11 @@ def run_api_scenario_suite(project_id: str, suite_id: str, actor) -> dict:
         if not scenario_rows:
             raise api_error(409, "API_SCENARIO_SUITE_EMPTY", "测试集至少需要一个接口场景。")
         for scenario in scenario_rows:
-            if scenario["status"] != "ready":
-                raise api_error(409, "API_SCENARIO_NOT_READY", f"场景“{scenario['name']}”尚未保存，不能批量运行。")
-            enabled_step = db.execute(
-                "SELECT 1 FROM api_scenario_steps WHERE scenario_id = ? AND enabled = 1 LIMIT 1",
-                (scenario["id"],),
-            ).fetchone()
-            if not enabled_step:
+            snapshot = _require_saved_scenario_snapshot(
+                scenario,
+                f"场景“{scenario['name']}”尚未保存，不能批量运行。",
+            )
+            if not snapshot.get("steps"):
                 raise api_error(409, "API_SCENARIO_EMPTY", f"场景“{scenario['name']}”没有启用步骤，不能批量运行。")
         api_automation_repo.create_api_batch_run(
             db,
@@ -2509,7 +2555,18 @@ def list_api_scenarios(project_id: str, actor) -> list[dict]:
             "SELECT * FROM api_scenarios WHERE project_id = ? ORDER BY updated_at DESC, created_at DESC",
             (project_id,),
         ).fetchall()
-        return [_serialize_scenario(row, []) for row in rows]
+        step_rows = db.execute(
+            """
+            SELECT * FROM api_scenario_steps
+            WHERE project_id = ?
+            ORDER BY scenario_id ASC, step_order ASC, created_at ASC
+            """,
+            (project_id,),
+        ).fetchall()
+        steps_by_scenario: dict[str, list[dict]] = {}
+        for step_row in step_rows:
+            steps_by_scenario.setdefault(step_row["scenario_id"], []).append(_serialize_scenario_step(step_row))
+        return [_serialize_scenario(row, steps_by_scenario.get(row["id"], [])) for row in rows]
 
 
 def get_api_scenario(project_id: str, scenario_id: str, actor) -> dict:
@@ -3776,25 +3833,17 @@ def _serialize_api_scenario_suite(row: Row | None, db) -> dict:
     scenario_rows = api_automation_repo.list_api_scenario_suite_items(db, row["id"])
     scenarios = []
     for scenario in scenario_rows:
-        counts = db.execute(
-            """
-            SELECT COUNT(*) AS step_count,
-                   SUM(CASE WHEN enabled = 1 THEN 1 ELSE 0 END) AS enabled_step_count
-            FROM api_scenario_steps
-            WHERE scenario_id = ?
-            """,
-            (scenario["id"],),
-        ).fetchone()
+        snapshot = api_automation_repo.loads_json(scenario["published_snapshot_json"], {})
+        saved_steps = snapshot.get("steps") if isinstance(snapshot.get("steps"), list) else []
         scenarios.append(
             {
                 "id": scenario["id"],
                 "name": scenario["name"],
                 "description": scenario["description"],
-                "status": scenario["status"],
                 "revision": scenario["revision"],
                 "position": scenario["position"],
-                "step_count": int(counts["step_count"] or 0),
-                "enabled_step_count": int(counts["enabled_step_count"] or 0),
+                "step_count": len(saved_steps),
+                "enabled_step_count": len(saved_steps),
             }
         )
     latest_batch = api_automation_repo.find_latest_api_batch_run_for_suite(db, row["id"])
@@ -3889,7 +3938,6 @@ def _serialize_scenario(row: Row, steps: list[dict], *, asset_changes: list[dict
         "api_environment_id": row["api_environment_id"],
         "name": row["name"],
         "description": row["description"],
-        "status": row["status"],
         "variables": api_automation_repo.loads_json(row["variables_json"], {}),
         "revision": row["revision"],
         "published_hash": row["published_hash"],
@@ -3927,6 +3975,13 @@ def _require_scenario(db, project_id: str, scenario_id: str) -> Row:
     if not row or row["project_id"] != project_id:
         raise api_error(404, "API_SCENARIO_NOT_FOUND", "接口场景不存在。")
     return row
+
+
+def _require_saved_scenario_snapshot(scenario: Row, message: str) -> dict:
+    snapshot = api_automation_repo.loads_json(scenario["published_snapshot_json"], {})
+    if int(scenario["revision"] or 0) <= 0 or not scenario["published_hash"] or not snapshot:
+        raise api_error(409, "API_SCENARIO_NOT_SAVED", message)
+    return snapshot
 
 
 def _validate_scenario_environment(db, project_id: str, environment_id: str | None) -> None:
@@ -4172,8 +4227,8 @@ def _save_current_scenario_version(db, scenario: Row, steps: list[dict], actor) 
     db.execute(
         """
         UPDATE api_scenarios
-        SET status = 'ready', revision = revision + 1, published_snapshot_json = ?,
-            published_hash = ?, updated_by = ?, updated_at = CURRENT_TIMESTAMP
+        SET revision = revision + 1, published_snapshot_json = ?, published_hash = ?,
+            updated_by = ?, updated_at = CURRENT_TIMESTAMP
         WHERE id = ?
         """,
         (serialized, published_hash, actor["id"], scenario["id"]),

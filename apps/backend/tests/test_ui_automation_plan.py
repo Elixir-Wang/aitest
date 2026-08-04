@@ -93,6 +93,81 @@ def test_automation_plan_accepts_supported_actions_and_assertions():
     assert plan.assertions[0].kind == "visible"
 
 
+def test_v2_automation_plan_requires_business_step_mapping_and_title():
+    payload = {
+        "schema_version": "v2",
+        "project_id": "project-1",
+        "automation_case_id": "uiauto-1",
+        "source_test_case_id": "case-1",
+        "source_test_case_version": 1,
+        "environment_id": "env-1",
+        "steps": [
+            {
+                "source_step_id": "operation-1",
+                "kind": "navigate",
+                "page_key": "login",
+            }
+        ],
+        "artifacts": {
+            "test_file": "testcases/generated/project_1/test_login.py",
+            "data_file": "data/projects/project_1/cases/login.yaml",
+            "plan_file": "data/projects/project_1/cases/login.plan.json",
+        },
+    }
+
+    with pytest.raises(ValidationError, match="business_step_id 和 title"):
+        AutomationPlan.model_validate(payload)
+
+
+def test_generation_contract_rejects_legacy_v1_plan():
+    payload = {
+        "schema_version": "v1",
+        "project_id": "project-1",
+        "automation_case_id": "uiauto-1",
+        "source_test_case_id": "case-1",
+        "source_test_case_version": 1,
+        "environment_id": "env-1",
+        "artifacts": {
+            "test_file": "testcases/generated/project_1/test_login.py",
+            "data_file": "data/projects/project_1/cases/login.yaml",
+            "plan_file": "data/projects/project_1/cases/login.plan.json",
+        },
+    }
+
+    with pytest.raises(ValueError, match="schema_version v2"):
+        AutomationPlan.model_validate(payload).require_generation_contract()
+
+
+def test_generation_contract_rejects_unknown_business_step():
+    payload = {
+        "schema_version": "v2",
+        "project_id": "project-1",
+        "automation_case_id": "uiauto-1",
+        "source_test_case_id": "case-1",
+        "source_test_case_version": 1,
+        "environment_id": "env-1",
+        "steps": [
+            {
+                "source_step_id": "operation-1",
+                "business_step_id": "invented-step",
+                "title": "编造步骤",
+                "kind": "navigate",
+                "page_key": "login",
+            }
+        ],
+        "artifacts": {
+            "test_file": "testcases/generated/project_1/test_login.py",
+            "data_file": "data/projects/project_1/cases/login.yaml",
+            "plan_file": "data/projects/project_1/cases/login.plan.json",
+        },
+    }
+
+    plan = AutomationPlan.model_validate(payload)
+
+    with pytest.raises(ValueError, match="business_step_id 不存在于原始用例"):
+        plan.require_generation_contract({"step-1": "进入登录页"})
+
+
 def test_automation_plan_rejects_another_project_namespace():
     payload = {
         "schema_version": "v1",

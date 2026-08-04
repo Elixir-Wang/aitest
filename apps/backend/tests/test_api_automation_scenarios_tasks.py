@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 import pytest
@@ -141,11 +142,13 @@ def test_create_scenario_and_steps(monkeypatch: pytest.MonkeyPatch, tmp_path: Pa
         ACTOR,
     )
     detail = service.get_api_scenario("project-1", scenario["id"], ACTOR)
+    listed = service.list_api_scenarios("project-1", ACTOR)
 
     assert step["endpoint_id"] == "apiend-1"
     assert step["step_type"] == "api_request"
     assert step["control_config"] == {}
     assert detail["steps"][0]["extractors"] == [{"name": "user_id", "path": "$.id"}]
+    assert listed[0]["steps"][0]["id"] == step["id"]
 
 
 def test_scenario_update_persists_selected_api_environment(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -309,7 +312,6 @@ def test_scenario_revisions_include_orchestration_and_restore_as_new_version(
 
     assert [item["revision"] for item in revisions] == [2, 1]
     assert revisions[0]["snapshot"]["steps"][0]["name"] == "查询资料并校验"
-    assert restored["status"] == "ready"
     assert restored["revision"] == 3
     assert restored["steps"][0]["name"] == "查询资料"
     assert [item["revision"] for item in service.list_api_scenario_revisions("project-1", scenario["id"], ACTOR)] == [3, 2, 1]
@@ -581,7 +583,6 @@ def test_replace_validate_and_publish_scenario(monkeypatch: pytest.MonkeyPatch, 
     assert detail["steps"][0]["step_order"] == 0
     assert detail["steps"][0]["endpoint_id"] == "apiend-1"
     assert validation == {"valid": True, "errors": [], "warnings": []}
-    assert saved["status"] == "ready"
     assert saved["revision"] == 1
     assert saved["published_hash"]
 
@@ -739,7 +740,7 @@ def test_scenario_run_requires_and_uses_current_saved_version(monkeypatch: pytes
 
     with pytest.raises(Exception) as error:
         service.create_api_scenario_run("project-1", scenario["id"], "apienv-draft", ACTOR)
-    assert error.value.detail["code"] == "API_SCENARIO_NOT_READY"
+    assert error.value.detail["code"] == "API_SCENARIO_NOT_SAVED"
 
     current = _save_latest_scenario_version(scenario["id"])
     service.replace_api_scenario_steps(
@@ -762,7 +763,109 @@ def test_scenario_run_requires_and_uses_current_saved_version(monkeypatch: pytes
 
     assert run["execution_snapshot"]["scenario"]["source"] == "current"
     assert run["execution_snapshot"]["scenario"]["revision"] == 2
-    assert latest["status"] == "ready"
+    assert latest["revision"] == 2
+
+
+def test_execute_api_scenario_probe_reuses_saved_snapshot_and_runtime_environment(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    _seed_project_endpoint_and_runs()
+    environment = service.create_api_environment(
+        "project-1",
+        ApiEnvironmentIn(
+            name="SSE 环境",
+            api_base_url="https://api.example.test",
+            auth_type="cybertron_agent",
+            auth_config={
+                "cybertron_robot_key": "robot-key",
+                "cybertron_robot_token": "robot-token",
+            },
+            variables={"tenant_id": "tenant-1"},
+            timeout_seconds=17,
+        ),
+        ACTOR,
+    )
+    scenario = service.create_api_scenario("project-1", ApiScenarioIn(name="SSE 编排"), ACTOR)
+    service.replace_api_scenario_steps(
+        "project-1",
+        scenario["id"],
+        ApiScenarioStepsReplaceIn(
+            steps=[
+                ApiScenarioStepIn(
+                    endpoint_id="apiend-1",
+                    name="流式回答",
+                    bindings=[
+                        {
+                            "target": "/request/headers/cybertron-robot-token",
+                            "source": {"type": "secret", "key": "cybertron_robot_token"},
+                        }
+                    ],
+                    assertions=[{"type": "status_code", "expected": 200}],
+                )
+            ]
+        ),
+        ACTOR,
+    )
+    saved = _save_latest_scenario_version(scenario["id"])
+    target_step_id = saved["steps"][0]["id"]
+    with connect() as db:
+        scenario_row = db.execute("SELECT published_snapshot_json FROM api_scenarios WHERE id = ?", (scenario["id"],)).fetchone()
+        expected_snapshot = api_automation_repo.loads_json(scenario_row["published_snapshot_json"], {})
+    materialized = []
+    original_materialize = service.materialize_scenario_snapshot
+
+    def capture_materialize(project_id: str, snapshot: dict) -> dict:
+        materialized.append((project_id, snapshot))
+        return original_materialize(project_id, snapshot)
+
+    runner_calls = []
+    result_path = None
+
+    def fake_run_script_suite(**kwargs):
+        nonlocal result_path
+        runner_calls.append(kwargs)
+        result_path = kwargs["run_dir"] / "scenario-result.json"
+        result_path.write_text(
+            json.dumps({"status": "passed", "steps": [{"step_id": target_step_id, "status": "passed"}]}),
+            encoding="utf-8",
+        )
+        return {
+            "status": "passed",
+            "summary": {"total": 1, "passed": 1, "failed": 0},
+            "error_message": "",
+            "scenario_result_path": str(result_path),
+        }
+
+    monkeypatch.setattr(service, "materialize_scenario_snapshot", capture_materialize)
+    monkeypatch.setattr(service, "run_script_suite", fake_run_script_suite)
+
+    execution = service.execute_api_scenario_probe(
+        "project-1",
+        scenario["id"],
+        environment["id"],
+        target_step_id=target_step_id,
+        max_stream_seconds=45,
+        max_events=123,
+    )
+
+    assert materialized == [("project-1", expected_snapshot)]
+    assert runner_calls[0]["environment"] == {
+        "api_base_url": "https://api.example.test",
+        "timeout_seconds": 17,
+        "auth": {},
+        "headers": {
+            "cybertron-robot-key": "robot-key",
+            "cybertron-robot-token": "robot-token",
+        },
+        "variables": {"tenant_id": "tenant-1"},
+    }
+    assert runner_calls[0]["scenario_probe_target_step_id"] == target_step_id
+    assert runner_calls[0]["scenario_probe_max_stream_seconds"] == 45
+    assert runner_calls[0]["scenario_probe_max_events"] == 123
+    assert execution["scenario_result"]["steps"][0]["step_id"] == target_step_id
+    assert result_path is not None and not result_path.exists()
 
 
 def test_task_service_includes_api_automation_tasks(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

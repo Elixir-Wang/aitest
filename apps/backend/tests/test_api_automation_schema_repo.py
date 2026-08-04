@@ -12,7 +12,7 @@ from app.core.db import connect
 from app.repositories import api_automation_repo
 from app.seed.init_db import init_db
 from app.schemas.api_automation import ApiAutomationGenerateIn, ApiRunCreateIn, ApiTestCaseSetIn, ApiTestCaseSetOut
-from app.seed.seeds import _assert_foreign_key_integrity
+from app.seed.seeds import _assert_foreign_key_integrity, _ensure_api_scenario_columns
 from app.services.api_automation import service
 
 
@@ -77,6 +77,36 @@ def test_scenario_step_schema_contains_type_and_control_config(
         columns = {row["name"] for row in db.execute("PRAGMA table_info(api_scenario_steps)").fetchall()}
 
     assert {"step_type", "control_config_json"} <= columns
+
+
+def test_scenario_schema_migration_removes_legacy_status_column() -> None:
+    db = sqlite3.connect(":memory:")
+    db.row_factory = sqlite3.Row
+    db.executescript(
+        """
+        CREATE TABLE api_scenarios (
+          id TEXT PRIMARY KEY,
+          project_id TEXT NOT NULL,
+          name TEXT NOT NULL,
+          description TEXT NOT NULL DEFAULT '',
+          status TEXT NOT NULL CHECK(status IN ('draft', 'ready', 'archived')) DEFAULT 'draft',
+          variables_json TEXT NOT NULL DEFAULT '{}',
+          created_by TEXT NOT NULL,
+          updated_by TEXT NOT NULL DEFAULT '',
+          created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+        INSERT INTO api_scenarios (id, project_id, name, status, created_by)
+        VALUES ('scenario-1', 'project-1', '历史场景', 'ready', 'u-admin');
+        """
+    )
+
+    _ensure_api_scenario_columns(db)
+
+    columns = {row["name"] for row in db.execute("PRAGMA table_info(api_scenarios)").fetchall()}
+    scenario = db.execute("SELECT id, name FROM api_scenarios WHERE id = 'scenario-1'").fetchone()
+    assert "status" not in columns
+    assert scenario["name"] == "历史场景"
 
 
 def test_generation_items_and_attempts_are_persisted(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

@@ -208,7 +208,15 @@ def _execute_generation_run_in_workspace(row) -> dict:
                     artifacts=relative_artifacts,
                 )
             )
-        plan = AutomationPlan.model_validate(json.loads(artifact_paths["plan_file"].read_text(encoding="utf-8")))
+        plan = AutomationPlan.model_validate(
+            json.loads(artifact_paths["plan_file"].read_text(encoding="utf-8"))
+        ).require_generation_contract(
+            {
+                str(step["id"]): str(step.get("action", ""))
+                for step in case_data["steps"]
+                if step.get("id")
+            }
+        )
         collection = collect_suite(suite_path, test_paths=[relative_artifacts["test_file"]])
         if not collection["ok"]:
             raise ValueError(f"pytest collection 失败：{collection['stderr'][-2000:]}")

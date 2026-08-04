@@ -10,7 +10,6 @@ import { Pencil, Trash2 } from "lucide-react";
 import { ListToolbar, RowActions, ShellSection } from "@/components/ai-testing/page-shell";
 import { TableLoadingRow } from "@/components/ai-testing/table-loading-row";
 import { Select, SelectOption } from "@/components/ui/animated-select-1";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -184,11 +183,10 @@ export function ApiScenarioList({ projectId }: ApiScenarioListProps) {
                   onCheckedChange={(checked) => toggleAll(Boolean(checked))}
                 />
               </TableHead>
-              <TableHead className="w-[20%]">场景名称</TableHead>
-              <TableHead className="w-[27%]">描述</TableHead>
-              <TableHead className="w-[10%]">步骤数</TableHead>
-              <TableHead className="w-[14%]">状态</TableHead>
-              <TableHead className="w-[15%]">更新时间</TableHead>
+              <TableHead className="w-[22%]">场景名称</TableHead>
+              <TableHead className="w-[31%]">描述</TableHead>
+              <TableHead className="w-[12%]">步骤数</TableHead>
+              <TableHead className="w-[21%]">更新时间</TableHead>
               <TableHead className="w-[8%]">操作</TableHead>
             </TableRow>
           </TableHeader>
@@ -216,9 +214,6 @@ export function ApiScenarioList({ projectId }: ApiScenarioListProps) {
                     </span>
                   </TableCell>
                   <TableCell>{scenario.steps.length}</TableCell>
-                  <TableCell>
-                    <Badge variant="outline">{scenarioStatusLabel(scenario)}</Badge>
-                  </TableCell>
                   <TableCell>{formatDateTime(scenario.updated_at)}</TableCell>
                   <TableCell>
                     <RowActions
@@ -238,10 +233,10 @@ export function ApiScenarioList({ projectId }: ApiScenarioListProps) {
                 </TableRow>
               );
             })}
-            {loading && filteredRows.length === 0 ? <TableLoadingRow colSpan={7} label="场景列表加载中" /> : null}
+            {loading && filteredRows.length === 0 ? <TableLoadingRow colSpan={6} label="场景列表加载中" /> : null}
             {!loading && filteredRows.length === 0 ? (
               <TableRow>
-                <TableCell className="h-24 text-center text-muted-foreground" colSpan={7}>
+                <TableCell className="h-24 text-center text-muted-foreground" colSpan={6}>
                   暂无场景。新建场景后，可组合接口并保存版本运行。
                 </TableCell>
               </TableRow>
@@ -320,10 +315,4 @@ export function ApiScenarioList({ projectId }: ApiScenarioListProps) {
       </Dialog>
     </ShellSection>
   );
-}
-
-function scenarioStatusLabel(scenario: ApiAutomationScenario) {
-  if (scenario.status === "ready") return `当前 v${scenario.revision}`;
-  if (scenario.status === "archived") return "已归档";
-  return "尚无版本";
 }

@@ -66,6 +66,86 @@ def test_metric_snapshot_does_not_invent_missing_percentile() -> None:
     assert snapshot["quality"]["status"] == "partial"
 
 
+def test_metric_snapshot_evaluates_sse_percentile_goals_from_independent_summary() -> None:
+    snapshot = build_metric_snapshot(
+        {
+            "run": {"id": "perfrun-sse", "status": "completed"},
+            "summary": {
+                "request_count": 20,
+                "failure_count": 0,
+                "failure_rate": 0,
+                "requests_per_second": 2,
+                "average_response_time_ms": 2000,
+            },
+            "stats": [{"sampled_at": "1", "request_count": 20, "requests_per_second": 2}],
+            "performance_test": {
+                "performance_goal": {
+                    "sse_metric_goals": [
+                        {"metric_id": "first_answer", "percentile": "p95", "target_ms": 2500},
+                        {"metric_id": "first_answer", "percentile": "p99", "target_ms": 3000},
+                    ]
+                }
+            },
+            "artifacts": {
+                "sse_metrics": {
+                    "schema_version": "v1",
+                    "attempt_count": 20,
+                    "checksum": "sha256:test",
+                    "metrics": [
+                        {
+                            "metric_id": "first_answer",
+                            "attempt_count": 20,
+                            "matched_count": 19,
+                            "missing_count": 1,
+                            "failure_count": 0,
+                            "p95_ms": 2400,
+                            "p99_ms": 3200,
+                        }
+                    ],
+                }
+            },
+            "missing_evidence": [],
+        }
+    )
+
+    assert snapshot["sse_metrics"]["metrics"][0]["metric_id"] == "first_answer"
+    assert {item["metric"]: item["status"] for item in snapshot["objectives"]} == {
+        "sse:first_answer:p95_ms": "passed",
+        "sse:first_answer:p99_ms": "failed",
+    }
+    assert snapshot["verdict"] == "fail"
+
+
+def test_metric_snapshot_marks_sse_goal_not_evaluated_without_matches() -> None:
+    snapshot = build_metric_snapshot(
+        {
+            "run": {"id": "perfrun-sse", "status": "completed"},
+            "summary": {"request_count": 3, "failure_count": 0, "failure_rate": 0},
+            "stats": [],
+            "performance_test": {
+                "performance_goal": {
+                    "sse_metric_goals": [
+                        {"metric_id": "first_tool_call", "percentile": "p95", "target_ms": 5000}
+                    ]
+                }
+            },
+            "artifacts": {
+                "sse_metrics": {
+                    "attempt_count": 3,
+                    "metrics": [
+                        {"metric_id": "first_tool_call", "matched_count": 0, "p95_ms": None}
+                    ],
+                }
+            },
+            "missing_evidence": [],
+        }
+    )
+
+    assert snapshot["objectives"][0]["status"] == "not_evaluated"
+    assert snapshot["objectives"][0]["actual"] is None
+    assert snapshot["verdict"] == "indeterminate"
+
+
 def test_metric_snapshot_exposes_test_scope_and_single_endpoint_metrics() -> None:
     snapshot = build_metric_snapshot(
         {
@@ -130,7 +210,7 @@ def test_metric_snapshot_exposes_test_scope_and_single_endpoint_metrics() -> Non
         }
     )
 
-    assert snapshot["calculator_version"] == "performance-metrics-v4"
+    assert snapshot["calculator_version"] == "performance-metrics-v5"
     assert snapshot["test_scope"] == {
         "test_name": "订单查询性能测试",
         "environment_name": "staging",

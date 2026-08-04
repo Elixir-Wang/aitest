@@ -267,6 +267,7 @@ def _collect_artifacts(report_directory: Path | None) -> tuple[dict[str, Any], l
         "result_exceptions": "result_exceptions.csv",
         "generated_locustfile": "generated_locustfile.py",
         "effective_locustfile": "locustfile.py",
+        "sse_metrics": "sse-measurements.jsonl",
     }
     if report_directory is None or not report_directory.is_dir():
         return artifacts, list(expected.values())
@@ -274,6 +275,11 @@ def _collect_artifacts(report_directory: Path | None) -> tuple[dict[str, Any], l
         path = report_directory / file_name
         if not path.is_file():
             missing.append(file_name)
+            continue
+        if key == "sse_metrics":
+            from app.services.performance_testing.headless_worker import summarize_sse_measurements
+
+            artifacts[key] = summarize_sse_measurements(path)
             continue
         if path.suffix == ".jsonl":
             artifacts[key] = _read_jsonl(path)

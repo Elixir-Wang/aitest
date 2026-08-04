@@ -100,6 +100,10 @@ test("performance SSE metrics use one summary section and one validated configur
   assert.match(sseMetricsConfigSource, /待验证/);
   assert.match(sseMetricsConfigSource, /重新验证/);
   assert.match(sseMetricsConfigSource, /当前配置不会立即被覆盖/);
+  assert.match(apiClientSource, /sse_metric_goals\?: PerformanceSseMetricGoal\[]/);
+  assert.match(formSource, /SSE 事件指标目标/);
+  assert.match(formSource, /P95 上限（ms）|percentile\.toUpperCase\(\)/);
+  assert.match(formSource, /buildSseMetricGoals\(sse, sseGoalTargets\)/);
   assert.doesNotMatch(sseMetricsConfigSource, /Tabs|事件时间轴|JSONPath 自动补全/);
 });
 
@@ -128,7 +132,13 @@ test("performance create form does not preselect its identifying fields", () => 
   assert.doesNotMatch(formSource, /setName\(\(current\).*result\.endpoint\.name/);
 });
 
-test("performance request configuration is endpoint-only and hides empty sections", () => {
+test("performance create form keeps its grid and actions shrinkable on narrow screens", () => {
+  assert.match(formSource, /grid-cols-\[minmax\(0,1fr\)\]/);
+  assert.match(formSource, /\[&>\*\]:min-w-0/);
+  assert.match(formSource, /flex flex-wrap items-center justify-between gap-2 border-b/);
+});
+
+test("performance request configuration keeps endpoint fields scoped while both targets support transport", () => {
   assert.doesNotMatch(formSource, /请求数据来源/);
   assert.doesNotMatch(formSource, /listApiAutomationTestCases/);
   assert.doesNotMatch(formSource, /sourceCaseId|source_api_test_case_id|endpointCases|changeSourceCase/);
@@ -137,6 +147,10 @@ test("performance request configuration is endpoint-only and hides empty section
   assert.match(formSource, /hasEntries\(preview\?\.request_config\.query_parameters\)/);
   assert.match(formSource, /hasEntries\(preview\?\.request_config\.headers\)/);
   assert.match(formSource, /hasBody\(preview\?\.request_config\.body\)/);
+  assert.match(formSource, /scenario-sse-step/);
+  assert.match(formSource, /scenarioRequestSteps/);
+  assert.match(formSource, /scenario_step_id: targetType === "scenario" && transport === "sse"/);
+  assert.match(sseMetricsConfigSource, /scenario_id: scenarioId, scenario_step_id: scenarioStepId/);
 });
 
 test("performance create form leaves success rules to the OpenAPI-backed server default", () => {

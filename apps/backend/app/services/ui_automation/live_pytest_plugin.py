@@ -44,6 +44,14 @@ def pytest_collection_finish(session) -> None:
             parameters=params,
             attempt=1,
         )
+        step_definitions = _collected_step_definitions(item)
+        if step_definitions:
+            write_event(
+                "steps_defined",
+                iteration_id=iteration_id,
+                pytest_node_id=item.nodeid,
+                steps=step_definitions,
+            )
 
 
 def pytest_runtest_setup(item) -> None:
@@ -242,6 +250,14 @@ def _business_parameter_names() -> set[str] | None:
     except ValueError:
         return None
     return {str(item) for item in payload} if isinstance(payload, list) else None
+
+
+def _collected_step_definitions(item) -> list[dict]:
+    module = getattr(item, "module", None)
+    definitions = getattr(module, "UI_CASE_STEP_DEFINITIONS", None)
+    if not isinstance(definitions, list):
+        return []
+    return [dict(definition) for definition in definitions if isinstance(definition, dict)]
 
 
 def _finish_iteration(item, status: str, *, error: dict | None = None) -> None:

@@ -208,6 +208,8 @@ def reduce_events(
                 step["status"] = "skipped"
             elif step.get("status") == "pending" and iteration["status"] == "cancelled":
                 step["status"] = "cancelled"
+        if terminal_status:
+            iteration["current_step_id"] = ""
 
     ordered = sorted((iterations[item_id] for item_id in ordered_ids), key=lambda item: item["index"])
     counts = {

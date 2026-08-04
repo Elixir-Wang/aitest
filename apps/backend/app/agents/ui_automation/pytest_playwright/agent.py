@@ -26,11 +26,11 @@ SYSTEM_PROMPT = """
 这些路径是本次任务唯一合法的输出路径。允许修改指定的派生测试数据文件，包括规范化、参数化和补充
 执行辅助字段，但不得回写原始测试用例，不得写入账号、密码、Cookie、Token 或宿主机绝对路径。
 
-必须只使用探索证据中存在的页面、操作路径和 locator；不得编造 locator。先形成严格 AutomationPlan，
+必须只使用探索证据中存在的页面、操作路径和 locator；不得编造 locator。先形成 schema_version=v2 的严格 AutomationPlan，
 调用 validate_automation_plan 校验，再调用 render_automation_plan 生成或更新 POM 与测试代码。
 如果 case.parameters 声明了参数，AutomationPlan.parameters 必须包含对应参数名；使用参数值选择页面文本时，
 使用 click_parameter_text 并通过 value_ref 引用参数，禁止把某个参数值固化成 locator。
-每个自动化动作必须使用 business_step_id 显式引用原始用例步骤 ID，并填写一致的用户可读 title；
+每个自动化动作必须使用 business_step_id 显式引用原始用例步骤 ID，title 必须原样使用该步骤的 action；
 同一业务步骤拆出的 fill、click、wait 等动作必须共享 business_step_id，禁止用合成 ID 代替业务步骤映射。
 发送聊天消息后等待助手回复时，必须使用 wait_for_response，并确保目标 locator 只匹配助手回复；
 不得用 wait_visible 代替，也不得假设页面存在初始欢迎语。
@@ -97,7 +97,7 @@ async def generate_pytest_playwright_case(
 
 def _build_validate_tool() -> StructuredTool:
     def validate_automation_plan(plan: dict) -> dict:
-        validated = AutomationPlan.model_validate(plan)
+        validated = AutomationPlan.model_validate(plan).require_generation_contract()
         return validated.model_dump(mode="json")
 
     return StructuredTool.from_function(
@@ -109,7 +109,7 @@ def _build_validate_tool() -> StructuredTool:
 
 def _build_render_tool(suite_path: Path) -> StructuredTool:
     def render_plan(plan: dict) -> dict:
-        validated = AutomationPlan.model_validate(plan)
+        validated = AutomationPlan.model_validate(plan).require_generation_contract()
         paths = render_automation_plan(suite_path, validated)
         return {
             "test_file": relative_suite_path(suite_path, paths["test_file"]),

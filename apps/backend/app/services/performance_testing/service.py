@@ -216,6 +216,16 @@ def update_performance_test(
                 **_environment_runtime_headers(environment),
             }
 
+        from app.schemas.performance_test import validate_sse_goal_references
+
+        effective_request_config = normalized_request_config or current_data.get("request_config") or {}
+        effective_performance_goal = (
+            payload.performance_goal.model_dump(mode="json", exclude_none=True)
+            if payload.performance_goal is not None
+            else current_data.get("performance_goal") or {}
+        )
+        validate_sse_goal_references(effective_request_config, effective_performance_goal)
+
         fields: dict[str, Any] = {}
         for field in payload.model_fields_set:
             value = getattr(payload, field)

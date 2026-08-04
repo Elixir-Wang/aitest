@@ -1003,6 +1003,8 @@ def _ensure_api_scenario_columns(db: sqlite3.Connection) -> None:
         for column, statement in additions.items():
             if column not in columns:
                 db.execute(statement)
+        if "status" in columns:
+            db.execute("ALTER TABLE api_scenarios DROP COLUMN status")
     steps = db.execute("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'api_scenario_steps'").fetchone()
     if not steps:
         return

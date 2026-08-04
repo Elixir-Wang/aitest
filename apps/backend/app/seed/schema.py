@@ -1064,7 +1064,6 @@ CREATE TABLE IF NOT EXISTS api_scenarios (
   api_environment_id TEXT,
   name TEXT NOT NULL,
   description TEXT NOT NULL DEFAULT '',
-  status TEXT NOT NULL CHECK(status IN ('draft', 'ready', 'archived')) DEFAULT 'draft',
   variables_json TEXT NOT NULL DEFAULT '{}',
   revision INTEGER NOT NULL DEFAULT 0,
   published_snapshot_json TEXT NOT NULL DEFAULT '{}',

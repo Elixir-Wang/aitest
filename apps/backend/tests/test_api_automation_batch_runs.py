@@ -1,3 +1,5 @@
+import hashlib
+import json
 import sqlite3
 from pathlib import Path
 
@@ -101,14 +103,29 @@ def _seed_project_and_environment() -> None:
 def _seed_ready_scenarios() -> None:
     with connect() as db:
         for scenario_id, name in (("apiscn-1", "登录"), ("apiscn-2", "下单")):
+            snapshot = {
+                "id": scenario_id,
+                "project_id": "project-1",
+                "name": name,
+                "description": "",
+                "variables": {},
+                "revision": 1,
+                "steps": [{"id": f"apistep-{scenario_id}", "step_type": "control", "enabled": True}],
+            }
+            serialized_snapshot = json.dumps(snapshot, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
             db.execute(
                 """
                 INSERT INTO api_scenarios (
-                  id, project_id, name, status, revision, published_snapshot_json,
+                  id, project_id, name, revision, published_snapshot_json,
                   published_hash, created_by
-                ) VALUES (?, 'project-1', ?, 'ready', 1, '{}', 'hash', 'u-admin')
+                ) VALUES (?, 'project-1', ?, 1, ?, ?, 'u-admin')
                 """,
-                (scenario_id, name),
+                (
+                    scenario_id,
+                    name,
+                    serialized_snapshot,
+                    hashlib.sha256(serialized_snapshot.encode("utf-8")).hexdigest(),
+                ),
             )
             db.execute(
                 """

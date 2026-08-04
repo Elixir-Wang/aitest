@@ -82,7 +82,7 @@ def _create_test(project_id: str = "project-1") -> dict:
     )
 
 
-def _create_scenario_test() -> dict:
+def _create_scenario_test(*, sse: bool = False) -> dict:
     _create_test()
     snapshot = {
         "id": "scenario-project-1",
@@ -116,7 +116,10 @@ def _create_scenario_test() -> dict:
                     "responses": {"200": {"description": "ok"}},
                     "auth": {},
                 },
-                "request_overrides": {"path_parameters": {"item_id": "fixed"}},
+                "request_overrides": {
+                    "path_parameters": {"item_id": "fixed"},
+                    "multipart_form": {"message": "hello"},
+                },
                 "bindings": [
                     {"target": "/request/query_parameters/tenant", "source": {"type": "scenario", "name": "tenant"}}
                 ],
@@ -153,11 +156,11 @@ def _create_scenario_test() -> dict:
         db.execute(
             """
             INSERT INTO api_scenarios (
-              id, project_id, api_environment_id, name, description, status,
+              id, project_id, api_environment_id, name, description,
               variables_json, revision, published_snapshot_json, published_hash,
               created_by, updated_by
             )
-            VALUES (?, ?, ?, ?, '', 'ready', ?, 3, ?, '', 'u-admin', 'u-admin')
+            VALUES (?, ?, ?, ?, '', ?, 3, ?, '', 'u-admin', 'u-admin')
             """,
             (
                 "scenario-project-1",
@@ -175,6 +178,30 @@ def _create_scenario_test() -> dict:
             target_type="scenario",
             scenario_id="scenario-project-1",
             api_environment_id="environment-project-1",
+            request_config={
+                "transport": "sse" if sse else "http",
+                "scenario_step_id": "step-request" if sse else None,
+                "sse": {
+                    "max_stream_seconds": 60,
+                    "metrics": [
+                        {
+                            "id": "first_answer",
+                            "name": "首次回答时间",
+                            "match": {
+                                "event_name": "message",
+                                "source": "data_json",
+                                "path": "$.data.event_type",
+                                "operator": "equals",
+                                "expected": "answer",
+                            },
+                            "occurrence": "first",
+                            "missing_policy": "fail_request",
+                        }
+                    ],
+                }
+                if sse
+                else None,
+            },
         ),
         ADMIN,
     )
@@ -221,6 +248,25 @@ def test_scenario_script_generation_rejects_missing_current_version(
         script_service.generate_script("project-1", performance_test["id"], ADMIN)
 
     assert exc_info.value.detail["code"] == "PERFORMANCE_SCENARIO_VERSION_MISSING"
+
+
+def test_scenario_script_generation_applies_sse_to_selected_step(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    performance_test = _create_scenario_test(sse=True)
+
+    generated = script_service.generate_script("project-1", performance_test["id"], ADMIN)
+
+    request = generated["plan"]["steps"][1]["request"]
+    assert request["transport"] == "sse"
+    assert request["sse"]["metrics"][0]["id"] == "first_answer"
+    assert request["multipart_form"] == {"message": "hello"}
+    assert "def _execute_sse_request" in generated["code"]
+    assert 'kwargs["files"]' in generated["code"]
+    assert '"scenario_step_id": step["id"]' in generated["code"]
+    compile(generated["code"], "generated_scenario_locustfile.py", "exec")
 
 
 def test_script_generation_overwrites_single_current_script(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

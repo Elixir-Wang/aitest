@@ -139,11 +139,11 @@ def _seed_api_scenario(project_id: str = "project-1", scenario_id: str = "scenar
         db.execute(
             """
             INSERT INTO api_scenarios (
-              id, project_id, api_environment_id, name, description, status,
+              id, project_id, api_environment_id, name, description,
               variables_json, revision, published_snapshot_json, published_hash,
               created_by, updated_by
             )
-            VALUES (?, ?, ?, '查询条目场景', '', 'ready', '{}', 1, ?, '', 'u-admin', 'u-admin')
+            VALUES (?, ?, ?, '查询条目场景', '', '{}', 1, ?, '', 'u-admin', 'u-admin')
             """,
             (
                 scenario_id,

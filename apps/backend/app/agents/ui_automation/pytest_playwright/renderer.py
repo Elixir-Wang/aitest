@@ -8,7 +8,7 @@ from .schemas import AssertionPlan, AutomationPlan, LocatorPlan, PageObjectPlan,
 from .suite import ensure_suite_root, resolve_suite_file
 
 
-INSTRUMENTATION_VERSION = 2
+INSTRUMENTATION_VERSION = 3
 
 
 SUITE_FILES = {
@@ -370,7 +370,15 @@ def _render_test(plan: AutomationPlan) -> str:
         f"load_case_data(Path(__file__).resolve().parents[{suite_parent_index}] / "
         f"{json.dumps(plan.artifacts.data_file)})"
     )
-    body = ["", "", f"UI_AUTOMATION_INSTRUMENTATION_VERSION = {INSTRUMENTATION_VERSION}", "", ""]
+    step_definitions = _step_definitions(plan)
+    body = [
+        "",
+        "",
+        f"UI_AUTOMATION_INSTRUMENTATION_VERSION = {INSTRUMENTATION_VERSION}",
+        f"UI_CASE_STEP_DEFINITIONS = {step_definitions!r}",
+        "",
+        "",
+    ]
     if any(step.kind == "wait_for_response" for step in plan.steps):
         body.extend(_response_wait_helper())
     if any(step.kind == "commit_value" for step in plan.steps):
@@ -396,26 +404,6 @@ def _render_test(plan: AutomationPlan) -> str:
     )
     for page in plan.page_objects:
         body.append(f"    {page.page_key}_page = {page.class_name}(page)")
-    step_definitions = [
-        {
-            "step_id": group[0][1].business_step_id or group[0][1].source_step_id,
-            "title": group[0][1].title or group[0][1].source_step_id,
-            "visible": any(step.visible for _, step in group),
-            "operation_ids": [step.source_step_id for _, step in group],
-        }
-        for group in _step_groups(plan.steps)
-    ]
-    if any(not assertion.after_step_id for assertion in plan.assertions):
-        step_definitions.append(
-            {
-                "step_id": "__final_assertions__",
-                "title": "最终断言",
-                "visible": True,
-                "operation_ids": [],
-            }
-        )
-    if step_definitions:
-        body.append(f"    ui_case.define_steps({step_definitions!r})")
     assertions_by_step: dict[str, list[AssertionPlan]] = {}
     trailing_assertions: list[AssertionPlan] = []
     for assertion in plan.assertions:
@@ -449,6 +437,28 @@ def _render_test(plan: AutomationPlan) -> str:
     if not plan.steps and not plan.assertions:
         body.append("    assert case_data is not None")
     return "\n".join([*imports, *body]) + "\n"
+
+
+def _step_definitions(plan: AutomationPlan) -> list[dict]:
+    definitions = [
+        {
+            "step_id": group[0][1].business_step_id or group[0][1].source_step_id,
+            "title": group[0][1].title or group[0][1].source_step_id,
+            "visible": any(step.visible for _, step in group),
+            "operation_ids": [step.source_step_id for _, step in group],
+        }
+        for group in _step_groups(plan.steps)
+    ]
+    if any(not assertion.after_step_id for assertion in plan.assertions):
+        definitions.append(
+            {
+                "step_id": "__final_assertions__",
+                "title": "最终断言",
+                "visible": True,
+                "operation_ids": [],
+            }
+        )
+    return definitions
 
 
 def _step_groups(steps: list[StepPlan]) -> list[list[tuple[int, StepPlan]]]:

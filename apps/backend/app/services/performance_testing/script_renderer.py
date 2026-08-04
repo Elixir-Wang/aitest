@@ -50,18 +50,51 @@ def _next_data_row(user):
     return row
 
 
+def _request_payload_kwargs(request, headers=None):
+    resolved_headers = dict(headers if headers is not None else request.get("headers") or {{}})
+    kwargs = {{
+        "headers": resolved_headers,
+        "cookies": request.get("cookies") or None,
+    }}
+    multipart = request.get("multipart_form")
+    form = request.get("form")
+    if multipart is not None:
+        for key in list(resolved_headers):
+            if key.lower() == "content-type":
+                resolved_headers.pop(key)
+        kwargs["files"] = [
+            (str(field), (None, json.dumps(value, ensure_ascii=False) if isinstance(value, (dict, list)) else str(value)))
+            for field, value in multipart.items()
+        ]
+    elif form is not None:
+        kwargs["data"] = form
+    else:
+        kwargs["json"] = request.get("body")
+    return kwargs
+
+
 def _json_path(payload, path):
+    if not path or path == "$":
+        return True, payload
+    if path.startswith("/"):
+        parts = [part.replace("~1", "/").replace("~0", "~") for part in path.strip("/").split("/") if part]
+    else:
+        parts = path.removeprefix("$").strip(".").replace("[", ".").replace("]", "").split(".")
     current = payload
-    for part in path.removeprefix("$").strip(".").split("."):
+    for part in parts:
         if not part:
             continue
-        if not isinstance(current, dict) or part not in current:
+        if isinstance(current, dict) and part in current:
+            current = current[part]
+        elif isinstance(current, list) and part.isdigit() and int(part) < len(current):
+            current = current[int(part)]
+        else:
             return False, None
-        current = current[part]
     return True, current
 '''
     if plan.target_type == "scenario":
-        body = _render_scenario_helpers() + _render_scenario_user(
+        has_sse_step = any(step.request and step.request.transport == "sse" for step in plan.steps)
+        body = _render_scenario_helpers() + (_render_sse_helpers() if has_sse_step else "") + _render_scenario_user(
             plan.load.wait_time_min_seconds,
             plan.load.wait_time_max_seconds,
             plan.scenario_name,
@@ -228,13 +261,22 @@ def _run_scenario_step(user, step, data):
     path = request["path"]
     for key, value in request.get("path_parameters", {}).items():
         path = path.replace("{" + str(key) + "}", str(value))
+    if request.get("transport") == "sse":
+        failure_reason = _execute_sse_request(
+            user,
+            request,
+            path,
+            measurement_context={"scenario_step_id": step["id"], "scenario_step_name": step["name"]},
+        )
+        if failure_reason:
+            raise AssertionError(failure_reason)
+        return {}
     with user.client.request(
         method=request["method"],
         url=path,
         name=request["name"],
         params=request.get("query_parameters") or {},
-        headers=request.get("headers") or {},
-        json=request.get("body"),
+        **_request_payload_kwargs(request),
         timeout=request["timeout_seconds"],
         catch_response=True,
     ) as response:
@@ -402,16 +444,93 @@ def _sse_matches(event_name, data_text, match):
     return False
 
 
-def _sse_finish_frame(event_name, data_lines, started_at, config, observed):
+def _sse_finish_frame(event_name, data_lines, started_at, config, observed, quality):
     if not data_lines:
         return False
     data_text = "\\n".join(data_lines)
+    requires_json = any(metric["match"]["source"] == "data_json" for metric in config["metrics"])
+    requires_json = requires_json or bool(config.get("end_rule") and config["end_rule"]["source"] == "data_json")
+    if requires_json:
+        try:
+            json.loads(data_text)
+        except (TypeError, ValueError):
+            quality["parse_error_count"] += 1
     elapsed_ms = (time.perf_counter() - started_at) * 1000
     for metric in config["metrics"]:
         if metric["id"] not in observed and _sse_matches(event_name, data_text, metric["match"]):
             observed[metric["id"]] = elapsed_ms
     end_rule = config.get("end_rule")
     return bool(end_rule and _sse_matches(event_name, data_text, end_rule))
+
+
+def _execute_sse_request(user, request, path, measurement_context=None):
+    config = request["sse"]
+    headers = dict(request.get("headers") or {})
+    headers.setdefault("Accept", "text/event-stream")
+    started_at = time.perf_counter()
+    observed = {}
+    event_name, data_lines, frame_size, stream_size, ended = "", [], 0, 0, False
+    quality = {"parse_error_count": 0}
+    failure_reason = ""
+    with user.client.request(
+        method=request["method"],
+        url=path,
+        name=request["name"],
+        params=request.get("query_parameters") or {},
+        **_request_payload_kwargs(request, headers=headers),
+        timeout=request["timeout_seconds"],
+        stream=True,
+        catch_response=True,
+    ) as response:
+        if not 200 <= response.status_code < 300:
+            failure_reason = f"unexpected status code: {response.status_code}"
+        else:
+            for raw_line in response.iter_lines(decode_unicode=True):
+                if (time.perf_counter() - started_at) > config["max_stream_seconds"]:
+                    failure_reason = "sse_stream_timeout"
+                    break
+                if isinstance(raw_line, bytes):
+                    raw_line = raw_line.decode("utf-8", errors="replace")
+                line = (raw_line or "").removeprefix("\\ufeff")
+                stream_size += len(line.encode("utf-8"))
+                if stream_size > 16777216:
+                    failure_reason = "sse_stream_too_large"
+                    break
+                if not line:
+                    ended = _sse_finish_frame(event_name, data_lines, started_at, config, observed, quality) or ended
+                    event_name, data_lines, frame_size = "", [], 0
+                    if ended:
+                        break
+                elif line.startswith(":"):
+                    continue
+                else:
+                    field, separator, value = line.partition(":")
+                    if separator:
+                        value = value.removeprefix(" ")
+                        frame_size += len(line.encode("utf-8"))
+                        if frame_size > 262144:
+                            failure_reason = "sse_frame_too_large"
+                            break
+                        if field == "event":
+                            event_name = value
+                        elif field == "data":
+                            data_lines.append(value)
+            if data_lines and not ended and not failure_reason:
+                ended = _sse_finish_frame(event_name, data_lines, started_at, config, observed, quality)
+            if not failure_reason and config.get("end_rule") and not ended:
+                failure_reason = "sse_end_rule_not_matched"
+        missing = [metric["id"] for metric in config["metrics"] if metric["id"] not in observed]
+        required_missing = [metric["id"] for metric in config["metrics"] if metric["id"] in missing and metric["missing_policy"] == "fail_request"]
+        if required_missing and not failure_reason:
+            failure_reason = "sse_metric_missing:" + ",".join(required_missing)
+        if failure_reason:
+            response.failure(failure_reason)
+        else:
+            response.success()
+    measurement = {"stream_completed_ms": round((time.perf_counter() - started_at) * 1000, 4), "metrics": observed, "missing_metric_ids": missing, "failure_reason": failure_reason, **quality, **(measurement_context or {})}
+    if callable(SSE_MEASUREMENT_SINK):
+        SSE_MEASUREMENT_SINK(measurement)
+    return failure_reason
 '''
 
 
@@ -431,64 +550,11 @@ class PerformanceUser(HttpUser):
     def execute_target(self):
         self.sequence += 1
         data = _next_data_row(self)
-        request = PLAN["request"]
-        config = request["sse"]
+        request = _resolve(PLAN["request"], self.sequence, data)
         path = request["path"]
-        for key, value in _resolve(request["path_parameters"], self.sequence, data).items():
+        for key, value in request["path_parameters"].items():
             path = path.replace("{{" + key + "}}", str(value))
-        headers = _resolve(request["headers"], self.sequence, data)
-        headers.setdefault("Accept", "text/event-stream")
-        started_at = time.perf_counter()
-        observed = {{}}
-        event_name, data_lines, frame_size, ended = "", [], 0, False
-        failure_reason = ""
-        with self.client.request(method=request["method"], url=path, name=request["name"], params=_resolve(request["query_parameters"], self.sequence, data), headers=headers, json=_resolve(request["body"], self.sequence, data), timeout=request["timeout_seconds"], stream=True, catch_response=True) as response:
-            status_rules = [rule for rule in PLAN["success_rules"] if rule["kind"] == "status_code"]
-            allowed_statuses = status_rules[0]["status_codes"] if status_rules else [200]
-            if response.status_code not in allowed_statuses:
-                failure_reason = f"unexpected status code: {{response.status_code}}"
-            else:
-                for raw_line in response.iter_lines(decode_unicode=True):
-                    if (time.perf_counter() - started_at) > config["max_stream_seconds"]:
-                        failure_reason = "sse_stream_timeout"
-                        break
-                    if isinstance(raw_line, bytes):
-                        raw_line = raw_line.decode("utf-8", errors="replace")
-                    line = (raw_line or "").removeprefix("\\ufeff")
-                    if not line:
-                        ended = _sse_finish_frame(event_name, data_lines, started_at, config, observed) or ended
-                        event_name, data_lines, frame_size = "", [], 0
-                        if ended:
-                            break
-                    elif line.startswith(":"):
-                        continue
-                    else:
-                        field, separator, value = line.partition(":")
-                        if separator:
-                            value = value.removeprefix(" ")
-                            frame_size += len(line.encode("utf-8"))
-                            if frame_size > 262144:
-                                failure_reason = "sse_frame_too_large"
-                                break
-                            if field == "event":
-                                event_name = value
-                            elif field == "data":
-                                data_lines.append(value)
-                if data_lines and not ended and not failure_reason:
-                    ended = _sse_finish_frame(event_name, data_lines, started_at, config, observed)
-                if not failure_reason and config.get("end_rule") and not ended:
-                    failure_reason = "sse_end_rule_not_matched"
-            missing = [metric["id"] for metric in config["metrics"] if metric["id"] not in observed]
-            required_missing = [metric["id"] for metric in config["metrics"] if metric["id"] in missing and metric["missing_policy"] == "fail_request"]
-            if required_missing and not failure_reason:
-                failure_reason = "sse_metric_missing:" + ",".join(required_missing)
-            if failure_reason:
-                response.failure(failure_reason)
-            else:
-                response.success()
-        measurement = {{"stream_completed_ms": round((time.perf_counter() - started_at) * 1000, 4), "metrics": observed, "missing_metric_ids": missing, "failure_reason": failure_reason}}
-        if callable(SSE_MEASUREMENT_SINK):
-            SSE_MEASUREMENT_SINK(measurement)
+        _execute_sse_request(self, request, path)
 '''
 
 

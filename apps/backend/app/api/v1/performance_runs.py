@@ -29,6 +29,8 @@ REPORT_FILES = {
     "result_tasks.csv",
     "stdout.log",
     "stderr.log",
+    "sse-measurements.jsonl",
+    "sse-measurements.meta.json",
 }
 TERMINAL_STATUSES = {"completed", "stopped", "failed", "cancelled"}
 ACTIVE_STATUSES = {"starting", "running", "stopping"}

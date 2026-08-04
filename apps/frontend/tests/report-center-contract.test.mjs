@@ -64,3 +64,19 @@ test("API report detail shows deterministic batch and scenario results", () => {
   assert.match(apiDetailSource, /report\.runs\.map/);
   assert.doesNotMatch(apiDetailSource, /历史版本|原版本|选择版本/);
 });
+
+test("API report detail omits the report center return button", () => {
+  assert.doesNotMatch(apiDetailSource, /返回报告中心/);
+  assert.doesNotMatch(apiDetailSource, /<ArrowLeft/);
+  assert.doesNotMatch(apiDetailSource, /actions=/);
+});
+
+test("API report detail follows the performance report decision-first layout", () => {
+  assert.match(apiDetailSource, /max-w-\[90rem\]/);
+  assert.match(apiDetailSource, /resultAccentClass\(report\.result\)/);
+  assert.match(apiDetailSource, /xl:grid-cols-\[minmax\(34rem,1\.15fr\)_minmax\(22rem,0\.85fr\)\]/);
+  assert.match(apiDetailSource, /id="batch-metrics-heading"/);
+  assert.match(apiDetailSource, /id="run-context-heading"/);
+  assert.match(apiDetailSource, /mt-4 grid grid-cols-2 gap-x-8/);
+  assert.match(apiDetailSource, /overflow-x-auto rounded-lg border/);
+});

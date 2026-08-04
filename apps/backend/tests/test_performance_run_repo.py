@@ -59,9 +59,14 @@ def test_runtime_locustfile_captures_redacted_response_evidence() -> None:
 def test_runtime_locustfile_uses_current_environment_headers() -> None:
     source = runtime_locustfile_source()
 
-    plan_position = source.index('**dict(PLAN["request"].get("headers") or {})')
-    environment_position = source.index('**dict(RUNTIME["environment"].get("headers") or {})')
-    assert plan_position < environment_position
+    assert '''request["headers"] = {
+                **dict(request.get("headers") or {}),
+                **dict(RUNTIME["environment"].get("headers") or {}),
+            }''' in source
+    assert '''PLAN["request"]["headers"] = {
+        **dict(PLAN["request"].get("headers") or {}),
+        **dict(RUNTIME["environment"].get("headers") or {}),
+    }''' in source
 
 
 def test_runtime_locustfile_removes_trailing_slash_from_base_url() -> None:

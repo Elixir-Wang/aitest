@@ -495,6 +495,17 @@ export function LocustConsole({ projectId, testId, runId }: { projectId: string;
           <LocustChartsPanel samples={samples} />
         </TabsContent>
         <TabsContent value="sse">
+          {snapshot?.sse_metrics.truncated ||
+          snapshot?.sse_metrics.parse_error_count ||
+          snapshot?.sse_metrics.timeout_count ||
+          snapshot?.sse_metrics.end_rule_not_matched_count ? (
+            <div className="mb-4 flex flex-wrap gap-x-6 gap-y-2 border-l-2 border-amber-500 bg-amber-50 px-4 py-3 text-amber-900 text-sm dark:bg-amber-950/30 dark:text-amber-100">
+              {snapshot.sse_metrics.truncated ? <span>测量样本已达到存储上限</span> : null}
+              <span>JSON 解析错误 {snapshot.sse_metrics.parse_error_count}</span>
+              <span>流超时 {snapshot.sse_metrics.timeout_count}</span>
+              <span>结束规则未命中 {snapshot.sse_metrics.end_rule_not_matched_count}</span>
+            </div>
+          ) : null}
           <LocustGenericTable
             columns={[
               ["metric_id", "指标"],

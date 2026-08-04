@@ -30,6 +30,7 @@ import {
   type PerformanceLoadStage,
   type PerformanceRequestPreview,
   type PerformanceSseConfig,
+  type PerformanceSseMetricGoal,
   previewPerformanceRequest,
 } from "@/lib/api-client";
 import { toast } from "@/lib/toast";
@@ -86,6 +87,7 @@ export function PerformanceTestForm() {
   const [targetType, setTargetType] = useState<"endpoint" | "scenario">("endpoint");
   const [endpointId, setEndpointId] = useState("");
   const [scenarioId, setScenarioId] = useState("");
+  const [scenarioSseStepId, setScenarioSseStepId] = useState("");
   const [environmentId, setEnvironmentId] = useState("");
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
@@ -96,6 +98,7 @@ export function PerformanceTestForm() {
   const [transport, setTransport] = useState<"http" | "sse">("http");
   const [sseMaxStreamSeconds, setSseMaxStreamSeconds] = useState("60");
   const [sseConfig, setSseConfig] = useState<PerformanceSseConfig | null>(null);
+  const [sseGoalTargets, setSseGoalTargets] = useState<Record<string, string>>({});
   const [mode, setMode] = useState<PerformanceLoadConfig["mode"]>("fixed");
   const [stages, setStages] = useState<PerformanceLoadStage[]>([]);
   const [dataConfig, setDataConfig] = useState<PerformanceDataConfig>(initialDataConfig);
@@ -121,6 +124,7 @@ export function PerformanceTestForm() {
     setEnvironments([]);
     setEndpointId("");
     setScenarioId("");
+    setScenarioSseStepId("");
     setEnvironmentId("");
     setPreview(null);
     setRequestTouched(false);
@@ -129,6 +133,7 @@ export function PerformanceTestForm() {
     setHeadersJson("{}");
     setBodyJson("null");
     setSseConfig(null);
+    setSseGoalTargets({});
     setDataConfig(initialDataConfig);
     if (!selectedProjectId) return;
     let ignore = false;
@@ -184,6 +189,7 @@ export function PerformanceTestForm() {
     if (requestTouched && !window.confirm("切换接口会重置当前请求配置，继续？")) return;
     setEndpointId(nextEndpointId);
     setSseConfig(null);
+    setSseGoalTargets({});
   }
 
   function changeTargetType(nextTargetType: "endpoint" | "scenario") {
@@ -191,13 +197,18 @@ export function PerformanceTestForm() {
     setTargetType(nextTargetType);
     setEndpointId("");
     setScenarioId("");
+    setScenarioSseStepId("");
     setPreview(null);
     setRequestTouched(false);
     setSseConfig(null);
+    setSseGoalTargets({});
   }
 
   function changeScenario(nextScenarioId: string) {
     setScenarioId(nextScenarioId);
+    setScenarioSseStepId("");
+    setSseConfig(null);
+    setSseGoalTargets({});
     const scenario = scenarios.find((item) => item.id === nextScenarioId);
     if (scenario?.api_environment_id) changeEnvironment(scenario.api_environment_id);
   }
@@ -205,14 +216,33 @@ export function PerformanceTestForm() {
   function changeEnvironment(nextEnvironmentId: string) {
     setEnvironmentId(nextEnvironmentId);
     setSseConfig(null);
+    setSseGoalTargets({});
     const environment = environments.find((item) => item.id === nextEnvironmentId);
     if (environment) {
       setNumbers((current) => ({ ...current, timeout: String(environment.timeout_seconds) }));
     }
   }
 
+  function changeScenarioSseStep(nextStepId: string) {
+    setScenarioSseStepId(nextStepId);
+    setSseConfig(null);
+    setSseGoalTargets({});
+  }
+
   function updateNumber(field: keyof NumericDraft, value: string) {
     setNumbers((current) => ({ ...current, [field]: value }));
+  }
+
+  function changeSseConfig(next: PerformanceSseConfig) {
+    const metricIds = new Set(next.metrics.map((metric) => metric.id));
+    setSseConfig(next);
+    setSseGoalTargets((current) =>
+      Object.fromEntries(Object.entries(current).filter(([key]) => metricIds.has(key.split(":", 1)[0]))),
+    );
+  }
+
+  function updateSseGoal(metricId: string, percentile: "p95" | "p99", value: string) {
+    setSseGoalTargets((current) => ({ ...current, [`${metricId}:${percentile}`]: value }));
   }
 
   async function submit() {
@@ -229,14 +259,18 @@ export function PerformanceTestForm() {
       toast.error("当前测试模式至少需要一个负载阶段");
       return;
     }
-    if (targetType === "endpoint" && transport === "sse" && !sseConfig) {
+    if (transport === "sse" && targetType === "scenario" && !scenarioSseStepId) {
+      toast.error("请选择场景中的 SSE 接口步骤");
+      return;
+    }
+    if (transport === "sse" && !sseConfig) {
       toast.error("请先运行接口编排并生成 SSE 指标");
       return;
     }
     setSaving(true);
     try {
       let sse: PerformanceSseConfig | null = null;
-      if (targetType === "endpoint" && transport === "sse") {
+      if (transport === "sse") {
         if (!sseConfig) throw new Error("请先运行接口编排并生成 SSE 指标");
         sse = { ...sseConfig, max_stream_seconds: positiveNumber(sseMaxStreamSeconds, "SSE 流超时") };
       }
@@ -253,8 +287,9 @@ export function PerformanceTestForm() {
           headers: targetType === "endpoint" ? parseObject(headersJson, "Headers") : {},
           body: targetType === "endpoint" ? parseJson(bodyJson, "Request Body") : null,
           random_seed: null,
-          transport: targetType === "endpoint" ? transport : "http",
+          transport,
           sse,
+          scenario_step_id: targetType === "scenario" && transport === "sse" ? scenarioSseStepId : null,
         },
         load_config: {
           mode,
@@ -268,7 +303,7 @@ export function PerformanceTestForm() {
         },
         data_config: dataConfig,
         circuit_breaker: circuitBreaker,
-        performance_goal: compactGoal(numbers),
+        performance_goal: compactGoal(numbers, buildSseMetricGoals(sse, sseGoalTargets)),
       });
       const script = await generatePerformanceScript(selectedProjectId, created.id);
       toast.success("性能测试已创建，Locust 脚本已生成");
@@ -280,12 +315,17 @@ export function PerformanceTestForm() {
     }
   }
 
+  const scenarioRequestSteps =
+    scenarios
+      .find((scenario) => scenario.id === scenarioId)
+      ?.steps.filter((step) => step.enabled && step.step_type === "api_request" && step.endpoint_id) ?? [];
+
   return (
     <div className="w-full">
       <ShellSection className="overflow-hidden p-0">
-        <FieldGroup className="grid gap-x-5 gap-y-4 p-5 md:grid-cols-2">
+        <FieldGroup className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-x-5 gap-y-4 p-5 [&>*]:min-w-0 md:grid-cols-2">
           {/* 头部：基础信息 + 操作按钮 */}
-          <div className="flex items-center justify-between gap-2 border-b pb-2 md:col-span-2">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b pb-2 md:col-span-2">
             <div className="flex items-center gap-2">
               <FileText className="size-4 text-muted-foreground" />
               <h3 className="font-semibold text-base">基础信息</h3>
@@ -529,14 +569,85 @@ export function PerformanceTestForm() {
                   body: parseJson(bodyJson, "Request Body"),
                 })}
                 maxStreamSeconds={Number(sseMaxStreamSeconds)}
-                onChange={setSseConfig}
+                onChange={changeSseConfig}
                 projectId={selectedProjectId}
+                targetType="endpoint"
                 value={sseConfig}
               />
             </>
           ) : null}
             </>
-          ) : null}
+          ) : (
+            <>
+              <div className="flex items-center gap-2 border-b pb-2 md:col-span-2">
+                <Settings className="size-4 text-muted-foreground" />
+                <h3 className="font-semibold text-base">请求配置</h3>
+              </div>
+              <Field>
+                <FieldLabel htmlFor="test-transport">响应传输</FieldLabel>
+                <Select
+                  id="test-transport"
+                  placeholder="选择响应传输"
+                  setValue={(value) => {
+                    setTransport(value as "http" | "sse");
+                    setSseConfig(null);
+                    setSseGoalTargets({});
+                  }}
+                  value={transport}
+                >
+                  <SelectOption value="http">普通 HTTP</SelectOption>
+                  <SelectOption value="sse">SSE 流式响应</SelectOption>
+                </Select>
+              </Field>
+              {transport === "sse" ? (
+                <>
+                  <Field>
+                    <FieldLabel htmlFor="scenario-sse-step">SSE 接口步骤</FieldLabel>
+                    <Select
+                      id="scenario-sse-step"
+                      placeholder="选择 SSE 接口步骤"
+                      setValue={changeScenarioSseStep}
+                      value={scenarioSseStepId}
+                    >
+                      <SelectOption value="">选择 SSE 接口步骤</SelectOption>
+                      {scenarioRequestSteps.map((step) => (
+                        <SelectOption key={step.id} value={step.id}>
+                          {step.name}
+                        </SelectOption>
+                      ))}
+                    </Select>
+                  </Field>
+                  <Field>
+                    <FieldLabel htmlFor="sse-max-stream">SSE 流超时（秒）</FieldLabel>
+                    <Input
+                      id="sse-max-stream"
+                      min={0.1}
+                      onChange={(event) => setSseMaxStreamSeconds(event.target.value)}
+                      step={1}
+                      type="number"
+                      value={sseMaxStreamSeconds}
+                    />
+                  </Field>
+                  <PerformanceSseMetricsConfig
+                    environmentId={environmentId}
+                    getRequestValues={() => ({
+                      path_parameters: {},
+                      query_parameters: {},
+                      headers: {},
+                      body: null,
+                    })}
+                    maxStreamSeconds={Number(sseMaxStreamSeconds)}
+                    onChange={changeSseConfig}
+                    projectId={selectedProjectId}
+                    scenarioId={scenarioId}
+                    scenarioStepId={scenarioSseStepId}
+                    targetType="scenario"
+                    value={sseConfig}
+                  />
+                </>
+              ) : null}
+            </>
+          )}
 
           {/* 测试数据区块 */}
           <div className="flex items-center gap-2 border-b pb-2 md:col-span-2">
@@ -658,6 +769,42 @@ export function PerformanceTestForm() {
               value={numbers.maxAverageMs}
             />
           </Field>
+
+          {transport === "sse" && sseConfig?.metrics.length ? (
+            <section className="space-y-3 border-t pt-4 md:col-span-2" aria-labelledby="sse-goals-heading">
+              <div>
+                <h4 className="font-medium text-sm" id="sse-goals-heading">
+                  SSE 事件指标目标
+                </h4>
+                <p className="mt-1 text-muted-foreground text-xs">留空表示仅观测，不参与通过判定。</p>
+              </div>
+              <div className="grid gap-4 md:grid-cols-2">
+                {sseConfig.metrics.map((metric) => (
+                  <div className="grid grid-cols-2 gap-3 border-t pt-3" key={metric.id}>
+                    <p className="col-span-2 truncate font-medium text-sm" title={metric.name}>
+                      {metric.name}
+                    </p>
+                    {(["p95", "p99"] as const).map((percentile) => (
+                      <Field key={percentile}>
+                        <FieldLabel htmlFor={`sse-goal-${metric.id}-${percentile}`}>
+                          {percentile.toUpperCase()} 上限（ms）
+                        </FieldLabel>
+                        <Input
+                          id={`sse-goal-${metric.id}-${percentile}`}
+                          min={0.1}
+                          onChange={(event) => updateSseGoal(metric.id, percentile, event.target.value)}
+                          placeholder="不设目标"
+                          step={1}
+                          type="number"
+                          value={sseGoalTargets[`${metric.id}:${percentile}`] ?? ""}
+                        />
+                      </Field>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            </section>
+          ) : null}
 
           {/* 安全熔断区块 */}
           <div className="flex items-center gap-2 border-b pb-2 md:col-span-2">
@@ -791,12 +938,34 @@ function positiveInteger(value: string, label: string) {
   return parsed;
 }
 
-function compactGoal(numbers: NumericDraft) {
-  const goal: Record<string, number> = {};
+function compactGoal(numbers: NumericDraft, sseMetricGoals: PerformanceSseMetricGoal[]) {
+  const goal: Record<string, number | PerformanceSseMetricGoal[]> = {};
   if (numbers.maxFailPercent) goal.max_fail_ratio = Number(numbers.maxFailPercent) / 100;
   if (numbers.maxAverageMs)
     goal.max_average_response_time_ms = positiveNumber(numbers.maxAverageMs, "最大平均响应时间");
+  if (sseMetricGoals.length) goal.sse_metric_goals = sseMetricGoals;
   return goal;
+}
+
+function buildSseMetricGoals(
+  sse: PerformanceSseConfig | null,
+  targets: Record<string, string>,
+): PerformanceSseMetricGoal[] {
+  if (!sse) return [];
+  return sse.metrics.flatMap((metric) =>
+    (["p95", "p99"] as const).flatMap((percentile) => {
+      const raw = targets[`${metric.id}:${percentile}`]?.trim();
+      if (!raw) return [];
+      return [
+        {
+          metric_id: metric.id,
+          percentile,
+          operator: "lte" as const,
+          target_ms: positiveNumber(raw, `${metric.name} ${percentile.toUpperCase()} 上限`),
+        },
+      ];
+    }),
+  );
 }
 
 function apiErrorMessage(error: unknown, fallback: string) {

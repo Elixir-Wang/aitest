@@ -136,6 +136,15 @@ def test_pytest_plugin_collects_callspec_parameters(monkeypatch, tmp_path):
     monkeypatch.setenv("UI_RUN_ID", "uirun-collection")
     monkeypatch.setenv("UI_RUN_EVENT_PATH", str(event_path))
     monkeypatch.setenv("UI_BUSINESS_PARAMETERS", '["target_model"]')
+    module = type(
+        "Module",
+        (),
+        {
+            "UI_CASE_STEP_DEFINITIONS": [
+                {"step_id": "step-1", "title": "打开页面", "visible": True, "operation_ids": ["operation-1"]}
+            ]
+        },
+    )()
     item = type(
         "Item",
         (),
@@ -146,6 +155,7 @@ def test_pytest_plugin_collects_callspec_parameters(monkeypatch, tmp_path):
                 (),
                 {"params": {"browser_name": "chromium", "target_model": "qwen-plus"}},
             )(),
+            "module": module,
         },
     )()
 
@@ -154,6 +164,50 @@ def test_pytest_plugin_collects_callspec_parameters(monkeypatch, tmp_path):
     events, _ = execution_events.read_events(event_path)
     assert item._ui_iteration_id == "iteration-0001"
     assert events[0]["parameters"] == {"target_model": "qwen-plus"}
+    assert events[1]["type"] == "steps_defined"
+    assert events[1]["steps"][0]["title"] == "打开页面"
+
+
+def test_reducer_cancelled_run_preserves_definitions_for_unstarted_iterations():
+    step_definitions = [
+        {"step_id": "step-1", "title": "打开页面", "operation_ids": ["operation-1"]},
+        {"step_id": "step-2", "title": "提交表单", "operation_ids": ["operation-2"]},
+    ]
+    events = [
+        {"sequence": 1, "type": "iteration_collected", "iteration_id": "iteration-0001", "index": 0},
+        {
+            "sequence": 2,
+            "type": "steps_defined",
+            "iteration_id": "iteration-0001",
+            "steps": step_definitions,
+        },
+        {"sequence": 3, "type": "iteration_collected", "iteration_id": "iteration-0002", "index": 1},
+        {
+            "sequence": 4,
+            "type": "steps_defined",
+            "iteration_id": "iteration-0002",
+            "steps": step_definitions,
+        },
+        {"sequence": 5, "type": "iteration_started", "iteration_id": "iteration-0001"},
+        {
+            "sequence": 6,
+            "type": "step_started",
+            "iteration_id": "iteration-0001",
+            "step_id": "step-1",
+            "timestamp": "2026-08-04T00:00:00+00:00",
+        },
+    ]
+
+    detail = execution_events.reduce_events(events, run_id="uirun-1", run_status="cancelled")
+
+    interrupted, unstarted = detail["iterations"]
+    assert interrupted["status"] == "cancelled"
+    assert interrupted["current_step_id"] == ""
+    assert [step["status"] for step in interrupted["steps"]] == ["cancelled", "cancelled"]
+    assert interrupted["steps"][0]["started_at"] == "2026-08-04T00:00:00+00:00"
+    assert unstarted["status"] == "cancelled"
+    assert [step["title"] for step in unstarted["steps"]] == ["打开页面", "提交表单"]
+    assert [step["status"] for step in unstarted["steps"]] == ["cancelled", "cancelled"]
 
 
 def test_ui_case_recorder_emits_failed_step_and_screenshot(monkeypatch, tmp_path):

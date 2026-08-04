@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import json
 import re
+import subprocess
 import time
 from dataclasses import dataclass
 from typing import Any, Callable
@@ -34,21 +36,30 @@ def capture_sse_events(
     clock: Callable[[], float],
     max_events: int = 200,
     max_frame_bytes: int = 262_144,
+    max_stream_bytes: int = 4_194_304,
+    max_stream_seconds: float | None = None,
 ) -> tuple[list[CapturedSseEvent], bool]:
     captured: list[CapturedSseEvent] = []
     frame_lines: list[str] = []
+    stream_size = 0
     for line in response.iter_lines(decode_unicode=True):
         normalized = line if isinstance(line, str) else line.decode("utf-8", errors="replace")
+        stream_size += len(normalized.encode("utf-8"))
+        if stream_size > max_stream_bytes:
+            raise ValueError("sse_stream_too_large")
         frame_lines.append(normalized)
         if normalized.rstrip("\r\n"):
             continue
         parsed = parse_sse_events(frame_lines, max_frame_bytes=max_frame_bytes)
         frame_lines = []
         for event in parsed:
+            received_at = clock()
+            if max_stream_seconds is not None and received_at - started_at > max_stream_seconds:
+                raise ValueError("sse_stream_timeout")
             captured.append(
                 CapturedSseEvent(
                     sequence=len(captured) + 1,
-                    received_offset_ms=round((clock() - started_at) * 1000),
+                    received_offset_ms=round((received_at - started_at) * 1000),
                     event=event,
                 )
             )
@@ -56,10 +67,13 @@ def capture_sse_events(
                 return captured, True
     if frame_lines:
         for event in parse_sse_events(frame_lines, max_frame_bytes=max_frame_bytes):
+            received_at = clock()
+            if max_stream_seconds is not None and received_at - started_at > max_stream_seconds:
+                raise ValueError("sse_stream_timeout")
             captured.append(
                 CapturedSseEvent(
                     sequence=len(captured) + 1,
-                    received_offset_ms=round((clock() - started_at) * 1000),
+                    received_offset_ms=round((received_at - started_at) * 1000),
                     event=event,
                 )
             )
@@ -78,8 +92,7 @@ def execute_sse_probe(
         method=request["method"],
         url=request["url"],
         params=request.get("query_parameters") or {},
-        headers=request.get("headers") or {},
-        json=request.get("body"),
+        **_request_payload_kwargs(request),
         timeout=(request.get("timeout_seconds", 30), max_stream_seconds),
         verify=request.get("verify_ssl", True),
         allow_redirects=False,
@@ -91,7 +104,12 @@ def execute_sse_probe(
             raise ValueError(f"SSE 探测请求返回状态码 {response.status_code}")
         if content_type != "text/event-stream":
             raise ValueError("响应 Content-Type 不是 text/event-stream")
-        events, truncated = capture_sse_events(response, started_at=started_at, clock=clock)
+        events, truncated = capture_sse_events(
+            response,
+            started_at=started_at,
+            clock=clock,
+            max_stream_seconds=max_stream_seconds,
+        )
         if not events:
             raise ValueError("SSE 探测没有捕获到有效事件")
         return {
@@ -114,34 +132,66 @@ def generate_project_sse_metrics(
 
     with connect() as db:
         performance_service._require_visible_project(db, project_id, actor)
-        endpoint, environment = performance_service._validate_references(
-            db,
-            project_id,
-            endpoint_id=payload.endpoint_id,
-            api_environment_id=payload.api_environment_id,
-        )
-        headers = {
-            **performance_service._environment_runtime_headers(environment),
-            **{str(key): str(value) for key, value in payload.headers.items()},
-        }
-        request = {
-            "method": str(endpoint["method"]).upper(),
-            "url": _endpoint_url(str(environment["api_base_url"]), str(endpoint["path"]), payload.path_parameters),
-            "query_parameters": payload.query_parameters,
-            "headers": headers,
-            "body": payload.body,
-            "timeout_seconds": int(environment["timeout_seconds"]),
-            "verify_ssl": bool(environment["verify_ssl"]),
-        }
+        if payload.endpoint_id:
+            endpoint, environment = performance_service._validate_references(
+                db,
+                project_id,
+                endpoint_id=payload.endpoint_id,
+                api_environment_id=payload.api_environment_id,
+            )
+            headers = {
+                **performance_service._environment_runtime_headers(environment),
+                **{str(key): str(value) for key, value in payload.headers.items()},
+            }
+            request = {
+                "method": str(endpoint["method"]).upper(),
+                "url": _endpoint_url(str(environment["api_base_url"]), str(endpoint["path"]), payload.path_parameters),
+                "query_parameters": payload.query_parameters,
+                "headers": headers,
+                "body": payload.body,
+                "timeout_seconds": int(environment["timeout_seconds"]),
+                "verify_ssl": bool(environment["verify_ssl"]),
+            }
+            scenario_probe = None
+        else:
+            _, scenario, environment = performance_service._validate_target_references(
+                db,
+                project_id,
+                target_type="scenario",
+                endpoint_id=None,
+                scenario_id=payload.scenario_id,
+                api_environment_id=payload.api_environment_id,
+            )
+            snapshot = api_automation_repo.loads_json(scenario["published_snapshot_json"], {})
+            if not snapshot or not snapshot.get("steps"):
+                raise api_error(400, "PERFORMANCE_SCENARIO_VERSION_MISSING", "接口场景没有当前保存版本，请先保存场景。")
+            request = None
+            scenario_probe = {
+                "scenario_id": str(payload.scenario_id),
+                "target_step_id": str(payload.scenario_step_id),
+                "api_environment_id": str(payload.api_environment_id),
+            }
 
     try:
-        probe = execute_sse_probe(
-            request,
-            max_stream_seconds=payload.max_stream_seconds,
-            requester=requests.request,
-            clock=time.perf_counter,
-        )
-    except (requests.RequestException, ValueError) as exc:
+        if scenario_probe is None:
+            probe = execute_sse_probe(
+                request,
+                max_stream_seconds=payload.max_stream_seconds,
+                requester=requests.request,
+                clock=time.perf_counter,
+            )
+        else:
+            from app.services.api_automation import service as api_automation_service
+
+            execution = api_automation_service.execute_api_scenario_probe(
+                project_id,
+                scenario_probe["scenario_id"],
+                scenario_probe["api_environment_id"],
+                target_step_id=str(scenario_probe["target_step_id"]),
+                max_stream_seconds=payload.max_stream_seconds,
+            )
+            probe = _scenario_execution_probe(execution, scenario_probe["target_step_id"])
+    except (requests.RequestException, subprocess.SubprocessError, OSError, RuntimeError, ValueError) as exc:
         raise api_error(400, "PERFORMANCE_SSE_PROBE_FAILED", str(exc)) from exc
 
     if payload.candidate_sse is not None:
@@ -166,6 +216,68 @@ def generate_project_sse_metrics(
         },
         **generated,
     }
+
+
+def _scenario_execution_probe(execution: dict[str, Any], target_step_id: str) -> dict[str, Any]:
+    scenario_result = execution.get("scenario_result") or {}
+    steps = [step for step in scenario_result.get("steps") or [] if isinstance(step, dict)]
+    target_step = next((step for step in steps if str(step.get("step_id")) == target_step_id), None)
+    if execution.get("status") != "passed" or scenario_result.get("status") != "passed":
+        failed_step = next((step for step in steps if step.get("status") == "failed"), target_step)
+        if failed_step:
+            response_body = ((failed_step.get("response") or {}).get("body"))
+            business_message = response_body.get("message") if isinstance(response_body, dict) else ""
+            detail = business_message or failed_step.get("error") or execution.get("error_message")
+            raise ValueError(f"场景步骤 {failed_step.get('name') or failed_step.get('step_id')} 执行失败：{detail}")
+        raise ValueError(execution.get("error_message") or "接口场景探测执行失败")
+    if target_step is None:
+        raise ValueError("场景 SSE 目标步骤不存在或未执行")
+    response = target_step.get("response") or {}
+    body = response.get("body") or {}
+    if not isinstance(body, dict) or not body.get("streaming"):
+        raise ValueError("场景目标步骤响应不是 SSE 事件流")
+    captured = []
+    for index, item in enumerate(body.get("events") or [], start=1):
+        if not isinstance(item, dict):
+            continue
+        data = item.get("data")
+        data_text = data if isinstance(data, str) else json.dumps(data, ensure_ascii=False, separators=(",", ":"))
+        captured.append(
+            CapturedSseEvent(
+                sequence=index,
+                received_offset_ms=max(0, int(item.get("received_offset_ms") or 0)),
+                event=SseEvent(event_name=str(item.get("event") or "message"), data_text=data_text),
+            )
+        )
+    if not captured:
+        raise ValueError("SSE 探测没有捕获到有效事件")
+    return {
+        "status_code": int(response.get("status_code") or 0),
+        "headers": dict(response.get("headers") or {}),
+        "events": captured,
+        "truncated": bool(body.get("truncated")),
+    }
+
+
+def _request_payload_kwargs(request: dict[str, Any]) -> dict[str, Any]:
+    headers = dict(request.get("headers") or {})
+    cookies = dict(request.get("cookies") or {})
+    multipart = request.get("multipart_form")
+    form = request.get("form")
+    kwargs: dict[str, Any] = {"headers": headers, "cookies": cookies or None}
+    if multipart is not None:
+        for key in list(headers):
+            if key.lower() == "content-type":
+                headers.pop(key)
+        kwargs["files"] = [
+            (str(field), (None, json.dumps(value, ensure_ascii=False) if isinstance(value, (dict, list)) else str(value)))
+            for field, value in dict(multipart).items()
+        ]
+    elif form is not None:
+        kwargs["data"] = form
+    else:
+        kwargs["json"] = request.get("body")
+    return kwargs
 
 
 def build_deterministic_sse_config(
