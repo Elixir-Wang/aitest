@@ -12,6 +12,13 @@ CREATE TABLE IF NOT EXISTS ui_automation_generation_runs (
   manual_test_case_id TEXT,
   environment_id TEXT NOT NULL,
   exploration_run_id TEXT NOT NULL DEFAULT '',
+  target_asset_id TEXT,
+  base_generation_run_id TEXT,
+  generation_mode TEXT NOT NULL DEFAULT 'create',
+  reason_code TEXT NOT NULL DEFAULT '',
+  instruction TEXT NOT NULL DEFAULT '',
+  run_after_revision INTEGER NOT NULL DEFAULT 0,
+  revision_strategy TEXT NOT NULL DEFAULT '',
   task_id TEXT NOT NULL DEFAULT '',
   status TEXT NOT NULL DEFAULT 'queued',
   suite_path TEXT NOT NULL DEFAULT '',
@@ -90,16 +97,37 @@ def create_generation_run(
     environment_id: str,
     exploration_run_id: str,
     created_by: str,
+    target_asset_id: str | None = None,
+    base_generation_run_id: str | None = None,
+    generation_mode: str = "create",
+    reason_code: str = "",
+    instruction: str = "",
+    run_after_revision: bool = False,
 ) -> None:
     db.execute(
         """
         INSERT INTO ui_automation_generation_runs (
           id, project_id, test_case_id, manual_test_case_id, environment_id,
-          exploration_run_id, task_id, created_by
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+          exploration_run_id, target_asset_id, base_generation_run_id, generation_mode, reason_code,
+          instruction, run_after_revision, task_id, created_by
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
-        (run_id, project_id, test_case_id, manual_test_case_id, environment_id, exploration_run_id,
-         f"ui_generation:{run_id}", created_by),
+        (
+            run_id,
+            project_id,
+            test_case_id,
+            manual_test_case_id,
+            environment_id,
+            exploration_run_id,
+            target_asset_id,
+            base_generation_run_id,
+            generation_mode,
+            reason_code,
+            instruction,
+            int(run_after_revision),
+            f"ui_generation:{run_id}",
+            created_by,
+        ),
     )
 
 
@@ -145,6 +173,20 @@ def list_active_generation_runs(db: Connection) -> list[Row]:
     ).fetchall()
 
 
+def find_active_revision_run(db: Connection, asset_id: str) -> Row | None:
+    return db.execute(
+        """
+        SELECT *
+        FROM ui_automation_generation_runs
+        WHERE target_asset_id = ?
+          AND status IN ('queued', 'running')
+        ORDER BY created_at DESC
+        LIMIT 1
+        """,
+        (asset_id,),
+    ).fetchone()
+
+
 def update_generation_run(db: Connection, run_id: str, **fields) -> None:
     allowed = {
         "status",
@@ -152,6 +194,7 @@ def update_generation_run(db: Connection, run_id: str, **fields) -> None:
         "error_message",
         "started_at",
         "finished_at",
+        "revision_strategy",
     }
     assignments = []
     values = []

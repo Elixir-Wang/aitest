@@ -1,0 +1,5 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - status "Loading" [ref=e3]
+    - text: 正在进入 AI 测试系统
+  - region "Notifications alt+T"

@@ -27,6 +27,8 @@ def run_scenario(api_client, scenario):
     outputs = {}
     result_steps = []
     failure = None
+    probe_target_step_id = os.environ.get("API_SCENARIO_PROBE_TARGET_STEP_ID", "").strip()
+    probe_target_found = False
     steps = list(scenario.get("steps") or [])
     for step in steps:
         if not step.get("enabled", True):
@@ -40,10 +42,15 @@ def run_scenario(api_client, scenario):
         try:
             outputs[step.get("id", "")] = _run_step(api_client, step, variables, outputs, evidence)
             result_steps.append(_step_result(step, "passed", outputs[step.get("id", "")], evidence=evidence, duration_ms=(time.monotonic() - step_started) * 1000))
+            if probe_target_step_id and step.get("id") == probe_target_step_id:
+                probe_target_found = True
+                break
         except Exception as exc:
             result_steps.append(_step_result(step, "failed", error=str(exc), evidence=evidence, duration_ms=(time.monotonic() - step_started) * 1000))
             if failure is None:
                 failure = exc
+    if probe_target_step_id and not probe_target_found and failure is None:
+        failure = RuntimeError("场景 SSE 目标步骤不存在或未执行: " + probe_target_step_id)
     _write_result(scenario, result_steps, "failed" if failure else "passed", run_started_at, (time.monotonic() - run_started) * 1000)
     if failure:
         raise failure
@@ -124,7 +131,12 @@ def _request(api_client, step, variables, outputs, evidence):
             _set_pointer(test_data, target.removeprefix("/test_data"), value)
     evidence["request"] = _redact({"request": request, "test_data": test_data})
     evidence["assertions"] = _redact(step.get("assertions") or case.get("assertions") or [])
+    request_started_at = time.monotonic()
     response = _dispatch_request(api_client, request, test_data, endpoint)
+    try:
+        response._api_scenario_request_started_at = request_started_at
+    except Exception:
+        pass
     evidence["response"] = _response_snapshot(response, endpoint)
     _assert_response_assertions(response, step.get("assertions") or case.get("assertions") or [])
     return _extract(response, step.get("extractors") or [])
@@ -141,6 +153,7 @@ def _response_snapshot(response, endpoint):
             "streaming": True,
             "captured": True,
             "event_count": len(events),
+            "truncated": bool(getattr(response, "_api_scenario_sse_truncated", False)),
             "events": [_sse_event_snapshot(event) for event in events],
         }
         return _redact(snapshot)
@@ -336,25 +349,44 @@ def _sse_events(response):
         return events
     event_name = "message"
     data_lines = []
+    started_at = float(getattr(response, "_api_scenario_request_started_at", time.monotonic()))
+    max_stream_seconds = float(os.environ.get("API_SCENARIO_PROBE_MAX_STREAM_SECONDS", "0") or 0)
+    max_events = max(0, int(os.environ.get("API_SCENARIO_PROBE_MAX_EVENTS", "0") or 0))
+    truncated = False
 
     def flush():
-        nonlocal event_name, data_lines
+        nonlocal event_name, data_lines, truncated
         if data_lines:
-            events.append({"event": event_name or "message", "data": "\n".join(data_lines)})
+            received_offset_ms = round((time.monotonic() - started_at) * 1000)
+            if max_stream_seconds and received_offset_ms > max_stream_seconds * 1000:
+                raise RuntimeError("SSE 流读取超时")
+            events.append({
+                "event": event_name or "message",
+                "data": "\n".join(data_lines),
+                "received_offset_ms": received_offset_ms,
+            })
+            if max_events and len(events) >= max_events:
+                truncated = True
         event_name = "message"
         data_lines = []
+        return truncated
 
     for raw_line in response.iter_lines(decode_unicode=False):
+        if max_stream_seconds and time.monotonic() - started_at > max_stream_seconds:
+            raise RuntimeError("SSE 流读取超时")
         line = raw_line.decode("utf-8") if isinstance(raw_line, bytes) else str(raw_line)
         if not line:
-            flush()
+            if flush():
+                break
         elif line.startswith(":"):
             continue
         elif line.startswith("event:"):
             event_name = line[6:].lstrip()
         elif line.startswith("data:"):
             data_lines.append(line[5:].lstrip())
-    flush()
+    if not truncated:
+        flush()
+    response._api_scenario_sse_truncated = truncated
     response._api_scenario_sse_events = events
     return events
 
@@ -365,7 +397,11 @@ def _sse_event_snapshot(event):
         data = json.loads(data)
     except (TypeError, json.JSONDecodeError):
         pass
-    return {"event": event["event"], "data": data}
+    return {
+        "event": event["event"],
+        "data": data,
+        "received_offset_ms": event.get("received_offset_ms", 0),
+    }
 
 
 def _extract_sse_event_json(events, extractor, path):

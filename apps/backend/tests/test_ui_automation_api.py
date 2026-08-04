@@ -1,6 +1,6 @@
 from app.api.v1 import ui_automation
 from app.api.v1 import v1_router
-from app.schemas.ui_automation import UiAutomationExecutionCreateIn, UiAutomationGenerateIn
+from app.schemas.ui_automation import UiAutomationExecutionCreateIn, UiAutomationGenerateIn, UiAutomationRevisionIn
 
 
 def test_generation_input_accepts_one_case_only():
@@ -9,12 +9,25 @@ def test_generation_input_accepts_one_case_only():
     assert not hasattr(payload, "test_case_ids")
 
 
+def test_revision_input_accepts_structured_reason_and_optional_instruction():
+    payload = UiAutomationRevisionIn(
+        reason_code="missing_business_step_mapping",
+        instruction="  保留当前定位器，只补全步骤映射。  ",
+        run_after_revision=True,
+    )
+
+    assert payload.reason_code == "missing_business_step_mapping"
+    assert payload.instruction == "保留当前定位器，只补全步骤映射。"
+    assert payload.run_after_revision is True
+
+
 def test_ui_automation_routes_are_registered():
     paths = {route.path for route in v1_router.routes}
     assert "/projects/{project_id}/ui-automation/generation-runs" in paths
     assert "/projects/{project_id}/ui-automation/assets" in paths
     assert "/projects/{project_id}/ui-automation/assets/{asset_id}" in paths
     assert "/projects/{project_id}/ui-automation/assets/{asset_id}/generation-runs" in paths
+    assert "/projects/{project_id}/ui-automation/assets/{asset_id}/revision-runs" in paths
     assert "/projects/{project_id}/ui-automation/assets/{asset_id}/runs" in paths
     assert "/projects/{project_id}/ui-automation/assets/{asset_id}/files" not in paths
     assert "/projects/{project_id}/ui-automation/assets/{asset_id}/files/{file_kind}" not in paths
@@ -81,6 +94,39 @@ def test_generation_route_schedules_managed_execution(monkeypatch):
 
     assert result["id"] == "uigen-1"
     assert captured == {"run_id": "uigen-1"}
+
+
+def test_revision_route_schedules_managed_execution(monkeypatch):
+    captured = {}
+    monkeypatch.setattr(
+        ui_automation.service,
+        "create_revision_run",
+        lambda project_id, asset_id, payload, actor: {
+            "id": "uigen-revision-1",
+            "project_id": project_id,
+            "target_asset_id": asset_id,
+            **payload,
+        },
+    )
+    monkeypatch.setattr(
+        ui_automation.service,
+        "schedule_generation_run",
+        lambda run_id: captured.update(run_id=run_id),
+    )
+
+    result = ui_automation.create_revision_run(
+        "project-1",
+        "uiasset-1",
+        UiAutomationRevisionIn(
+            reason_code="missing_business_step_mapping",
+            instruction="只补全步骤映射",
+        ),
+        actor={"id": "user-1"},
+    )
+
+    assert result["target_asset_id"] == "uiasset-1"
+    assert result["reason_code"] == "missing_business_step_mapping"
+    assert captured == {"run_id": "uigen-revision-1"}
 
 
 def test_execution_route_schedules_managed_execution(monkeypatch):

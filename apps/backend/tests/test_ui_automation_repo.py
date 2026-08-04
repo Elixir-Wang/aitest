@@ -57,6 +57,49 @@ def test_generation_run_and_asset_round_trip():
     assert asset["pytest_node_id"].endswith("::test_uiauto_1")
 
 
+def test_revision_generation_run_round_trip_and_active_lookup():
+    db = _db()
+    ui_automation_repo.create_generation_run(
+        db,
+        run_id="uigen-revision-1",
+        project_id="project-1",
+        test_case_id=None,
+        manual_test_case_id="manual-case-1",
+        environment_id="env-1",
+        exploration_run_id="explore-1",
+        created_by="user-1",
+        target_asset_id="uiasset-1",
+        base_generation_run_id="uigen-base-1",
+        generation_mode="revise",
+        reason_code="missing_business_step_mapping",
+        instruction="只补全业务步骤映射",
+        run_after_revision=True,
+    )
+
+    run = ui_automation_repo.find_generation_run(db, "uigen-revision-1")
+    active = ui_automation_repo.find_active_revision_run(db, "uiasset-1")
+
+    assert run["target_asset_id"] == "uiasset-1"
+    assert run["exploration_run_id"] == "explore-1"
+    assert run["base_generation_run_id"] == "uigen-base-1"
+    assert run["generation_mode"] == "revise"
+    assert run["reason_code"] == "missing_business_step_mapping"
+    assert run["instruction"] == "只补全业务步骤映射"
+    assert run["run_after_revision"] == 1
+    assert run["revision_strategy"] == ""
+    assert active["id"] == "uigen-revision-1"
+
+    ui_automation_repo.update_generation_run(
+        db,
+        "uigen-revision-1",
+        status="completed",
+        revision_strategy="deterministic",
+    )
+
+    assert ui_automation_repo.find_active_revision_run(db, "uiasset-1") is None
+    assert ui_automation_repo.find_generation_run(db, "uigen-revision-1")["revision_strategy"] == "deterministic"
+
+
 def test_delete_execution_run_removes_record():
     db = _db()
     ui_automation_repo.create_execution_run(

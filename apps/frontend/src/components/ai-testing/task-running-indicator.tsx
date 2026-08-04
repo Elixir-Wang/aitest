@@ -24,6 +24,8 @@ const RUNNING_INDICATOR_SOURCE_TYPES = new Set([
   "api_scenario_ai_plan",
   "api_script_generation_run",
   "api_automation_run",
+  "ui_automation_generation_run",
+  "ui_automation_run",
 ]);
 const RUNNING_TASK_POLL_INTERVAL_MS = 2_000;
 const TASK_START_GRACE_MS = 8_000;

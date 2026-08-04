@@ -312,6 +312,13 @@ export type UiAutomationGenerationRun = {
   test_case_id: string;
   environment_id: string;
   exploration_run_id: string;
+  target_asset_id?: string | null;
+  base_generation_run_id?: string | null;
+  generation_mode?: "create" | "revise" | string;
+  reason_code?: string;
+  instruction?: string;
+  run_after_revision?: boolean;
+  revision_strategy?: string;
   task_id: string;
   status: string;
   suite_path: string;
@@ -1405,16 +1412,79 @@ export type PerformanceSseMetricEvidence = {
   sample_event: Record<string, unknown> | null;
 };
 
+export type PerformanceSseEventFact = {
+  fact_id: string;
+  metric_id: string;
+  event_name: string;
+  source: "data_json";
+  path: string;
+  value_type: string;
+  normalized_value: string;
+  matched_count: number;
+  first_sequence: number;
+  last_sequence: number;
+  first_offset_ms: number;
+  last_offset_ms: number;
+  has_non_empty_content: boolean;
+};
+
+export type PerformanceSseCandidateValidation = {
+  valid: boolean;
+  matched_count: number;
+  first_event_sequence: number | null;
+  sample_elapsed_ms: number | null;
+  sample_event: Record<string, unknown> | null;
+};
+
+export type PerformanceSseMetricCandidate = {
+  suggestion_key: string;
+  metric_id: string;
+  name: string;
+  category:
+    | "first_output"
+    | "milestone_start"
+    | "milestone_end"
+    | "completion"
+    | "first_external_action"
+    | "state_transition"
+    | "custom_event";
+  match: PerformanceSseMatch;
+  occurrence: "first";
+  recommended_missing_policy: "record_null" | "fail_request" | "ignore";
+  source: "ai" | "structural" | "merged";
+  recommendation_level: "recommended" | "optional" | "low_confidence";
+  recommendation_score: number;
+  semantic_confidence: number;
+  reason: string;
+  uncertainty: string | null;
+  evidence_fact_ids: string[];
+  validation: PerformanceSseCandidateValidation;
+};
+
 export type PerformanceSseMetricGenerationResult = {
   sample: { status_code: number; event_count: number; truncated: boolean };
-  candidate_sse: PerformanceSseConfig;
-  validation: {
+  sample_summary?: { event_count: number; duration_ms: number; truncated: boolean };
+  event_facts: PerformanceSseEventFact[];
+  candidates: PerformanceSseMetricCandidate[];
+  end_rule_candidate: {
+    fact_id: string;
+    match: PerformanceSseMatch;
+    reason: string;
+    validation: PerformanceSseCandidateValidation;
+  } | null;
+  analysis: {
+    ai_status: "used" | "not_used" | "unavailable" | "disabled";
+    generation_mode: "ai_and_structural" | "ai_only" | "structural_only" | "event_catalog_only" | "user_validation";
+    summary: string;
+  };
+  result_status: "ready" | "empty" | "partial" | "failed";
+  messages: string[];
+  candidate_sse?: PerformanceSseConfig;
+  validation?: {
     valid: boolean;
     metrics: PerformanceSseMetricEvidence[];
     end_rule: { matched_count: number; first_event_sequence: number | null };
   };
-  generation_source: "ai" | "deterministic" | "deterministic_fallback" | "user_validation";
-  warnings: string[];
 };
 
 export type PerformanceSseMetricGenerationPayload = {
@@ -1538,6 +1608,30 @@ export type PerformanceTestCreatePayload = {
   success_rules?: PerformanceSuccessRule[];
 };
 
+export type PerformanceScenarioStep = {
+  id: string;
+  name: string;
+  step_type: string;
+  request?: {
+    method?: string;
+    path?: string;
+    name?: string;
+    path_parameters?: Record<string, unknown>;
+    query_parameters?: Record<string, unknown>;
+    headers?: Record<string, unknown>;
+    body?: unknown;
+    form?: Record<string, unknown>;
+    multipart_form?: Record<string, unknown>;
+    assertions?: unknown[];
+    extractors?: unknown[];
+    transport?: string;
+    sse?: unknown;
+  } | null;
+  bindings?: unknown[];
+  extractors?: unknown[];
+  assertions?: unknown[];
+};
+
 export type PerformanceScript = {
   id: string;
   performance_test_id: string;
@@ -1555,7 +1649,7 @@ export type PerformanceScript = {
     scenario_name?: string;
     scenario_revision?: number | null;
     scenario_variables?: Record<string, unknown>;
-    steps?: Array<Record<string, unknown>>;
+    steps?: PerformanceScenarioStep[];
     load: Record<string, unknown>;
     data: Record<string, unknown>;
     success_rules: PerformanceSuccessRule[];
@@ -2330,6 +2424,26 @@ export function createUiAutomationGenerationRun(
     method: "POST",
     body: JSON.stringify(payload),
   });
+}
+
+export function createUiAutomationRevisionRun(
+  projectId: string,
+  assetId: string,
+  payload: {
+    reason_code: "missing_business_step_mapping";
+    instruction?: string;
+    environment_id?: string;
+    exploration_run_id?: string;
+    run_after_revision?: boolean;
+  },
+) {
+  return apiRequest<UiAutomationGenerationRun>(
+    `/projects/${projectId}/ui-automation/assets/${assetId}/revision-runs`,
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+    },
+  );
 }
 
 export function getUiAutomationGenerationRun(projectId: string, runId: string) {

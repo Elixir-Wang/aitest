@@ -13,6 +13,7 @@ from app.schemas.ui_automation import (
     UiAutomationExecutionRunOut,
     UiAutomationGenerateIn,
     UiAutomationGenerationRunOut,
+    UiAutomationRevisionIn,
     UiAutomationLiveViewOut,
     UiAutomationRunDetailOut,
     UiAutomationRunEventsOut,
@@ -31,6 +32,18 @@ def create_generation_run(
     actor=Depends(require_admin),
 ) -> dict:
     created = service.create_generation_run(project_id, payload.model_dump(), actor)
+    service.schedule_generation_run(created["id"])
+    return created
+
+
+@router.post("/assets/{asset_id}/revision-runs", response_model=UiAutomationGenerationRunOut)
+def create_revision_run(
+    project_id: str,
+    asset_id: str,
+    payload: UiAutomationRevisionIn,
+    actor=Depends(require_admin),
+) -> dict:
+    created = service.create_revision_run(project_id, asset_id, payload.model_dump(), actor)
     service.schedule_generation_run(created["id"])
     return created
 

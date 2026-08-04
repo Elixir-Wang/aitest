@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict, Field
+from typing import Literal
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class UiAutomationGenerateIn(BaseModel):
@@ -11,12 +13,34 @@ class UiAutomationGenerateIn(BaseModel):
     exploration_run_id: str = ""
 
 
+class UiAutomationRevisionIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    reason_code: Literal["missing_business_step_mapping"] = "missing_business_step_mapping"
+    instruction: str = Field(default="", max_length=2000)
+    environment_id: str = ""
+    exploration_run_id: str = ""
+    run_after_revision: bool = False
+
+    @field_validator("instruction")
+    @classmethod
+    def normalize_instruction(cls, value: str) -> str:
+        return value.strip()
+
+
 class UiAutomationGenerationRunOut(BaseModel):
     id: str
     project_id: str
     test_case_id: str
     environment_id: str
     exploration_run_id: str = ""
+    target_asset_id: str | None = None
+    base_generation_run_id: str | None = None
+    generation_mode: str = "create"
+    reason_code: str = ""
+    instruction: str = ""
+    run_after_revision: bool = False
+    revision_strategy: str = ""
     task_id: str = ""
     status: str
     suite_path: str = ""

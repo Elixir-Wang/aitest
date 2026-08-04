@@ -188,6 +188,15 @@ export function PerformanceAiAnalysisDrawer({
                   </ul>
                 </section>
               ) : null}
+              <PerformanceRecommendations
+                recommendations={analysis.report_snapshot.recommendations ?? []}
+              />
+              {analysis.analysis_status === "completed" && !(analysis.proposal.changes ?? []).length ? (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-amber-900 text-xs dark:border-amber-900 dark:bg-amber-950/20 dark:text-amber-100">
+                  当前没有可安全自动应用的配置修改。系统已给出处理与复测步骤；在缺少服务端证据或错误属于被测服务时，
+                  不会为追求通过而自动改写脚本或断言。
+                </div>
+              ) : null}
               <PerformanceAiConfigDiff
                 applicableChangeIds={analysis.applicable_change_ids}
                 changes={analysis.proposal.changes ?? []}
@@ -255,6 +264,33 @@ export function PerformanceAiAnalysisDrawer({
         </AlertDialog>
       </DrawerContent>
     </Drawer>
+  );
+}
+
+function PerformanceRecommendations({
+  recommendations,
+}: {
+  recommendations: NonNullable<PerformanceAnalysis["report_snapshot"]["recommendations"]>;
+}) {
+  if (!recommendations.length) return null;
+  return (
+    <section className="space-y-2">
+      <h3 className="font-semibold text-sm">处理与复测建议</h3>
+      <div className="divide-y rounded-lg border bg-card px-3">
+        {recommendations.map((recommendation) => (
+          <article className="py-3" key={recommendation.id}>
+            <div className="mb-1 flex items-center gap-2">
+              <Badge variant="outline">{recommendation.priority}</Badge>
+              {recommendation.cost ? <span className="text-muted-foreground text-xs">成本：{recommendation.cost}</span> : null}
+            </div>
+            <p className="text-sm leading-6">{recommendation.action}</p>
+            {recommendation.verification ? (
+              <p className="mt-1 text-muted-foreground text-xs leading-5">验证：{recommendation.verification}</p>
+            ) : null}
+          </article>
+        ))}
+      </div>
+    </section>
   );
 }
 

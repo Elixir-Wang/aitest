@@ -11,6 +11,7 @@ def seed_system_defaults(db: sqlite3.Connection) -> None:
     _ensure_exploration_loop_mode(db)
     _repair_exploration_run_foreign_keys(db)
     _migrate_ui_automation_case_sources(db)
+    _ensure_ui_automation_revision_columns(db)
     _drop_legacy_performance_run_tables(db)
     _ensure_performance_test_columns(db)
     _migrate_performance_scripts_to_single_record(db)
@@ -417,6 +418,13 @@ def _migrate_ui_automation_case_sources(db: sqlite3.Connection) -> None:
           manual_test_case_id TEXT,
           environment_id TEXT NOT NULL,
           exploration_run_id TEXT NOT NULL DEFAULT '',
+          target_asset_id TEXT,
+          base_generation_run_id TEXT,
+          generation_mode TEXT NOT NULL DEFAULT 'create',
+          reason_code TEXT NOT NULL DEFAULT '',
+          instruction TEXT NOT NULL DEFAULT '',
+          run_after_revision INTEGER NOT NULL DEFAULT 0,
+          revision_strategy TEXT NOT NULL DEFAULT '',
           task_id TEXT NOT NULL DEFAULT '',
           status TEXT NOT NULL DEFAULT 'queued',
           suite_path TEXT NOT NULL DEFAULT '',
@@ -482,7 +490,8 @@ def _migrate_ui_automation_case_sources(db: sqlite3.Connection) -> None:
     )
     db.execute(
         """INSERT INTO ui_automation_generation_runs
-           SELECT id, project_id, test_case_id, NULL, environment_id, exploration_run_id, task_id,
+           SELECT id, project_id, test_case_id, NULL, environment_id, exploration_run_id,
+                  NULL, NULL, 'create', '', '', 0, '', task_id,
                   status, suite_path, changed_files_json, error_message, created_by, started_at,
                   finished_at, created_at, updated_at
            FROM ui_automation_generation_runs_legacy"""
@@ -519,6 +528,30 @@ def _migrate_ui_automation_case_sources(db: sqlite3.Connection) -> None:
     violations = db.execute("PRAGMA foreign_key_check").fetchall()
     if violations:
         raise RuntimeError(f"UI automation source migration has foreign key violations: {violations}")
+
+
+def _ensure_ui_automation_revision_columns(db: sqlite3.Connection) -> None:
+    columns = {str(column["name"]) for column in db.execute("PRAGMA table_info(ui_automation_generation_runs)")}
+    additions = {
+        "target_asset_id": "ALTER TABLE ui_automation_generation_runs ADD COLUMN target_asset_id TEXT",
+        "base_generation_run_id": "ALTER TABLE ui_automation_generation_runs ADD COLUMN base_generation_run_id TEXT",
+        "generation_mode": "ALTER TABLE ui_automation_generation_runs ADD COLUMN generation_mode TEXT NOT NULL DEFAULT 'create'",
+        "reason_code": "ALTER TABLE ui_automation_generation_runs ADD COLUMN reason_code TEXT NOT NULL DEFAULT ''",
+        "instruction": "ALTER TABLE ui_automation_generation_runs ADD COLUMN instruction TEXT NOT NULL DEFAULT ''",
+        "run_after_revision": "ALTER TABLE ui_automation_generation_runs ADD COLUMN run_after_revision INTEGER NOT NULL DEFAULT 0",
+        "revision_strategy": "ALTER TABLE ui_automation_generation_runs ADD COLUMN revision_strategy TEXT NOT NULL DEFAULT ''",
+    }
+    for name, statement in additions.items():
+        if name not in columns:
+            db.execute(statement)
+    db.execute("CREATE INDEX IF NOT EXISTS idx_ui_generation_target_asset ON ui_automation_generation_runs(target_asset_id, created_at)")
+    db.execute(
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS uq_ui_active_asset_revision
+        ON ui_automation_generation_runs(target_asset_id)
+        WHERE target_asset_id IS NOT NULL AND status IN ('queued', 'running')
+        """
+    )
 
 
 def _ensure_test_point_coverage_structure(db: sqlite3.Connection) -> None:

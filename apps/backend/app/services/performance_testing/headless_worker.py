@@ -432,7 +432,7 @@ def _read_locust_events(path: Path) -> list[dict[str, Any]]:
     return events
 
 
-def summarize_sse_measurements(path: Path) -> dict[str, Any]:
+def summarize_sse_measurements(path: Path, *, max_attempts: int | None = None) -> dict[str, Any]:
     """Return independent SSE timing aggregates without touching Locust HTTP stats."""
     buckets: dict[str, dict[str, Any]] = {}
     attempts = 0
@@ -461,6 +461,8 @@ def summarize_sse_measurements(path: Path) -> dict[str, Any]:
             continue
         if not isinstance(measurement, dict):
             continue
+        if max_attempts is not None and attempts >= max(0, max_attempts):
+            break
         attempts += 1
         parse_error_count += int(measurement.get("parse_error_count") or 0)
         values = measurement.get("metrics") if isinstance(measurement.get("metrics"), dict) else {}
@@ -479,17 +481,38 @@ def summarize_sse_measurements(path: Path) -> dict[str, Any]:
             if isinstance(value, (int, float)):
                 bucket["values"].append(float(value))
 
+        derived_values = (
+            measurement.get("derived_metrics")
+            if isinstance(measurement.get("derived_metrics"), dict)
+            else {}
+        )
+        derived_value = derived_values.get("llm_start_to_first_content_ms")
+        if isinstance(derived_value, (int, float)):
+            metric_id = "derived:llm_start_to_first_content"
+            bucket = buckets.setdefault(
+                metric_id,
+                {"metric_id": metric_id, "values": [], "missing_count": 0, "failure_count": 0},
+            )
+            bucket["values"].append(float(derived_value))
+            if failed:
+                bucket["failure_count"] += 1
+
     metrics = []
     for bucket in sorted(buckets.values(), key=lambda item: item["metric_id"]):
         values = sorted(bucket.pop("values"))
+        missing_count = bucket["missing_count"]
+        if bucket["metric_id"] == "derived:llm_start_to_first_content":
+            missing_count = attempts - len(values)
         metrics.append(
             {
                 "metric_id": bucket["metric_id"],
                 "attempt_count": attempts,
                 "matched_count": len(values),
-                "missing_count": bucket["missing_count"],
+                "missing_count": missing_count,
                 "failure_count": bucket["failure_count"],
                 "average_ms": round(sum(values) / len(values), 4) if values else None,
+                "min_ms": round(values[0], 4) if values else None,
+                "max_ms": round(values[-1], 4) if values else None,
                 "p50_ms": _percentile(values, 0.5),
                 "p95_ms": _percentile(values, 0.95),
                 "p99_ms": _percentile(values, 0.99),

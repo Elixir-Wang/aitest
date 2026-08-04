@@ -558,3 +558,47 @@ Use Node filesystem reads for line ranges instead of assuming Unix utilities.
 ### Metadata
 - Source: error
 - Tags: windows, shell, sed
+
+---
+
+## [ERR-20260804-001] powershell-path-and-special-directory-quoting
+
+**Logged**: 2026-08-04T10:00:00+08:00
+**Priority**: low
+**Status**: resolved
+**Area**: tooling
+
+### Summary
+The shell could not resolve `powershell.exe` by name, and an unquoted Next.js path containing `(main)` was parsed as a PowerShell expression.
+
+### Error
+`program not found` and `The term 'main' is not recognized`.
+
+### Resolution
+Invoke Windows PowerShell by absolute path and single-quote repository paths containing parentheses before passing them to RTK commands.
+
+### Metadata
+- Source: error
+- Tags: windows, powershell, paths, rtk
+
+---
+
+## [ERR-20260804-002] backend-test-missing-websocket
+
+**Logged**: 2026-08-04T10:20:00+08:00
+**Priority**: medium
+**Status**: open
+**Area**: testing
+
+### Summary
+The focused UI automation API test collection fails before test execution because the active Python environment lacks the `websocket` module imported by `app.services.ui_automation.live_view`.
+
+### Error
+`ModuleNotFoundError: No module named 'websocket'`
+
+### Next Action
+Use the repository's configured backend runtime or install the declared dependency before rerunning API tests. Do not change production imports solely to bypass the missing test dependency.
+
+### Metadata
+- Source: error
+- Tags: backend, pytest, dependency, websocket

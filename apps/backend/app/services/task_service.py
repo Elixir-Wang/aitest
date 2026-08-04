@@ -23,6 +23,8 @@ RUNNING_INDICATOR_SOURCE_TYPES = {
     "api_scenario_ai_plan",
     "api_script_generation_run",
     "api_automation_run",
+    "ui_automation_generation_run",
+    "ui_automation_run",
 }
 
 EXPLORATION_STATUS = {
@@ -108,6 +110,24 @@ API_SCRIPT_GENERATION_STATUS = {
     "interrupted": (COMPLETED_GROUP, "已中断"),
 }
 
+UI_AUTOMATION_GENERATION_STATUS = {
+    "queued": (RUNNING_GROUP, "排队中"),
+    "running": (RUNNING_GROUP, "修订中"),
+    "waiting_manual": (WAITING_GROUP, "等待补充信息"),
+    "completed": (COMPLETED_GROUP, "修订完成"),
+    "failed": (FAILED_GROUP, "修订失败"),
+    "interrupted": (COMPLETED_GROUP, "已中断"),
+}
+
+UI_AUTOMATION_RUN_STATUS = {
+    "queued": (RUNNING_GROUP, "排队中"),
+    "running": (RUNNING_GROUP, "执行中"),
+    "passed": (COMPLETED_GROUP, "执行通过"),
+    "failed": (FAILED_GROUP, "执行失败"),
+    "cancelled": (COMPLETED_GROUP, "已取消"),
+    "interrupted": (COMPLETED_GROUP, "已中断"),
+}
+
 
 STATUS_META_BY_SOURCE_TYPE = {
     "exploration_run": EXPLORATION_STATUS,
@@ -120,6 +140,8 @@ STATUS_META_BY_SOURCE_TYPE = {
     "api_scenario_ai_plan": API_SCENARIO_AI_PLAN_STATUS,
     "api_script_generation_run": API_SCRIPT_GENERATION_STATUS,
     "api_automation_run": API_AUTOMATION_RUN_STATUS,
+    "ui_automation_generation_run": UI_AUTOMATION_GENERATION_STATUS,
+    "ui_automation_run": UI_AUTOMATION_RUN_STATUS,
 }
 
 
@@ -311,6 +333,8 @@ def _collect_visible_tasks(actor) -> list[dict]:
             *_api_scenario_ai_plan_tasks(db, project_names),
             *_api_script_generation_tasks(db, project_names),
             *_api_automation_run_tasks(db, project_names),
+            *_ui_automation_generation_tasks(db, project_names),
+            *_ui_automation_run_tasks(db, project_names),
         ]
 
 
@@ -640,6 +664,82 @@ def _api_script_generation_tasks(db, project_names: dict[str, str]) -> list[dict
             created_at=row["created_at"],
             updated_at=row["updated_at"] or row["created_at"],
             detail_url=f"/projects/{row['project_id']}/automation/api?scriptGenerationRun={row['id']}",
+        )
+        for row in rows
+    ]
+
+
+def _ui_automation_generation_tasks(db, project_names: dict[str, str]) -> list[dict]:
+    if not project_names or not _table_exists(db, "ui_automation_generation_runs"):
+        return []
+    rows = db.execute(
+        """
+        SELECT r.id, r.project_id, r.task_id, r.status, r.error_message, r.generation_mode,
+               r.target_asset_id, r.created_at, r.updated_at,
+               COALESCE(tc.title, mt.title, 'UI 自动化') AS case_title
+        FROM ui_automation_generation_runs r
+        LEFT JOIN test_cases tc ON tc.id = r.test_case_id
+        LEFT JOIN manual_test_cases mt ON mt.id = r.manual_test_case_id
+        WHERE r.project_id IN ({})
+        """.format(_placeholders(project_names)),
+        tuple(project_names),
+    ).fetchall()
+    return [
+        _task(
+            task_id=row["task_id"],
+            source_type="ui_automation_generation_run",
+            source_id=row["id"],
+            project_id=row["project_id"],
+            project_name=project_names[row["project_id"]],
+            module="ui_automation",
+            module_label="UI 自动化",
+            title=("修订 UI 自动化：" if row["generation_mode"] == "revise" else "生成 UI 自动化：") + row["case_title"],
+            status=row["status"],
+            status_meta=UI_AUTOMATION_GENERATION_STATUS,
+            summary=row["error_message"] or "",
+            created_at=row["created_at"],
+            updated_at=row["updated_at"] or row["created_at"],
+            detail_url=(
+                f"/projects/{row['project_id']}/automation/ui/assets/{row['target_asset_id']}?tab=generation"
+                if row["target_asset_id"]
+                else f"/projects/{row['project_id']}/automation/ui?generationRun={row['id']}"
+            ),
+        )
+        for row in rows
+    ]
+
+
+def _ui_automation_run_tasks(db, project_names: dict[str, str]) -> list[dict]:
+    if not project_names or not _table_exists(db, "ui_automation_execution_runs"):
+        return []
+    rows = db.execute(
+        """
+        SELECT r.id, r.project_id, r.asset_id, r.task_id, r.status, r.error_message,
+               r.created_at, r.updated_at, COALESCE(tc.title, mt.title, 'UI 自动化') AS case_title
+        FROM ui_automation_execution_runs r
+        JOIN ui_automation_assets a ON a.id = r.asset_id
+        LEFT JOIN test_cases tc ON tc.id = a.test_case_id
+        LEFT JOIN manual_test_cases mt ON mt.id = a.manual_test_case_id
+        WHERE r.project_id IN ({})
+        """.format(_placeholders(project_names)),
+        tuple(project_names),
+    ).fetchall()
+    return [
+        _task(
+            task_id=row["task_id"],
+            source_type="ui_automation_run",
+            source_id=row["id"],
+            project_id=row["project_id"],
+            project_name=project_names[row["project_id"]],
+            module="ui_automation",
+            module_label="UI 自动化",
+            title="执行 UI 自动化：" + row["case_title"],
+            status=row["status"],
+            status_meta=UI_AUTOMATION_RUN_STATUS,
+            summary=row["error_message"] or "",
+            created_at=row["created_at"],
+            updated_at=row["updated_at"] or row["created_at"],
+            detail_url=f"/projects/{row['project_id']}/automation/ui/assets/{row['asset_id']}/runs/{row['id']}",
         )
         for row in rows
     ]

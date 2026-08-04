@@ -239,6 +239,9 @@ def _diagnostic_constraints(
     constraints["rules"].append(
         "所有 redacted=true 的对象都是运行结束后构造 AI 证据时产生的脱敏标记，不是实际运行值；不得声称请求发送了该标记。"
     )
+    constraints["rules"].append(
+        "sse_end_rule_not_matched 只证明运行时解析器未匹配结束规则；缺少原始 SSE 事件帧或等价服务端证据时，不得断言服务端未发送目标事件。"
+    )
     if request_execution_facts.get("unresolved_plan_header_templates"):
         constraints["rules"].append(
             "request_execution_facts.unresolved_plan_header_templates 是按脚本解析规则确定的未解析模板；应据此判断脚本发送了未解析模板字符串，而不是脱敏标记。"

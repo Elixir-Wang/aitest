@@ -63,3 +63,37 @@ def test_case_generation_prompt_contains_backend_owned_paths(monkeypatch, tmp_pa
     assert "data/projects/project_1/cases/login.yaml" in content
     assert "data/projects/project_1/cases/login.plan.json" in content
     assert "唯一合法" in content
+
+
+def test_mapping_revision_prompt_uses_current_asset_without_exploration_evidence(monkeypatch, tmp_path: Path):
+    captured = {}
+
+    class FakeAgent:
+        async def ainvoke(self, payload):
+            captured["payload"] = payload
+            return {"messages": []}
+
+    monkeypatch.setattr(agent_module, "create_pytest_playwright_agent", lambda **_: FakeAgent())
+
+    asyncio.run(
+        agent_module.generate_pytest_playwright_case(
+            model="model",
+            suite_path=tmp_path,
+            case_payload={"id": "case-1", "title": "登录"},
+            evidence_payload={"pages": [], "artifacts": []},
+            artifacts={
+                "test_file": "testcases/generated/project_1/test_login.py",
+                "data_file": "data/projects/project_1/cases/login.yaml",
+                "plan_file": "data/projects/project_1/cases/login.plan.json",
+            },
+            revision_context={
+                "reason_code": "missing_business_step_mapping",
+                "instruction": "补充步骤信息",
+            },
+        )
+    )
+
+    content = captured["payload"]["messages"][0]["content"]
+    assert "当前资产本身就是本次修订的事实依据" in content
+    assert "没有站点探索 artifacts 也必须继续" in content
+    assert "禁止新增或改写 locator" in content

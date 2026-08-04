@@ -38,13 +38,22 @@ import {
 import { Select, SelectOption } from "@/components/ui/animated-select-1";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { chineseCompletionTone, StatusBadge } from "@/components/ui/status-badge";
+import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   apiRequest,
   createUiAutomationExecutionRun,
-  createUiAutomationGenerationRun,
+  createUiAutomationRevisionRun,
   deleteUiAutomationExecutionRun,
   formatDateTime,
   getUiAutomationAsset,
@@ -126,6 +135,9 @@ export function UiAutomationAssetDetail({ projectId, assetId }: { projectId: str
   const [executionEnvironmentId, setExecutionEnvironmentId] = useState("");
   const [executeLoading, setExecuteLoading] = useState(false);
   const [regenerating, setRegenerating] = useState(false);
+  const [revisionDialogOpen, setRevisionDialogOpen] = useState(false);
+  const [revisionInstruction, setRevisionInstruction] = useState("");
+  const [runAfterRevision, setRunAfterRevision] = useState(false);
   const [selectedRunIds, setSelectedRunIds] = useState<string[]>([]);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [deletingRuns, setDeletingRuns] = useState(false);
@@ -204,22 +216,35 @@ export function UiAutomationAssetDetail({ projectId, assetId }: { projectId: str
     }
   }
 
-  async function regenerate() {
+  function openRevisionDialog() {
     if (!asset || !latestGeneration?.environment_id) {
-      toast.error("缺少最近生成环境，无法重新生成");
+      toast.error("缺少最近生成环境，无法修订");
+      return;
+    }
+    setRevisionInstruction("");
+    setRunAfterRevision(false);
+    setRevisionDialogOpen(true);
+  }
+
+  async function submitRevision() {
+    if (!asset || !latestGeneration?.environment_id) {
+      toast.error("缺少最近生成环境，无法修订");
       return;
     }
     setRegenerating(true);
     try {
-      const run = await createUiAutomationGenerationRun(projectId, {
-        test_case_id: asset.test_case_id,
+      const run = await createUiAutomationRevisionRun(projectId, assetId, {
+        reason_code: "missing_business_step_mapping",
+        instruction: revisionInstruction.trim(),
         environment_id: latestGeneration.environment_id,
         exploration_run_id: latestGeneration.exploration_run_id || undefined,
+        run_after_revision: runAfterRevision,
       });
-      toast.success(`已创建重新生成任务 ${run.id}`);
+      setRevisionDialogOpen(false);
+      toast.success(`已创建修订任务 ${run.id}`);
       await loadDetail(false);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "重新生成失败");
+      toast.error(error instanceof Error ? error.message : "修订失败");
     } finally {
       setRegenerating(false);
     }
@@ -268,8 +293,8 @@ export function UiAutomationAssetDetail({ projectId, assetId }: { projectId: str
                 返回列表
               </Link>
             </Button>
-            <Button disabled={regenerating || !asset} onClick={() => void regenerate()} variant="outline">
-              {regenerating ? <Loader2 className="size-4 animate-spin" /> : <RotateCcw className="size-4" />}重新生成
+            <Button disabled={regenerating || !asset} onClick={openRevisionDialog} variant="outline">
+              {regenerating ? <Loader2 className="size-4 animate-spin" /> : <RotateCcw className="size-4" />}修订自动化
             </Button>
             <Button disabled={!canExecute} onClick={() => void execute()}>
               {executeLoading ? <Loader2 className="size-4 animate-spin" /> : <Play className="size-4" />}
@@ -413,6 +438,54 @@ export function UiAutomationAssetDetail({ projectId, assetId }: { projectId: str
           </Tabs>
         ) : null}
       </ShellSection>
+      <Dialog
+        onOpenChange={(open) => {
+          if (!regenerating) setRevisionDialogOpen(open);
+        }}
+        open={revisionDialogOpen}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>修订 UI 自动化</DialogTitle>
+            <DialogDescription>
+              当前资产逻辑保持不变，系统将优先补全业务步骤名称和动作分组。无法安全映射时，才会让智能体基于当前资产做最小修订。
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="rounded-md border bg-muted/40 p-3 text-muted-foreground text-sm">
+              检测问题：当前资产缺少业务步骤映射，执行详情只能展示技术动作。
+            </div>
+            <Field>
+              <FieldLabel htmlFor="ui-automation-revision-instruction">补充修改要求（可选）</FieldLabel>
+              <Textarea
+                id="ui-automation-revision-instruction"
+                maxLength={2000}
+                onChange={(event) => setRevisionInstruction(event.target.value)}
+                placeholder="例如：保留当前定位器和断言，只补全业务步骤名称和动作分组。留空时按当前资产和检测问题做最小修订。"
+                value={revisionInstruction}
+              />
+            </Field>
+            <label className="flex items-center gap-2 text-sm" htmlFor="ui-automation-run-after-revision">
+              <Checkbox
+                checked={runAfterRevision}
+                id="ui-automation-run-after-revision"
+                onCheckedChange={(checked) => setRunAfterRevision(Boolean(checked))}
+              />
+              修订成功后立即运行 UI 用例验证
+            </label>
+          </div>
+          <DialogFooter>
+            <Button disabled={regenerating} onClick={() => setRevisionDialogOpen(false)} variant="outline">
+              取消
+            </Button>
+            <Button disabled={regenerating} onClick={() => void submitRevision()}>
+              {regenerating ? <Loader2 className="size-4 animate-spin" /> : <RotateCcw className="size-4" />}
+              修订并验证
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <AlertDialog onOpenChange={setDeleteConfirmOpen} open={deleteConfirmOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>

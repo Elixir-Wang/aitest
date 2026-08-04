@@ -6,7 +6,8 @@ from pydantic import ValidationError
 from app.agents.performance_testing.script_generation.planner import build_default_plan
 from app.agents.performance_testing.script_generation.schemas import LocustLoadPlan, LocustScriptPlan
 from app.agents.performance_testing.script_generation.service import script_plan_input
-from app.services.performance_testing.script_renderer import render_locust_script
+from app.services.performance_testing.scenario_compiler import build_scenario_plan
+from app.services.performance_testing.script_renderer import _render_scenario_helpers, render_locust_script
 from app.services.performance_testing.validator import validate_locust_script
 
 
@@ -53,6 +54,101 @@ def _performance_test() -> dict:
         "data_config": {"source": "fixed", "selection_strategy": "sequential_loop", "json_rows": []},
         "success_rules": [{"kind": "status_code", "status_codes": [200, 201]}],
     }
+
+
+def test_scenario_compiler_keeps_required_endpoint_header_defaults() -> None:
+    plan = build_scenario_plan(
+        {
+            "id": "perftest-sse",
+            "request_config": {
+                "scenario_step_id": "step-sse",
+                "transport": "sse",
+                "sse": {"metrics": []},
+            },
+            "load_config": {},
+        },
+        {
+            "id": "scenario-1",
+            "name": "SSE 场景",
+            "revision": 1,
+            "steps": [
+                {
+                    "id": "step-sse",
+                    "name": "SSE",
+                    "step_type": "api_request",
+                    "endpoint": {
+                        "id": "endpoint-sse",
+                        "method": "POST",
+                        "path": "/sse",
+                        "parameters": [
+                            {
+                                "name": "SSE-Backend-Type",
+                                "in": "header",
+                                "required": True,
+                                "schema": {"enum": ["sse"]},
+                            },
+                            {
+                                "name": "cybertron-app-id",
+                                "in": "header",
+                                "required": True,
+                                "schema": {"default": "multi-agent-server"},
+                            },
+                        ],
+                    },
+                    "request_overrides": {"request": {"multipart_form": {"question": "你好"}}},
+                }
+            ],
+        },
+        {},
+    )
+
+    assert plan.steps[0].request.headers == {
+        "SSE-Backend-Type": "sse",
+        "cybertron-app-id": "multi-agent-server",
+    }
+
+
+def _scenario_plan_with_binding(source: dict, *, data_rows: list[dict] | None = None) -> LocustScriptPlan:
+    return LocustScriptPlan.model_validate(
+        {
+            "test_id": "perftest-scenario",
+            "target_type": "scenario",
+            "scenario_id": "scenario-1",
+            "scenario_name": "场景",
+            "scenario_variables": {},
+            "steps": [
+                {
+                    "id": "step-1",
+                    "name": "请求",
+                    "step_type": "api_request",
+                    "request": {
+                        "method": "POST",
+                        "path": "/api/items",
+                        "name": "POST /api/items",
+                        "headers": {"cybertron-robot-key": "runtime-value"},
+                        "timeout_seconds": 30,
+                    },
+                    "bindings": [
+                        {
+                            "required": True,
+                            "source": source,
+                            "target": "/request/headers/cybertron-robot-key",
+                        }
+                    ],
+                }
+            ],
+            "load": {
+                "mode": "fixed",
+                "wait_time_min_seconds": 1,
+                "wait_time_max_seconds": 3,
+            },
+            "data": {
+                "source": "json" if data_rows else "fixed",
+                "selection_strategy": "sequential_loop",
+                "json_rows": data_rows or [],
+            },
+        }
+    )
 
 
 def test_default_plan_keeps_all_headers() -> None:
@@ -112,6 +208,88 @@ def test_renderer_resolves_single_brace_path_parameters() -> None:
 
     assert 'path = path.replace("{" + key + "}", str(value))' in source
     assert 'path.replace("{{" + key + "}}"' not in source
+
+
+def test_scenario_source_resolves_normalized_environment_secret_names() -> None:
+    namespace: dict[str, object] = {}
+    exec(_render_scenario_helpers(), namespace)
+
+    scenario_source = namespace["_scenario_source"]
+
+    assert scenario_source(
+        {"type": "secret", "key": "cybertron_robot_key"},
+        {"cybertron-robot-key": "robot-key"},
+        {},
+    ) == "robot-key"
+
+
+def test_scenario_variable_prefers_exact_name_over_normalized_alias() -> None:
+    namespace: dict[str, object] = {}
+    exec(_render_scenario_helpers(), namespace)
+
+    scenario_variable = namespace["_scenario_variable"]
+
+    assert scenario_variable(
+        {
+            "cybertron_robot_key": "exact-value",
+            "cybertron-robot-key": "alias-value",
+        },
+        "cybertron_robot_key",
+    ) == "exact-value"
+
+
+def test_scenario_variable_rejects_ambiguous_normalized_names() -> None:
+    namespace: dict[str, object] = {}
+    exec(_render_scenario_helpers(), namespace)
+
+    scenario_variable = namespace["_scenario_variable"]
+
+    with pytest.raises(ValueError, match="ambiguous scenario variable: Cybertron_Robot_Key"):
+        scenario_variable(
+            {
+                "cybertron_robot_key": "first-value",
+                "cybertron-robot-key": "second-value",
+            },
+            "Cybertron_Robot_Key",
+        )
+
+
+def test_required_scenario_binding_rejects_missing_value_before_overwrite() -> None:
+    namespace: dict[str, object] = {}
+    exec(_render_scenario_helpers(), namespace)
+
+    apply_bindings = namespace["_apply_scenario_bindings"]
+    request = {"headers": {"cybertron-robot-key": "runtime-value"}}
+    binding = {
+        "required": True,
+        "source": {"type": "secret", "key": "cybertron_robot_key"},
+        "target": "/request/headers/cybertron-robot-key",
+    }
+
+    with pytest.raises(
+        ValueError,
+        match="required scenario binding unresolved: cybertron_robot_key -> /request/headers/cybertron-robot-key",
+    ):
+        apply_bindings(request, [binding], {}, {})
+
+    assert request["headers"]["cybertron-robot-key"] == "runtime-value"
+
+
+def test_optional_scenario_binding_preserves_existing_value_when_missing() -> None:
+    namespace: dict[str, object] = {}
+    exec(_render_scenario_helpers(), namespace)
+
+    apply_bindings = namespace["_apply_scenario_bindings"]
+    request = {"headers": {"cybertron-robot-key": "runtime-value"}}
+    binding = {
+        "required": False,
+        "source": {"type": "secret", "key": "cybertron_robot_key"},
+        "target": "/request/headers/cybertron-robot-key",
+    }
+
+    apply_bindings(request, [binding], {}, {})
+
+    assert request["headers"]["cybertron-robot-key"] == "runtime-value"
 
 
 def test_renderer_emits_controlled_load_shape_for_gradient_mode() -> None:
@@ -181,6 +359,31 @@ def test_validator_accepts_rendered_script() -> None:
     assert result.valid is True
     assert result.errors == []
     assert result.code_hash
+
+
+def test_validator_rejects_unresolved_required_static_scenario_binding() -> None:
+    plan = _scenario_plan_with_binding({"type": "secret", "key": "cybertron_robot_key"})
+    source = render_locust_script(plan)
+
+    result = validate_locust_script(plan, source)
+
+    assert result.valid is False
+    assert result.errors == [
+        "必填场景绑定无法解析：step-1 cybertron_robot_key -> /request/headers/cybertron-robot-key"
+    ]
+
+
+def test_validator_allows_required_user_input_from_runtime_data() -> None:
+    plan = _scenario_plan_with_binding(
+        {"type": "user_input", "name": "cybertron_robot_key"},
+        data_rows=[{"cybertron_robot_key": "runtime-value"}],
+    )
+    source = render_locust_script(plan)
+
+    result = validate_locust_script(plan, source)
+
+    assert result.valid is True
+    assert result.errors == []
 
 
 def test_validator_rejects_forbidden_import() -> None:

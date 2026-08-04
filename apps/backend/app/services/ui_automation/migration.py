@@ -206,7 +206,7 @@ def _copy_tree_missing(source: Path, target: Path) -> tuple[list[Path], list[Pat
     conflicts = []
     target.mkdir(parents=True, exist_ok=True)
     for source_path in sorted(source.rglob("*")):
-        if _is_ignored(source_path, source):
+        if is_ignored_suite_artifact(source_path, source):
             continue
         target_path = target / source_path.relative_to(source)
         if source_path.is_dir():
@@ -226,7 +226,7 @@ def _tree_is_migrated(source: Path, target: Path) -> bool:
     if not target.is_dir():
         return False
     for source_path in source.rglob("*"):
-        if not source_path.is_file() or _is_ignored(source_path, source):
+        if not source_path.is_file() or is_ignored_suite_artifact(source_path, source):
             continue
         target_path = target / source_path.relative_to(source)
         if not target_path.is_file() or not filecmp.cmp(source_path, target_path, shallow=False):
@@ -234,7 +234,7 @@ def _tree_is_migrated(source: Path, target: Path) -> bool:
     return True
 
 
-def _is_ignored(path: Path, root: Path) -> bool:
+def is_ignored_suite_artifact(path: Path, root: Path) -> bool:
     relative = path.relative_to(root)
     return path.suffix == ".pyc" or any(part in {"__pycache__", ".pytest_cache"} for part in relative.parts)
 

@@ -124,6 +124,63 @@ def test_list_running_tasks_aggregates_existing_business_statuses(monkeypatch: p
     assert tasks[0]["detail_url"] == "/projects/project-1/requirements/doc-1"
 
 
+def test_running_tasks_include_ui_automation_revision_and_execution(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    with core_db.connect() as db:
+        _seed_project(db)
+        db.execute(
+            """
+            INSERT INTO project_environments (id, project_id, name, site_url, created_by)
+            VALUES ('env-1', 'project-1', '测试环境', 'https://example.test', 'u-admin')
+            """
+        )
+        db.execute(
+            """
+            INSERT INTO manual_test_cases (id, project_id, title, created_by)
+            VALUES ('manual-1', 'project-1', '登录流程', 'u-admin')
+            """
+        )
+        db.execute(
+            """
+            INSERT INTO ui_automation_generation_runs
+              (id, project_id, manual_test_case_id, environment_id, target_asset_id,
+               base_generation_run_id, generation_mode, reason_code, task_id, status, created_by)
+            VALUES
+              ('uigen-1', 'project-1', 'manual-1', 'env-1', 'uiasset-1',
+               'uigen-base', 'revise', 'missing_business_step_mapping',
+               'ui_generation:uigen-1', 'running', 'u-admin')
+            """
+        )
+        db.execute(
+            """
+            INSERT INTO ui_automation_assets
+              (id, project_id, manual_test_case_id, generation_run_id, pytest_node_id,
+               suite_path, test_file_path, data_file_path, plan_file_path, source_hash, created_by)
+            VALUES
+              ('uiasset-1', 'project-1', 'manual-1', 'uigen-1', 'test_ui.py::test_ui',
+               'suite', 'test_ui.py', 'case.yaml', 'case.plan.json', 'hash', 'u-admin')
+            """
+        )
+        db.execute(
+            """
+            INSERT INTO ui_automation_execution_runs
+              (id, project_id, asset_id, environment_id, task_id, status, created_by)
+            VALUES ('uirun-1', 'project-1', 'uiasset-1', 'env-1', 'ui_execution:uirun-1', 'running', 'u-admin')
+            """
+        )
+
+    tasks = task_service.list_running_tasks(ACTOR)
+
+    tasks_by_source = {task["source_type"]: task for task in tasks}
+    assert set(tasks_by_source) == {"ui_automation_run", "ui_automation_generation_run"}
+    assert tasks_by_source["ui_automation_run"]["title"] == "执行 UI 自动化：登录流程"
+    assert tasks_by_source["ui_automation_generation_run"]["title"] == "修订 UI 自动化：登录流程"
+    assert (
+        tasks_by_source["ui_automation_generation_run"]["detail_url"]
+        == "/projects/project-1/automation/ui/assets/uiasset-1?tab=generation"
+    )
+
+
 def test_list_running_tasks_includes_active_exploration(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     _use_temp_db(monkeypatch, tmp_path)
     with core_db.connect() as db:

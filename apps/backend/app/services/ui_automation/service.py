@@ -33,7 +33,7 @@ from app.core.exceptions import api_error
 from app.core.storage import resolve_stored_path, store_path
 from app.repositories import environment_repo, exploration_artifact_repo, exploration_run_repo, project_repo, test_case_repo, ui_automation_repo
 
-from . import artifact_storage, context, execution_events, live_view, migration, runner
+from . import artifact_storage, context, execution_events, live_view, migration, revision, runner
 
 
 CAPABILITY_ID = "ui_test_generation"
@@ -129,6 +129,53 @@ def create_generation_run(project_id: str, payload: dict, actor) -> dict:
         return _serialize_generation_run(ui_automation_repo.find_generation_run(db, run_id))
 
 
+def create_revision_run(project_id: str, asset_id: str, payload: dict, actor) -> dict:
+    _require_admin(actor)
+    reason_code = str(payload.get("reason_code", "")).strip()
+    if reason_code != "missing_business_step_mapping":
+        raise api_error(400, "UI_AUTOMATION_REVISION_REASON_UNSUPPORTED", "不支持的 UI 自动化修订原因。")
+    run_id = f"uigen-{secrets.token_hex(8)}"
+    instruction = str(payload.get("instruction", "")).strip()
+    with connect() as db:
+        _require_visible_project(db, project_id, actor)
+        asset = ui_automation_repo.find_asset(db, asset_id)
+        if not asset or asset["project_id"] != project_id:
+            raise api_error(404, "UI_AUTOMATION_ASSET_NOT_FOUND", "UI 自动化资产不存在。")
+        active = ui_automation_repo.find_active_revision_run(db, asset_id)
+        if active:
+            raise api_error(409, "UI_AUTOMATION_REVISION_ACTIVE", "当前资产已有修订任务正在执行。")
+        base_run = ui_automation_repo.find_generation_run(db, asset["generation_run_id"])
+        if not base_run or base_run["status"] != "completed":
+            raise api_error(409, "UI_AUTOMATION_BASE_ASSET_INCOMPLETE", "当前资产缺少可用的成功生成基线。")
+        environment_id = payload.get("environment_id") or base_run["environment_id"]
+        environment = environment_repo.find_by_id(db, environment_id)
+        if not environment or environment["project_id"] != project_id:
+            raise api_error(404, "UI_ENVIRONMENT_NOT_FOUND", "环境不存在或不属于当前项目。")
+        exploration_run_id = _resolve_exploration_run_id(
+            db,
+            project_id=project_id,
+            environment_id=environment["id"],
+            requested_run_id=payload.get("exploration_run_id") or base_run["exploration_run_id"],
+        )
+        ui_automation_repo.create_generation_run(
+            db,
+            run_id=run_id,
+            project_id=project_id,
+            test_case_id=asset["test_case_id"],
+            manual_test_case_id=asset["manual_test_case_id"],
+            environment_id=environment["id"],
+            exploration_run_id=exploration_run_id,
+            created_by=actor["id"],
+            target_asset_id=asset_id,
+            base_generation_run_id=base_run["id"],
+            generation_mode="revise",
+            reason_code=reason_code,
+            instruction=instruction,
+            run_after_revision=bool(payload.get("run_after_revision", False)),
+        )
+        return _serialize_generation_run(ui_automation_repo.find_generation_run(db, run_id))
+
+
 def get_generation_run(project_id: str, run_id: str, actor) -> dict:
     with connect() as db:
         _require_visible_project(db, project_id, actor)
@@ -158,6 +205,8 @@ def execute_generation_run(run_id: str) -> dict:
 
 
 def _execute_generation_run_in_workspace(row) -> dict:
+    if row["generation_mode"] == "revise":
+        return _execute_revision_run_in_workspace(row)
     suite_path = project_suite_path(row["project_id"])
     snapshots: list[tuple[Path, bytes | None]] = []
     try:
@@ -265,6 +314,166 @@ def _execute_generation_run_in_workspace(row) -> dict:
                 finished_at=_now(),
             )
             return _serialize_generation_run(ui_automation_repo.find_generation_run(db, run_id))
+
+
+def _execute_revision_run_in_workspace(row) -> dict:
+    formal_suite_path = project_suite_path(row["project_id"])
+    staging_path = formal_suite_path.parent / f".{formal_suite_path.name}.generation-staging" / row["id"]
+    snapshots: list[tuple[Path, bytes | None]] = []
+    try:
+        staging_path.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copytree(formal_suite_path, staging_path)
+        with connect() as db:
+            asset = ui_automation_repo.find_asset(db, row["target_asset_id"])
+            case, _ = _find_source_case(db, _source_case_id(row))
+            artifacts = _artifact_rows(db, row["exploration_run_id"])
+        if not asset or not case:
+            raise ValueError("修订任务关联的当前资产或测试用例不存在。")
+
+        current_plan_path = resolve_suite_file(staging_path, asset["plan_file_path"])
+        if not current_plan_path or not current_plan_path.is_file():
+            raise ValueError("当前资产缺少 plan 文件，无法进行修订。")
+        case_data = context.build_case_data(case, automation_case_id=f"uiauto-{asset['id']}")
+        plan = json.loads(current_plan_path.read_text(encoding="utf-8"))
+        repaired_plan = None
+        if row["reason_code"] == "missing_business_step_mapping" and not row["instruction"]:
+            repaired_plan = revision.repair_business_step_mapping(plan, case_data)
+
+        strategy = "deterministic"
+        if repaired_plan is not None:
+            current_plan_path.write_text(json.dumps(repaired_plan, ensure_ascii=False, indent=2), encoding="utf-8")
+            plan = repaired_plan
+        else:
+            strategy = "ai"
+            evidence = context.build_evidence_context(
+                exploration_run_id=row["exploration_run_id"],
+                artifact_rows=artifacts,
+            )
+            relative_artifacts = {
+                "test_file": asset["test_file_path"],
+                "data_file": asset["data_file_path"],
+                "plan_file": asset["plan_file_path"],
+            }
+            selection = resolve_model_selection(CAPABILITY_ID)
+            model = build_agent_model(selection)
+            case_payload = dict(case)
+            case_payload["automation_project_key"] = asset["test_file_path"].split("/")[2]
+            revision_context = {
+                "mode": "revise",
+                "reason_code": row["reason_code"],
+                "instruction": row["instruction"],
+                "base_asset_id": asset["id"],
+                "base_generation_run_id": row["base_generation_run_id"],
+            }
+            asyncio.run(
+                generate_pytest_playwright_case(
+                    model=model,
+                    suite_path=staging_path,
+                    case_payload=case_payload,
+                    evidence_payload=evidence,
+                    artifacts=relative_artifacts,
+                    revision_context=revision_context,
+                )
+            )
+            plan = json.loads(current_plan_path.read_text(encoding="utf-8"))
+
+        validated_plan = AutomationPlan.model_validate(plan).require_generation_contract(
+            {str(step["id"]): str(step.get("action", "")) for step in case_data["steps"] if step.get("id")}
+        )
+        collection = collect_suite(staging_path, test_paths=[asset["test_file_path"]])
+        if not collection["ok"]:
+            raise ValueError(f"pytest collection 失败：{collection['stderr'][-2000:]}")
+        whole_collection = collect_suite(staging_path)
+        if not whole_collection["ok"]:
+            raise ValueError(f"pytest 全量 collection 失败：{whole_collection['stderr'][-2000:]}")
+
+        changed_files = _publish_revision_workspace(formal_suite_path, staging_path, snapshots)
+        source_hash = _source_hash(case, {"plan": validated_plan.model_dump(mode="json")})
+        node_id = f"{asset['test_file_path']}::test_{_identifier(validated_plan.automation_case_id)}"
+        execution_run_id = ""
+        with connect() as db:
+            ui_automation_repo.upsert_asset(
+                db,
+                asset_id=asset["id"],
+                project_id=asset["project_id"],
+                test_case_id=asset["test_case_id"],
+                manual_test_case_id=asset["manual_test_case_id"],
+                source_version=int(asset["source_version"]) + 1,
+                generation_run_id=row["id"],
+                status="ready",
+                pytest_node_id=node_id,
+                suite_path=asset["suite_path"],
+                test_file_path=asset["test_file_path"],
+                data_file_path=asset["data_file_path"],
+                plan_file_path=asset["plan_file_path"],
+                source_hash=source_hash,
+                created_by=asset["created_by"],
+            )
+            ui_automation_repo.update_generation_run(
+                db,
+                row["id"],
+                status="completed",
+                revision_strategy=strategy,
+                suite_path=asset["suite_path"],
+                changed_files=changed_files,
+                finished_at=_now(),
+                error_message="",
+            )
+            if row["run_after_revision"]:
+                execution_run_id = f"uirun-{secrets.token_hex(8)}"
+                ui_automation_repo.create_execution_run(
+                    db,
+                    run_id=execution_run_id,
+                    project_id=row["project_id"],
+                    asset_id=asset["id"],
+                    environment_id=row["environment_id"],
+                    created_by=row["created_by"],
+                )
+            result = _serialize_generation_run(ui_automation_repo.find_generation_run(db, row["id"]))
+        if execution_run_id:
+            schedule_execution_run(execution_run_id)
+        return result
+    except Exception as exc:
+        _restore_snapshots(snapshots)
+        with connect() as db:
+            ui_automation_repo.update_generation_run(
+                db,
+                row["id"],
+                status="failed",
+                error_message=str(exc)[:4000],
+                finished_at=_now(),
+            )
+            return _serialize_generation_run(ui_automation_repo.find_generation_run(db, row["id"]))
+    finally:
+        shutil.rmtree(staging_path, ignore_errors=True)
+
+
+def _publish_revision_workspace(formal_suite_path: Path, staging_path: Path, snapshots) -> list[str]:
+    changed_files: list[str] = []
+    formal_files = {
+        path.relative_to(formal_suite_path).as_posix(): path
+        for path in formal_suite_path.rglob("*")
+        if path.is_file() and not migration.is_ignored_suite_artifact(path, formal_suite_path)
+    }
+    staged_files = {
+        path.relative_to(staging_path).as_posix(): path
+        for path in staging_path.rglob("*")
+        if path.is_file() and not migration.is_ignored_suite_artifact(path, staging_path)
+    }
+    deleted = sorted(set(formal_files) - set(staged_files))
+    if deleted:
+        raise ValueError("修订工作区删除了正式工程文件，未发布修改。")
+    for relative_path, staged_file in staged_files.items():
+        formal_file = formal_suite_path / relative_path
+        staged_bytes = staged_file.read_bytes()
+        formal_bytes = formal_file.read_bytes() if formal_file.exists() else None
+        if staged_bytes == formal_bytes:
+            continue
+        snapshots.append((formal_file, formal_bytes))
+        formal_file.parent.mkdir(parents=True, exist_ok=True)
+        formal_file.write_bytes(staged_bytes)
+        changed_files.append(relative_path)
+    return changed_files
 
 
 def list_assets(project_id: str, actor) -> list[dict]:

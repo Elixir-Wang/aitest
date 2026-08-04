@@ -126,6 +126,11 @@ test("performance run exposes SSE data quality counters separately", () => {
   assert.match(locustConsoleSource, /sse_metrics\.truncated/);
 });
 
+test("performance run labels streaming HTTP duration as connection latency", () => {
+  assert.match(locustConsoleSource, /timing_semantics === "connection"/);
+  assert.match(locustConsoleSource, /SSE 建连耗时/);
+});
+
 test("performance failure and exception tables use backend response fields", () => {
   const consoleSource = readFileSync(locustConsoleUrl, "utf8");
   assert.match(consoleSource, /\["request_name", "名称"\]/);
@@ -164,6 +169,9 @@ test("stopped performance runs expose an AI repair and rerun drawer", () => {
   assert.match(evidenceSource, /推断与建议/);
   assert.match(progressSource, /status === "waiting_approval" \|\| status === "rejected"/);
   assert.match(drawerSource, /缺失证据/);
+  assert.match(drawerSource, /处理与复测建议/);
+  assert.match(drawerSource, /analysis\.report_snapshot\.recommendations/);
+  assert.match(drawerSource, /当前没有可安全自动应用的配置修改/);
   assert.match(drawerSource, /审批后自动预检、修复配置并重新压测/);
   assert.match(drawerSource, /applyPerformanceAnalysis/);
   assert.match(drawerSource, /修复并重新压测/);

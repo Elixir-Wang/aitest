@@ -43,6 +43,7 @@ def build_scenario_plan(
                 )
             overrides = dict(step.get("request_overrides") or {})
             request = dict(overrides.get("request") or overrides)
+            _apply_endpoint_parameter_defaults(request, endpoint)
             method = str(request.get("method") or endpoint.get("method") or "GET").upper()
             path = str(request.get("path") or endpoint.get("path") or "/")
             headers = {**dict(request.get("headers") or {}), **environment_headers}
@@ -99,6 +100,20 @@ def build_scenario_plan(
             },
         }
     )
+
+
+def _apply_endpoint_parameter_defaults(request: dict[str, Any], endpoint: dict[str, Any]) -> None:
+    headers = request.setdefault("headers", {})
+    for parameter in endpoint.get("parameters") or []:
+        if not isinstance(parameter, dict) or parameter.get("in") != "header":
+            continue
+        name = str(parameter.get("name") or "")
+        schema = parameter.get("schema") if isinstance(parameter.get("schema"), dict) else {}
+        enum_values = schema.get("enum")
+        if isinstance(enum_values, list) and len(enum_values) == 1:
+            headers.setdefault(name, enum_values[0])
+        elif "default" in schema:
+            headers.setdefault(name, schema["default"])
 
 
 __all__ = ["build_scenario_plan"]

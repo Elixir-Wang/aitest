@@ -107,6 +107,24 @@ def build_report_snapshot(metric_snapshot: dict[str, Any], diagnosis: Any) -> di
             }
             for index, change in enumerate(diagnosis.proposed_changes)
         ]
+    if not recommendations and diagnosis.category in {"external_service", "insufficient_evidence"} and findings:
+        recommendations = [
+            {
+                "id": "recommendation-evidence-first",
+                "priority": "P0" if metric_snapshot.get("verdict") == "fail" else "P1",
+                "action": (
+                    "先按“缺失证据”清单补齐与当前失败直接相关的原始响应、业务错误码说明或接口契约，"
+                    "再重新分析；在根因确认前不要改写压测断言。"
+                ),
+                "expected_effect": "将证据不足收敛为可定位的脚本、配置或被测服务问题。",
+                "cost": "low",
+                "verification": (
+                    "重新分析后应能给出明确问题分类；仅当归类为性能配置或 Locust 脚本问题时，"
+                    "再生成可审批的一键修复变更。"
+                ),
+                "finding_refs": [str(findings[0]["id"])],
+            }
+        ]
     recommendations = _supported_recommendations(metric_snapshot, findings, recommendations)
     return {
         "schema_version": 1,

@@ -71,6 +71,8 @@ test("UI automation create dialog selects the real generation inputs", () => {
   assert.match(pageSource, /createUiAutomationGenerationRun/);
   assert.match(pageSource, /listUiAutomationGenerationRuns/);
   assert.match(pageSource, /generationRun\.status !== "completed"/);
+  assert.match(pageSource, /generationRun\.target_asset_id === asset\.id/);
+  assert.match(pageSource, /!generationRun\.target_asset_id/);
   assert.doesNotMatch(pageSource, /setRun\(createdRuns\[0\]/);
 });
 
@@ -84,6 +86,8 @@ test("API client exposes UI automation asset, generation, and execution contract
   assert.match(apiClientSource, /export function listUiAutomationAssets/);
   assert.match(apiClientSource, /export function listUiAutomationGenerationRuns/);
   assert.match(apiClientSource, /export function createUiAutomationGenerationRun/);
+  assert.match(apiClientSource, /export function createUiAutomationRevisionRun/);
+  assert.match(apiClientSource, /\/assets\/\$\{assetId\}\/revision-runs/);
   assert.match(apiClientSource, /export function getUiAutomationGenerationRun/);
   assert.match(apiClientSource, /export function createUiAutomationExecutionRun/);
   assert.match(apiClientSource, /export function getUiAutomationExecutionRun/);
@@ -109,6 +113,17 @@ test("UI automation asset detail has overview and execution tabs", () => {
   assert.match(detailSource, /选择全部已完成的运行记录/);
   assert.match(detailSource, /删除选中的运行记录/);
   assert.doesNotMatch(detailSource, /listUiAutomationAssetFiles/);
+});
+
+test("UI automation asset revision collects an optional instruction before submitting", () => {
+  assert.match(detailSource, /<DialogTitle>修订 UI 自动化<\/DialogTitle>/);
+  assert.match(detailSource, /检测问题：当前资产缺少业务步骤映射/);
+  assert.match(detailSource, /补充修改要求（可选）/);
+  assert.match(detailSource, /reason_code: "missing_business_step_mapping"/);
+  assert.match(detailSource, /instruction: revisionInstruction\.trim\(\)/);
+  assert.match(detailSource, /run_after_revision: runAfterRevision/);
+  assert.match(detailSource, /createUiAutomationRevisionRun/);
+  assert.doesNotMatch(detailSource, /createUiAutomationGenerationRun\(projectId/);
 });
 
 test("UI automation asset detail keeps a compact header", () => {

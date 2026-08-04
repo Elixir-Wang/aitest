@@ -72,7 +72,7 @@ function labelForStatus(status: string) {
 }
 
 function updatedAtForRow(row: UiAutomationRow) {
-  return row.asset?.updated_at ?? row.generationRun?.updated_at ?? "";
+  return row.generationRun?.updated_at ?? row.asset?.updated_at ?? "";
 }
 
 export default function Page() {
@@ -137,11 +137,17 @@ export default function Page() {
           ];
           const assetRows = assets.map((asset) => {
             const testCase = cases.find((item) => item.id === asset.test_case_id) ?? null;
-            return { id: asset.id, asset, project, testCase };
+            const activeRevision = generationRuns.find(
+              (generationRun) =>
+                generationRun.target_asset_id === asset.id &&
+                ["queued", "running"].includes(generationRun.status),
+            );
+            return { id: asset.id, asset, generationRun: activeRevision, project, testCase };
           });
           const generationRows = generationRuns
             .filter(
               (generationRun) =>
+                !generationRun.target_asset_id &&
                 !assets.some((asset) => asset.generation_run_id === generationRun.id) &&
                 generationRun.status !== "completed",
             )
@@ -398,9 +404,9 @@ export default function Page() {
                       <TableCell>
                         <StatusBadge
                           title={row.generationRun?.error_message || undefined}
-                          tone={chineseCompletionTone(row.asset?.status ?? row.generationRun?.status ?? "")}
+                          tone={chineseCompletionTone(row.generationRun?.status ?? row.asset?.status ?? "")}
                         >
-                          {labelForStatus(row.asset?.status ?? row.generationRun?.status ?? "")}
+                          {labelForStatus(row.generationRun?.status ?? row.asset?.status ?? "")}
                         </StatusBadge>
                       </TableCell>
                       <TableCell>{row.testCase?.steps.length ?? "-"}</TableCell>

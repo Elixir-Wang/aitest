@@ -649,7 +649,13 @@ function formatSampleTime(value: unknown) {
 
 function statisticsRows(snapshot: PerformanceRunStats | null) {
   if (!snapshot) return [];
-  return snapshot.request_stats.map((row) => (row.name === "Aggregated" ? { ...row, name: "汇总" } : row));
+  return snapshot.request_stats.map((row) => {
+    if (row.name === "Aggregated") return { ...row, name: "汇总" };
+    if (row.timing_semantics === "connection") {
+      return { ...row, name: `${String(row.name)}（SSE 建连耗时）` };
+    }
+    return row;
+  });
 }
 
 function sseMetricRows(snapshot: PerformanceRunStats | null) {

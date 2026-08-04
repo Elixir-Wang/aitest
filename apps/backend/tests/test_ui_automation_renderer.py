@@ -1,6 +1,7 @@
 import ast
 import json
 
+from app.agents.ui_automation.pytest_playwright import renderer as renderer_module
 from app.agents.ui_automation.pytest_playwright.renderer import (
     initialize_suite,
     render_automation_plan,
@@ -101,6 +102,25 @@ def test_initialize_suite_creates_project_framework(tmp_path):
     assert "failure-screenshots" in conftest
     assert '"width": int(os.getenv("UI_VIEWPORT_WIDTH", "1440"))' in conftest
     assert '"height": int(os.getenv("UI_VIEWPORT_HEIGHT", "900"))' in conftest
+
+
+def test_atomic_renderer_writes_use_independent_temporary_files(tmp_path, monkeypatch):
+    target = tmp_path / "data/projects/project_1/cases/login.plan.json"
+    original_replace = renderer_module.Path.replace
+    temporary_paths = []
+
+    def synchronized_replace(path, target_path):
+        if path.suffix == ".tmp":
+            temporary_paths.append(path)
+        return original_replace(path, target_path)
+
+    monkeypatch.setattr(renderer_module.Path, "replace", synchronized_replace)
+
+    renderer_module._write_atomic(target, "plan-0")
+    renderer_module._write_atomic(target, "plan-1")
+
+    assert len({path.name for path in temporary_paths}) == 2
+    assert target.read_text(encoding="utf-8") in {"plan-0", "plan-1"}
 
 
 def test_initialize_suite_preserves_existing_files(tmp_path):

@@ -20,6 +20,10 @@ const globalCreatePageSource = readFileSync(
   new URL("../src/app/(main)/performance-tests/new/page.tsx", import.meta.url),
   "utf8",
 );
+const editPageSource = readFileSync(
+  new URL("../src/app/(main)/projects/[projectId]/performance-tests/[testId]/edit/page.tsx", import.meta.url),
+  "utf8",
+);
 const stageEditorSource = readFileSync(
   new URL("../src/components/ai-testing/performance-testing/load-stage-editor.tsx", import.meta.url),
   "utf8",
@@ -88,23 +92,65 @@ test("performance testing API client exposes preview and CRUD contracts", () => 
   assert.match(apiClientSource, /export function deletePerformanceTest/);
 });
 
-test("performance SSE metrics use one summary section and one validated configuration dialog", () => {
+test("performance SSE metrics discover generic candidates and preserve unapplied drafts", () => {
   assert.match(apiClientSource, /export function generatePerformanceSseMetrics/);
   assert.match(apiClientSource, /performance-tests\/sse-metrics\/generate/);
+  assert.match(apiClientSource, /export type PerformanceSseMetricCandidate/);
+  assert.match(apiClientSource, /event_facts: PerformanceSseEventFact\[]/);
+  assert.match(apiClientSource, /result_status: "ready" \| "empty" \| "partial" \| "failed"/);
   assert.match(formSource, /<PerformanceSseMetricsConfig/);
   assert.match(sseMetricsConfigSource, /业务响应指标/);
-  assert.match(sseMetricsConfigSource, /运行接口编排并生成指标/);
+  assert.match(sseMetricsConfigSource, /运行样本并发现指标/);
   assert.match(sseMetricsConfigSource, /SSE 指标配置/);
+  assert.match(sseMetricsConfigSource, /sm:max-w-3xl/);
+  assert.match(sseMetricsConfigSource, /查看生成结果/);
+  assert.match(sseMetricsConfigSource, /暂存并关闭/);
+  assert.match(sseMetricsConfigSource, /draftFingerprint/);
+  assert.match(sseMetricsConfigSource, /请求配置已变化，请使用新请求重新验证/);
+  assert.match(sseMetricsConfigSource, /推荐原因/);
+  assert.match(sseMetricsConfigSource, /其他事件/);
   assert.match(sseMetricsConfigSource, /样本事件/);
+  assert.match(sseMetricsConfigSource, /触发条件/);
+  assert.match(sseMetricsConfigSource, /高级匹配规则/);
+  assert.match(sseMetricsConfigSource, /指标名称/);
+  assert.match(sseMetricsConfigSource, /SSE 事件类型/);
+  assert.match(sseMetricsConfigSource, /JSON 字段路径/);
+  assert.match(sseMetricsConfigSource, /期望值/);
+  assert.match(sseMetricsConfigSource, /未命中时/);
+  assert.match(sseMetricsConfigSource, /记录为缺失，不影响请求/);
+  assert.match(sseMetricsConfigSource, /将请求标记为失败/);
+  assert.match(sseMetricsConfigSource, /忽略本次指标/);
+  assert.match(sseMetricsConfigSource, /查看命中事件/);
+  assert.doesNotMatch(sseMetricsConfigSource, />记录为空</);
   assert.match(sseMetricsConfigSource, /命中.*次/);
   assert.match(sseMetricsConfigSource, /待验证/);
   assert.match(sseMetricsConfigSource, /重新验证/);
   assert.match(sseMetricsConfigSource, /当前配置不会立即被覆盖/);
+  assert.match(sseMetricsConfigSource, /end_rule: current\?\.end_rule \?\? null/);
+  assert.doesNotMatch(sseMetricsConfigSource, /end_rule: generated\.end_rule_candidate\?\.match \?\? null/);
+  assert.match(sseMetricsConfigSource, /启用推荐结束规则/);
+  assert.match(sseMetricsConfigSource, /不启用结束规则/);
+  assert.match(sseMetricsConfigSource, /移除结束规则/);
+  assert.match(sseMetricsConfigSource, /setDraft\(\{ \.\.\.draft, end_rule: null \}\)/);
+  assert.doesNotMatch(sseMetricsConfigSource, /generated\.warnings\.forEach/);
+  assert.doesNotMatch(sseMetricsConfigSource, /识别 LLM 调用开始、首次回答/);
   assert.match(apiClientSource, /sse_metric_goals\?: PerformanceSseMetricGoal\[]/);
   assert.match(formSource, /SSE 事件指标目标/);
   assert.match(formSource, /P95 上限（ms）|percentile\.toUpperCase\(\)/);
   assert.match(formSource, /buildSseMetricGoals\(sse, sseGoalTargets\)/);
   assert.doesNotMatch(sseMetricsConfigSource, /Tabs|事件时间轴|JSONPath 自动补全/);
+});
+
+test("performance SSE metrics keep the generated candidate catalog after applying a selection", () => {
+  const applyBlock = sseMetricsConfigSource.match(/function apply\(\) \{[\s\S]*?\n {2}\}\n\n {2}const hasPendingDraft/);
+
+  assert.ok(applyBlock, "apply handler should exist");
+  assert.doesNotMatch(applyBlock[0], /setResult\(null\)/);
+  assert.doesNotMatch(applyBlock[0], /setSelectedKeys\(\[\]\)/);
+  assert.match(
+    sseMetricsConfigSource,
+    /const hasPendingDraft = Boolean\(result && JSON\.stringify\(draft\) !== JSON\.stringify\(value\)\)/,
+  );
 });
 
 test("performance create form reuses endpoint and environment assets without secret fields", () => {
@@ -204,6 +250,21 @@ test("performance lists use native shell sections and expose creation actions", 
   assert.match(projectListSource, /createLabel="新建性能测试"/);
 });
 
+test("performance edit route unwraps Next.js async params", () => {
+  assert.match(editPageSource, /params: Promise<\{ projectId: string; testId: string \}>/);
+  assert.match(editPageSource, /const \{ projectId, testId \} = await params/);
+  assert.doesNotMatch(editPageSource, /"use client"/);
+});
+
+test("performance lists expose edit actions and regenerate scripts after saving", () => {
+  assert.match(projectListSource, />操作<\/TableHead>/);
+  assert.match(allListSource, />操作<\/TableHead>/);
+  assert.match(projectListSource, /label: "编辑"/);
+  assert.match(allListSource, /label: "编辑"/);
+  assert.match(formSource, /updatePerformanceTest/);
+  assert.match(formSource, /generatePerformanceScript\(selectedProjectId, saved\.id\)/);
+});
+
 test("performance lists expose created parameters in a reusable read-only dialog", () => {
   assert.match(projectListSource, /label: "查看参数"/);
   assert.match(allListSource, /label: "查看参数"/);
@@ -233,6 +294,11 @@ test("performance script API and review route support generation, edits, and val
   assert.match(scriptReviewSource, /校验通过/);
   assert.doesNotMatch(scriptReviewSource, /确认脚本|已确认|重新确认/);
   assert.match(scriptReviewSource, /requestPreview\?\.request\.headers \?\? planRequest\.headers/);
+  assert.match(scriptReviewSource, /step\.request(?:\?\.|\.)method/);
+  assert.match(scriptReviewSource, /step\.request(?:\?\.|\.)path/);
+  assert.match(scriptReviewSource, /查询参数/);
+  assert.match(scriptReviewSource, /请求体/);
+  assert.match(scriptReviewSource, /step\.request\.multipart_form/);
 });
 
 test("performance script review reuses the clipboard control and keeps JSON editors white", () => {

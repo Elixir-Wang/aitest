@@ -143,3 +143,87 @@ def test_request_stats_ignores_locust_245_aggregate_row_with_zero_requests(
     monkeypatch.setattr(performance_runs.settings, "PROJECT_FILE_STORAGE_ROOT", tmp_path)
 
     assert performance_runs._request_stats("project-1", "perfrun-1") == []
+
+
+def test_request_stats_returns_scenario_endpoints_and_sse_metrics_as_four_business_rows(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    run_dir = tmp_path / "project-1" / "performance_testing" / "runs" / "perfrun-1"
+    run_dir.mkdir(parents=True)
+    (run_dir / "result_stats.csv").write_text(
+        "Type,Name,Request Count,Failure Count,Average Response Time,Median Response Time,50%,95%,99%,Min Response Time,Max Response Time,Requests/s,Average Content Size\n"
+        "POST,01 POST /segment-code,12,12,25,23,23,40,45,18,50,4.2,64\n"
+        "POST,02 POST /chat/sse,2,0,34,32,32,40,45,20,50,1.0,0\n"
+        "SCENARIO,SCENARIO 测试,12,12,27,25,25,42,48,20,52,4.2,0\n"
+        ",Aggregated,24,24,26,24,24,41,47,18,52,8.4,32\n",
+        encoding="utf-8",
+    )
+    plan = {
+        "target_type": "scenario",
+        "steps": [
+            {
+                "step_type": "api_request",
+                "request": {"method": "POST", "name": "01 POST /segment-code", "transport": "http"},
+            },
+            {
+                "step_type": "api_request",
+                "request": {
+                    "method": "POST",
+                    "name": "02 POST /chat/sse",
+                    "transport": "sse",
+                    "sse": {
+                        "metrics": [
+                            {
+                                "id": "first_output",
+                                "name": "首次有效内容时间",
+                                "match": {"source": "data_json", "path": "$.data.answer", "operator": "non_empty"},
+                            },
+                            {
+                                "id": "llm_started",
+                                "name": "LLM 开始时间",
+                                "match": {
+                                    "source": "data_json",
+                                    "path": "$.data.event_type",
+                                    "operator": "equals",
+                                    "expected": "call_llm_start",
+                                },
+                            },
+                        ]
+                    },
+                },
+            },
+        ],
+    }
+    (run_dir / "generated_locustfile.py").write_text(
+        f"import json\nPLAN = json.loads({json.dumps(json.dumps(plan, ensure_ascii=False))})\n",
+        encoding="utf-8",
+    )
+    (run_dir / "sse-measurements.jsonl").write_text(
+        "\n".join(
+            [
+                '{"metrics":{"first_output":100,"llm_started":40},"derived_metrics":{"llm_start_to_first_content_ms":60},"missing_metric_ids":[],"failure_reason":""}',
+                '{"metrics":{"first_output":200,"llm_started":100},"derived_metrics":{"llm_start_to_first_content_ms":100},"missing_metric_ids":[],"failure_reason":""}',
+                '{"metrics":{"first_output":900,"llm_started":300},"derived_metrics":{"llm_start_to_first_content_ms":600},"missing_metric_ids":[],"failure_reason":""}',
+            ]
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(performance_runs.settings, "PROJECT_FILE_STORAGE_ROOT", tmp_path)
+
+    rows = performance_runs._request_stats("project-1", "perfrun-1")
+
+    assert [(row["method"], row["name"]) for row in rows] == [
+        ("POST", "01 POST /segment-code"),
+        ("POST", "02 POST /chat/sse"),
+        ("SSE", "首次有效内容时间"),
+        ("SSE", "LLM 开始时间"),
+        ("SSE", "LLM 启动到首次有效内容"),
+    ]
+    assert rows[0]["request_count"] == 12
+    assert rows[1]["request_count"] == 2
+    assert rows[1]["timing_semantics"] == "connection"
+    assert rows[2]["request_count"] == 2
+    assert rows[4]["request_count"] == 2
+    assert rows[4]["average_response_time_ms"] == 80
+    assert all(row["method"] != "SCENARIO" for row in rows)

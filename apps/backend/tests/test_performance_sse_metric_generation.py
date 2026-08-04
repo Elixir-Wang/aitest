@@ -8,9 +8,10 @@ from app.services.performance_testing.sse import SseEvent
 from app.services.performance_testing.sse_metric_generation import (
     CapturedSseEvent,
     _scenario_execution_probe,
-    build_deterministic_sse_config,
+    build_structural_sse_candidates,
     capture_sse_events,
     execute_sse_probe,
+    extract_sse_event_facts,
     generate_sse_metric_candidate,
     validate_sse_candidate,
 )
@@ -40,41 +41,138 @@ def _sample_events() -> list[CapturedSseEvent]:
     ]
 
 
-def test_deterministic_config_uses_single_frame_event_type_path() -> None:
-    config = build_deterministic_sse_config(_sample_events(), max_stream_seconds=60)
+def test_event_facts_aggregate_observed_values_without_exposing_content() -> None:
+    facts = extract_sse_event_facts(_sample_events())
 
-    assert config["metrics"][0]["match"] == {
+    answer_fact = next(
+        fact
+        for fact in facts
+        if fact["path"] == "$.data.event_type" and fact["normalized_value"] == "answer"
+    )
+    assert answer_fact["matched_count"] == 2
+    assert answer_fact["first_sequence"] == 3
+    assert answer_fact["last_sequence"] == 4
+    assert answer_fact["first_offset_ms"] == 2999
+    assert answer_fact["last_offset_ms"] == 3071
+    assert answer_fact["has_non_empty_content"] is True
+    assert answer_fact["metric_id"].startswith("sse_custom_")
+    serialized = json.dumps(facts, ensure_ascii=False)
+    assert "你好呀" not in serialized
+    assert "今天过得怎么样" not in serialized
+
+
+def test_structural_candidates_use_observed_facts_without_required_metric_ids() -> None:
+    facts = extract_sse_event_facts(_sample_events())
+
+    candidates = build_structural_sse_candidates(_sample_events(), facts)
+
+    assert candidates
+    assert {
+        candidate["match"]["expected"]
+        for candidate in candidates
+        if "expected" in candidate["match"]
+    }.issubset(
+        {"start", "call_llm_start", "answer", "call_llm_end", "query_end"}
+    )
+    assert {candidate["metric_id"] for candidate in candidates}.isdisjoint(
+        {"call_llm_start", "first_answer"}
+    )
+    assert all(candidate["validation"]["matched_count"] > 0 for candidate in candidates)
+    assert not any(
+        candidate["category"] == "first_output" and candidate["match"].get("expected") == "start"
+        for candidate in candidates
+    )
+
+
+def test_first_output_candidate_requires_non_empty_answer_content() -> None:
+    events = [
+        _captured(1, 0, "call_llm_start", role="assistant"),
+        _captured(2, 800, "answer", role="assistant", answer=""),
+        _captured(3, 900, "answer", role="assistant", answer="首个有效片段"),
+    ]
+
+    candidates = build_structural_sse_candidates(events, extract_sse_event_facts(events))
+    first_output = next(candidate for candidate in candidates if candidate["category"] == "first_output")
+
+    assert first_output["match"] == {
         "event_name": "message",
         "source": "data_json",
-        "path": "$.data.event_type",
-        "operator": "equals",
-        "expected": "call_llm_start",
+        "path": "$.data.answer",
+        "operator": "non_empty",
     }
-    assert config["metrics"][1]["match"]["expected"] == "answer"
-    assert config["end_rule"]["expected"] == "query_end"
-    assert "body.events" not in json.dumps(config)
+    assert first_output["validation"]["first_event_sequence"] == 3
+
+
+def test_content_bearing_end_event_keeps_completion_semantics() -> None:
+    events = [
+        _captured(1, 0, "call_llm_start", role="assistant"),
+        _captured(2, 1200, "answer", role="assistant", answer="流式片段"),
+        _captured(3, 1800, "call_llm_end", role="assistant", answer="完整回答"),
+        _captured(4, 1810, "query_end", role="assistant"),
+    ]
+
+    candidates = build_structural_sse_candidates(events, extract_sse_event_facts(events))
+    by_event_type = {
+        candidate["match"]["expected"]: candidate
+        for candidate in candidates
+        if "expected" in candidate["match"]
+    }
+    first_output = next(candidate for candidate in candidates if candidate["category"] == "first_output")
+
+    assert first_output["match"]["path"] == "$.data.answer"
+    assert by_event_type["call_llm_end"]["category"] == "milestone_end"
+    assert by_event_type["call_llm_end"]["name"] == "call_llm 完成时间"
+    assert "首次到达" not in by_event_type["call_llm_end"]["name"]
+    assert by_event_type["query_end"]["category"] == "completion"
+    assert by_event_type["query_end"]["name"] == "query 完成时间"
+
+
+def test_phase_event_content_does_not_consume_first_output_candidate() -> None:
+    events = [
+        _captured(1, 0, "call_llm_start", role="assistant", content="调用参数"),
+        _captured(2, 900, "answer", role="assistant", answer="首个响应片段"),
+        _captured(3, 1200, "call_llm_end", role="assistant"),
+    ]
+
+    candidates = build_structural_sse_candidates(events, extract_sse_event_facts(events))
+    by_event_type = {
+        candidate["match"]["expected"]: candidate
+        for candidate in candidates
+        if "expected" in candidate["match"]
+    }
+    first_output = next(candidate for candidate in candidates if candidate["category"] == "first_output")
+
+    assert by_event_type["call_llm_start"]["category"] == "milestone_start"
+    assert first_output["match"]["path"] == "$.data.answer"
 
 
 def test_validation_reports_first_match_and_total_match_count() -> None:
-    config = build_deterministic_sse_config(_sample_events(), max_stream_seconds=60)
+    config = {
+        "max_stream_seconds": 60,
+        "metrics": [
+            {
+                "id": "sse_answer_example",
+                "name": "首次有效内容到达时间",
+                "match": {
+                    "event_name": "message",
+                    "source": "data_json",
+                    "path": "$.data.event_type",
+                    "operator": "equals",
+                    "expected": "answer",
+                },
+                "occurrence": "first",
+                "missing_policy": "record_null",
+            }
+        ],
+        "end_rule": None,
+    }
 
     result = validate_sse_candidate(_sample_events(), config)
 
     assert result["valid"] is True
     assert result["metrics"] == [
         {
-            "metric_id": "call_llm_start",
-            "matched_count": 1,
-            "first_event_sequence": 2,
-            "sample_elapsed_ms": 341,
-            "sample_event": {
-                "event": "message",
-                "event_type": "call_llm_start",
-                "role": "assistant",
-            },
-        },
-        {
-            "metric_id": "first_answer",
+            "metric_id": "sse_answer_example",
             "matched_count": 2,
             "first_event_sequence": 3,
             "sample_elapsed_ms": 2999,
@@ -86,40 +184,64 @@ def test_validation_reports_first_match_and_total_match_count() -> None:
             },
         },
     ]
-    assert result["end_rule"] == {"matched_count": 1, "first_event_sequence": 6}
+    assert result["end_rule"] == {"matched_count": 0, "first_event_sequence": None}
 
 
-def test_generation_falls_back_when_ai_suggestion_is_invalid() -> None:
+def test_generation_uses_structural_candidates_when_ai_suggestion_is_invalid() -> None:
     result = generate_sse_metric_candidate(
         _sample_events(),
         max_stream_seconds=60,
-        ai_suggester=lambda _: {
-            "metrics": [
-                {
-                    "id": "first_answer",
-                    "name": "首次回答时间",
-                    "match": {
-                        "event_name": "message",
-                        "source": "data_json",
-                        "path": "$.wrong.path",
-                        "operator": "equals",
-                        "expected": "answer",
-                    },
-                    "occurrence": "first",
-                    "missing_policy": "fail_request",
-                }
-            ],
-            "end_rule": None,
-        },
+        ai_suggester=lambda _: {"candidates": [{"fact_id": "missing", "name": "无效"}]},
     )
 
-    assert result["generation_source"] == "deterministic_fallback"
-    assert result["validation"]["valid"] is True
-    assert [metric["id"] for metric in result["candidate_sse"]["metrics"]] == [
-        "call_llm_start",
-        "first_answer",
-    ]
-    assert result["warnings"] == ["AI 生成的指标规则未通过样本回放，已使用确定性识别结果。"]
+    assert result["analysis"]["ai_status"] == "not_used"
+    assert result["analysis"]["generation_mode"] == "structural_only"
+    assert result["result_status"] == "ready"
+    assert result["candidates"]
+    assert result["messages"] == []
+    assert "candidate_sse" not in result
+
+
+def test_generation_allows_empty_result_when_sample_only_contains_heartbeat() -> None:
+    events = [_captured(1, 100, "heartbeat"), _captured(2, 200, "heartbeat")]
+
+    result = generate_sse_metric_candidate(events, max_stream_seconds=60, ai_suggester=lambda _: {"candidates": []})
+
+    assert result["candidates"] == []
+    assert result["result_status"] == "empty"
+    assert result["analysis"]["ai_status"] == "used"
+    assert result["messages"] == ["本次样本未发现高可信度性能指标，可从事件目录中手动选择。"]
+
+
+def test_ai_cannot_promote_role_fact_to_business_metric() -> None:
+    def suggester(payload):
+        role_fact = next(fact for fact in payload["facts"] if fact["path"] == "$.data.role")
+        return {
+            "candidates": [
+                {
+                    "fact_id": role_fact["fact_id"],
+                    "name": "助手开始时间",
+                    "category": "milestone_start",
+                    "confidence": 0.99,
+                    "reason": "角色为助手",
+                }
+            ]
+        }
+
+    result = generate_sse_metric_candidate(_sample_events(), max_stream_seconds=60, ai_suggester=suggester)
+
+    assert all(candidate["match"]["path"] != "$.data.role" for candidate in result["candidates"])
+    assert result["analysis"]["ai_status"] == "not_used"
+
+
+def test_ai_cannot_promote_role_fact_to_end_rule() -> None:
+    def suggester(payload):
+        role_fact = next(fact for fact in payload["facts"] if fact["path"] == "$.data.role")
+        return {"candidates": [], "end_rule_candidate_fact_id": role_fact["fact_id"]}
+
+    result = generate_sse_metric_candidate(_sample_events(), max_stream_seconds=60, ai_suggester=suggester)
+
+    assert result["end_rule_candidate"]["match"]["path"] == "$.data.event_type"
 
 
 def test_ai_input_preserves_match_shape_but_redacts_unrelated_business_data() -> None:
@@ -149,7 +271,7 @@ def test_ai_input_preserves_match_shape_but_redacts_unrelated_business_data() ->
 
     def suggester(payload):
         captured_input.update(payload)
-        return build_deterministic_sse_config(events, max_stream_seconds=60)
+        return {"candidates": []}
 
     generate_sse_metric_candidate(events, max_stream_seconds=60, ai_suggester=suggester)
 
@@ -157,11 +279,10 @@ def test_ai_input_preserves_match_shape_but_redacts_unrelated_business_data() ->
     assert "secret-dialog" not in serialized
     assert "secret-trace" not in serialized
     assert "敏感回答正文" not in serialized
-    assert captured_input["events"][0]["data_json"]["data"] == {
-        "event_type": "answer",
-        "role": "assistant",
-        "answer": "<non-empty>",
-    }
+    assert captured_input["task"] == "discover_performance_metric_candidates"
+    answer_fact = next(fact for fact in captured_input["facts"] if fact["normalized_value"] == "answer")
+    assert answer_fact["path"] == "$.data.event_type"
+    assert answer_fact["has_non_empty_content"] is True
 
 
 def test_capture_uses_client_receive_offsets_and_stops_on_event_limit() -> None:

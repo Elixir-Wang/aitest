@@ -410,6 +410,8 @@ test("project api automation script workspace summarizes preconditions without r
 test("project api automation generation and execution notify the top running task indicator", () => {
   assert.match(taskRunningIndicatorSource, /"api_automation_generation_run"/);
   assert.match(taskRunningIndicatorSource, /"api_automation_run"/);
+  assert.match(taskRunningIndicatorSource, /"ui_automation_generation_run"/);
+  assert.match(taskRunningIndicatorSource, /"ui_automation_run"/);
   assert.match(projectPageSource, /import \{ notifyAiTaskStarted \} from "@\/lib\/ai-task-events";/);
   assert.match(projectPageSource, /toast\.success\("接口用例生成任务已创建"\);\s*notifyAiTaskStarted\(\);/);
   assert.match(projectPageSource, /toast\.success\("执行任务已创建"\);\s*notifyAiTaskStarted\(\);/);

@@ -370,6 +370,35 @@ def test_report_snapshot_reuses_structured_diagnosis() -> None:
     assert report["diagnosis_evidence"][0]["evidence_id"] == "diagnosis:1"
 
 
+def test_report_snapshot_adds_safe_next_step_when_evidence_is_insufficient() -> None:
+    diagnosis = PerformanceDiagnosis.model_validate(
+        {
+            "category": "insufficient_evidence",
+            "confidence": 0.7,
+            "direct_cause": "SSE 请求持续返回业务错误",
+            "root_cause": "缺少业务错误码说明，无法确认脚本或被测服务根因",
+            "evidence": [],
+            "proposed_changes": [],
+            "missing_evidence": ["业务错误码说明", "原始 SSE 响应"],
+            "requires_second_approval": False,
+            "can_auto_rerun": False,
+            "recommendations": [],
+        }
+    )
+
+    report = build_report_snapshot(
+        {"verdict": "fail", "objectives": [], "evidence_index": []},
+        diagnosis,
+    )
+
+    assert len(report["recommendations"]) == 1
+    recommendation = report["recommendations"][0]
+    assert recommendation["priority"] == "P0"
+    assert "缺失证据" in recommendation["action"]
+    assert "不要改写压测断言" in recommendation["action"]
+    assert recommendation["finding_refs"] == ["finding-1"]
+
+
 def test_report_snapshot_filters_cumulative_trend_and_resource_recommendations() -> None:
     metric_snapshot = {
         "verdict": "pass",

@@ -59,6 +59,7 @@ def validate_locust_script(plan: LocustScriptPlan, source: str) -> ScriptValidat
         expected_names = [step.request.name for step in plan.steps if step.request is not None]
         if "SCENARIO" not in source or plan.scenario_name not in source or any(name not in source for name in expected_names):
             errors.append("脚本与场景结构化 Plan 不一致")
+        errors.extend(_required_static_binding_errors(plan))
 
     if not errors:
         if importlib.util.find_spec("locust") is None:
@@ -82,6 +83,44 @@ def _name(node: ast.AST) -> str:
     if isinstance(node, ast.Attribute):
         return node.attr
     return ""
+
+
+def _required_static_binding_errors(plan: LocustScriptPlan) -> list[str]:
+    errors: list[str] = []
+    for step in plan.steps:
+        for binding in step.bindings:
+            if not binding.get("required"):
+                continue
+            source = binding.get("source") if isinstance(binding.get("source"), dict) else {}
+            source_type = source.get("type")
+            if source_type not in {"scenario", "environment", "secret", "literal"}:
+                continue
+            source_name = str(source.get("name") or source.get("key") or source_type or "unknown")
+            target = str(binding.get("target") or "")
+            if source_type == "literal":
+                resolved = source.get("value") is not None
+                ambiguous = False
+            else:
+                resolved, ambiguous = _scenario_variable_status(plan.scenario_variables, source_name)
+            if ambiguous:
+                errors.append(f"场景变量名称冲突：{step.id} {source_name}")
+            elif not resolved:
+                errors.append(f"必填场景绑定无法解析：{step.id} {source_name} -> {target}")
+    return errors
+
+
+def _scenario_variable_status(variables: dict[str, object], key: str) -> tuple[bool, bool]:
+    if key in variables:
+        return variables[key] is not None, False
+    normalized = key.lower().replace("_", "-")
+    matches = [
+        value
+        for variable_name, value in variables.items()
+        if str(variable_name).lower().replace("_", "-") == normalized
+    ]
+    if len(matches) > 1:
+        return False, True
+    return bool(matches) and matches[0] is not None, False
 
 
 def _isolated_import_error(source: str) -> str:

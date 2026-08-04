@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
-import { ArrowRight, Eye, Gauge, Plus, Trash2 } from "lucide-react";
+import { ArrowRight, Eye, Gauge, Pencil, Plus, Trash2 } from "lucide-react";
 
 import { ListToolbar, RowActions, ShellSection } from "@/components/ai-testing/page-shell";
 import { Badge } from "@/components/ui/badge";
@@ -167,7 +167,7 @@ export function AllPerformanceTestList() {
               <TableHead className="w-[15%]">测试模式</TableHead>
               <TableHead className="w-[12%]">状态</TableHead>
               <TableHead className="w-[12%]">更新时间</TableHead>
-              <TableHead className="w-[5%]" />
+              <TableHead className="w-[7%]">操作</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -233,6 +233,14 @@ export function AllPerformanceTestList() {
                           icon: Eye,
                           onSelect: () => setParamsItem(item),
                         },
+                        {
+                          label: "编辑",
+
+                          icon: Pencil,
+
+                          onSelect: () => router.push(`/projects/${item.projectId}/performance-tests/${item.id}/edit`),
+                        },
+
                         {
                           label: "脚本审核",
                           icon: ArrowRight,

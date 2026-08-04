@@ -15,6 +15,9 @@ from generated_locustfile import *
 
 RUNTIME = json.loads(Path(__file__).with_name("runtime.json").read_text(encoding="utf-8"))
 if PLAN.get("target_type") == "scenario":
+    scenario_variables = PLAN.setdefault("scenario_variables", {})
+    scenario_variables.update(dict(RUNTIME["environment"].get("variables") or {}))
+    scenario_variables.update(dict(RUNTIME["environment"].get("headers") or {}))
     for step in PLAN.get("steps") or []:
         request = step.get("request")
         if request is not None:
@@ -83,7 +86,7 @@ def _response_excerpt(response):
         return ""
     try:
         payload = response.json()
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, RuntimeError):
         return ""
     if isinstance(payload, dict):
         payload = {key: payload[key] for key in ("code", "message", "type", "error", "detail") if key in payload}
@@ -125,7 +128,7 @@ def _on_init(environment, runner, **kwargs):
 
 
 @events.request.add_listener
-def _on_request(request_type, name, response_time, response_length, response, context, exception, **kwargs):
+def _on_request(request_type, name, response_time, response_length, response=None, context=None, exception=None, **kwargs):
     if exception or (response is not None and response.status_code >= 400):
         _append_event({
             "kind": "failure",

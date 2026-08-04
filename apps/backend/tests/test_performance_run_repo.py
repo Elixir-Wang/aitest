@@ -54,11 +54,16 @@ def test_runtime_locustfile_captures_redacted_response_evidence() -> None:
     assert '"response_excerpt": _response_excerpt(response)' in source
     assert '"response_headers": _trace_headers(response)' in source
     assert 'normalized.endswith("_key")' in source
+    assert "except (TypeError, ValueError, RuntimeError):" in source
+    assert "response=None, context=None, exception=None" in source
 
 
 def test_runtime_locustfile_uses_current_environment_headers() -> None:
     source = runtime_locustfile_source()
 
+    assert 'scenario_variables[str(key).lower().replace("-", "_")] = value' not in source
+    assert 'scenario_variables.update(dict(RUNTIME["environment"].get("variables") or {}))' in source
+    assert 'scenario_variables.update(dict(RUNTIME["environment"].get("headers") or {}))' in source
     assert '''request["headers"] = {
                 **dict(request.get("headers") or {}),
                 **dict(RUNTIME["environment"].get("headers") or {}),

@@ -1,5 +1,4 @@
-from __future__ import annotations
-
+import hashlib
 import json
 import re
 import subprocess
@@ -18,8 +17,13 @@ from app.schemas.performance_test import PerformanceSseConfig
 from app.services.performance_testing.sse import SseEvent, event_matches, parse_sse_events
 
 
-REQUIRED_METRIC_IDS = ("call_llm_start", "first_answer")
 _PATH_PARAMETER = re.compile(r"\{([^{}]+)\}")
+_CONTENT_KEYS = {"answer", "content", "text", "delta", "message", "output", "result"}
+_FACT_KEYS = {"event_type", "status", "state", "phase", "stage", "action", "type", "finish", "role"}
+_CANDIDATE_FACT_KEYS = {"event_type", "status", "state", "phase", "stage", "action"} | _CONTENT_KEYS
+_NOISE_VALUES = {"heartbeat", "ping", "pong", "keepalive", "keep_alive", "ack", "debug", "log"}
+_START_MARKER = re.compile(r"(^|[_-])(start|begin|started)$", re.IGNORECASE)
+_END_MARKER = re.compile(r"(^|[_-])(end|complete|completed|finish|finished|done)$", re.IGNORECASE)
 
 
 @dataclass(frozen=True)
@@ -196,11 +200,21 @@ def generate_project_sse_metrics(
 
     if payload.candidate_sse is not None:
         candidate_sse = payload.candidate_sse.model_dump(mode="json")
+        validation = validate_sse_candidate(probe["events"], candidate_sse)
         generated = {
+            "sample_summary": {
+                "event_count": len(probe["events"]),
+                "duration_ms": max((event.received_offset_ms for event in probe["events"]), default=0),
+                "truncated": probe["truncated"],
+            },
+            "event_facts": extract_sse_event_facts(probe["events"]),
+            "candidates": [],
+            "end_rule_candidate": None,
             "candidate_sse": candidate_sse,
-            "validation": validate_sse_candidate(probe["events"], candidate_sse),
-            "generation_source": "user_validation",
-            "warnings": [],
+            "validation": validation,
+            "analysis": {"ai_status": "disabled", "generation_mode": "user_validation", "summary": "已重新验证当前配置"},
+            "result_status": "ready" if validation["valid"] else "partial",
+            "messages": [] if validation["valid"] else ["部分指标未通过当前样本验证，请检查匹配规则。"],
         }
     else:
         generated = generate_sse_metric_candidate(
@@ -208,6 +222,7 @@ def generate_project_sse_metrics(
             max_stream_seconds=payload.max_stream_seconds,
             ai_suggester=suggest_sse_metrics,
         )
+        generated["sample_summary"]["truncated"] = probe["truncated"]
     return {
         "sample": {
             "status_code": probe["status_code"],
@@ -280,44 +295,165 @@ def _request_payload_kwargs(request: dict[str, Any]) -> dict[str, Any]:
     return kwargs
 
 
-def build_deterministic_sse_config(
+def extract_sse_event_facts(events: list[CapturedSseEvent]) -> list[dict[str, Any]]:
+    aggregates: dict[tuple[str, str, str], dict[str, Any]] = {}
+    for item in events:
+        payload = item.event.data_json
+        has_non_empty_content = _has_non_empty_content(payload) and not _contains_key_value(payload, "role", "user")
+        for path, value in _iter_fact_values(payload):
+            normalized_value = _normalize_fact_value(value)
+            if normalized_value is None:
+                continue
+            key = (item.event.event_name, path, normalized_value)
+            fact = aggregates.get(key)
+            if fact is None:
+                signature = json.dumps(key, ensure_ascii=False, separators=(",", ":"))
+                fact = {
+                    "fact_id": f"fact_{hashlib.sha256(signature.encode('utf-8')).hexdigest()[:8]}",
+                    "event_name": item.event.event_name,
+                    "source": "data_json",
+                    "path": path,
+                    "value_type": type(value).__name__,
+                    "normalized_value": normalized_value,
+                    "matched_count": 0,
+                    "first_sequence": item.sequence,
+                    "last_sequence": item.sequence,
+                    "first_offset_ms": item.received_offset_ms,
+                    "last_offset_ms": item.received_offset_ms,
+                    "has_non_empty_content": False,
+                }
+                fact["metric_id"] = _stable_metric_id("custom", _fact_match(fact))
+                aggregates[key] = fact
+            fact["matched_count"] += 1
+            fact["last_sequence"] = item.sequence
+            fact["last_offset_ms"] = item.received_offset_ms
+            fact["has_non_empty_content"] = fact["has_non_empty_content"] or has_non_empty_content
+    return sorted(aggregates.values(), key=lambda fact: (fact["first_sequence"], fact["path"], fact["normalized_value"]))
+
+
+def build_structural_sse_candidates(
     events: list[CapturedSseEvent],
-    *,
-    max_stream_seconds: float,
-) -> dict[str, Any]:
-    event_path = _find_event_type_path(events) or "$.data.event_type"
-    event_name = _common_event_name(events)
-    return {
-        "max_stream_seconds": max_stream_seconds,
-        "metrics": [
+    facts: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    candidates: list[dict[str, Any]] = []
+    event_count = len(events)
+    content_facts = [
+        fact
+        for fact in facts
+        if str(fact["path"]).rsplit(".", 1)[-1] in _CANDIDATE_FACT_KEYS
+        and fact["has_non_empty_content"]
+        and str(fact["normalized_value"]).lower() not in _NOISE_VALUES
+        and not _START_MARKER.search(str(fact["normalized_value"]))
+        and not _END_MARKER.search(str(fact["normalized_value"]))
+    ]
+    first_output_fact_id = None
+    if content_facts:
+        first_output_fact_id = min(
+            content_facts,
+            key=lambda fact: (
+                0 if str(fact["path"]).endswith(".answer") else 1,
+                fact["first_sequence"],
+                fact["path"],
+            ),
+        )["fact_id"]
+    for fact in facts:
+        if str(fact["path"]).rsplit(".", 1)[-1] not in _CANDIDATE_FACT_KEYS:
+            continue
+        value = str(fact["normalized_value"])
+        lowered = value.lower()
+        if lowered in _NOISE_VALUES:
+            continue
+        category: str | None = None
+        score = 0.0
+        confidence = 0.45
+        reason = ""
+        name = f"{value} 事件时间"
+        uncertainty: str | None = "事件的准确业务含义需要人工确认。"
+        is_terminal = fact["matched_count"] == 1 and fact["last_sequence"] == event_count
+        if _START_MARKER.search(lowered):
+            category = "milestone_start"
+            score = 0.64
+            name = _structural_metric_name(value, category)
+            reason = f"事件 `{value}` 的名称具有阶段开始特征。"
+        elif _END_MARKER.search(lowered):
+            category = "completion" if is_terminal else "milestone_end"
+            score = 0.82 if is_terminal else 0.68
+            confidence = 0.65 if is_terminal else confidence
+            name = _structural_metric_name(value, category)
+            reason = (
+                f"事件 `{value}` 仅出现一次且位于样本末尾，可能代表流式处理完成。"
+                if is_terminal
+                else f"事件 `{value}` 的名称具有阶段完成特征。"
+            )
+        elif fact["fact_id"] == first_output_fact_id:
+            category = "first_output"
+            score = 0.9
+            confidence = 0.75
+            name = _structural_metric_name(value, category)
+            reason = "该事件首次出现时携带非空内容，适合作为用户可感知输出候选。"
+            uncertainty = None
+        elif str(fact["path"]).rsplit(".", 1)[-1] in _CONTENT_KEYS:
+            continue
+        elif is_terminal:
+            category = "completion"
+            score = 0.82
+            confidence = 0.65
+            name = _structural_metric_name(value, category)
+            reason = "该事件仅出现一次且位于样本末尾，可能代表流式处理完成。"
+        if category is None:
+            continue
+        match = (
             {
-                "id": "call_llm_start",
-                "name": "LLM 调用开始时间",
-                "match": _equals_match(event_name, event_path, "call_llm_start"),
-                "occurrence": "first",
-                "missing_policy": "record_null",
-            },
+                "event_name": str(fact["event_name"]),
+                "source": "data_json",
+                "path": str(fact["path"]),
+                "operator": "non_empty",
+            }
+            if category == "first_output"
+            else _equals_match(str(fact["event_name"]), str(fact["path"]), fact["normalized_value"])
+        )
+        validation = _validate_match(events, match)
+        candidates.append(
             {
-                "id": "first_answer",
-                "name": "首次回答时间",
-                "match": _equals_match(event_name, event_path, "answer"),
+                "suggestion_key": f"suggestion_{fact['fact_id']}",
+                "metric_id": _stable_metric_id(category, match),
+                "name": name,
+                "category": category,
+                "match": match,
                 "occurrence": "first",
-                "missing_policy": "fail_request",
-            },
-        ],
-        "end_rule": _equals_match(event_name, event_path, "query_end") if _has_event_type(events, "query_end") else None,
-    }
+                "recommended_missing_policy": "record_null",
+                "source": "structural",
+                "recommendation_level": "recommended" if score >= 0.75 else "optional",
+                "recommendation_score": score,
+                "semantic_confidence": confidence,
+                "reason": reason,
+                "uncertainty": uncertainty,
+                "evidence_fact_ids": [fact["fact_id"]],
+                "validation": validation,
+            }
+        )
+    candidates.sort(key=lambda candidate: (-candidate["recommendation_score"], candidate["name"]))
+    return candidates[:8]
+
+
+def _structural_metric_name(value: str, category: str) -> str:
+    if category == "first_output":
+        return "首次有效内容时间"
+    if category == "milestone_start":
+        stem = _START_MARKER.sub("", value).strip("_-") or value
+        return f"{stem} 开始时间"
+    if category in {"milestone_end", "completion"}:
+        stem = _END_MARKER.sub("", value).strip("_-") or value
+        return f"{stem} 完成时间"
+    return f"{value} 事件时间"
 
 
 def validate_sse_candidate(events: list[CapturedSseEvent], config: dict[str, Any]) -> dict[str, Any]:
     validated = PerformanceSseConfig.model_validate(config)
     metrics = []
-    matched_ids: set[str] = set()
     for metric in validated.metrics:
         matched = [item for item in events if event_matches(item.event, metric.match.model_dump(mode="json"))]
         first = matched[0] if matched else None
-        if first is not None:
-            matched_ids.add(metric.id)
         metrics.append(
             {
                 "metric_id": metric.id,
@@ -336,7 +472,7 @@ def validate_sse_candidate(events: list[CapturedSseEvent], config: dict[str, Any
         "matched_count": len(end_matches),
         "first_event_sequence": end_matches[0].sequence if end_matches else None,
     }
-    valid = set(REQUIRED_METRIC_IDS).issubset(matched_ids)
+    valid = bool(metrics) and all(metric["matched_count"] > 0 for metric in metrics)
     if validated.end_rule is not None:
         valid = valid and bool(end_matches)
     return {"valid": valid, "metrics": metrics, "end_rule": end_rule}
@@ -348,30 +484,48 @@ def generate_sse_metric_candidate(
     max_stream_seconds: float,
     ai_suggester: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    deterministic = build_deterministic_sse_config(events, max_stream_seconds=max_stream_seconds)
-    warnings: list[str] = []
+    facts = extract_sse_event_facts(events)
+    structural = build_structural_sse_candidates(events, facts)
+    candidates = structural
+    ai_status = "disabled" if ai_suggester is None else "not_used"
+    generation_mode = "structural_only" if structural else "event_catalog_only"
+    end_rule_candidate = _structural_end_rule_candidate(events, facts)
     if ai_suggester is not None:
         try:
-            suggested = dict(ai_suggester(_ai_input(events)) or {})
-            suggested["max_stream_seconds"] = max_stream_seconds
-            validation = validate_sse_candidate(events, suggested)
-            suggested_ids = {metric.get("id") for metric in suggested.get("metrics") or []}
-            if validation["valid"] and set(REQUIRED_METRIC_IDS).issubset(suggested_ids):
-                return {
-                    "candidate_sse": PerformanceSseConfig.model_validate(suggested).model_dump(mode="json"),
-                    "validation": validation,
-                    "generation_source": "ai",
-                    "warnings": warnings,
-                }
+            suggested = dict(ai_suggester(_ai_input(events, facts)) or {})
+            ai_candidates = _ai_candidates(events, facts, suggested.get("candidates") or [])
+            candidates = _merge_candidates(structural, ai_candidates)
+            if suggested.get("end_rule_candidate_fact_id"):
+                suggested_end_rule = _end_rule_from_fact(
+                    events,
+                    facts,
+                    str(suggested["end_rule_candidate_fact_id"]),
+                )
+                if suggested_end_rule is not None:
+                    end_rule_candidate = suggested_end_rule
+            ai_status = "used" if not (suggested.get("candidates") or []) or ai_candidates else "not_used"
+            if ai_candidates:
+                generation_mode = "ai_and_structural" if structural else "ai_only"
         except Exception:
-            pass
-        warnings.append("AI 生成的指标规则未通过样本回放，已使用确定性识别结果。")
-
+            ai_status = "unavailable"
+    result_status = "ready" if candidates else "empty"
+    messages = [] if candidates else ["本次样本未发现高可信度性能指标，可从事件目录中手动选择。"]
     return {
-        "candidate_sse": PerformanceSseConfig.model_validate(deterministic).model_dump(mode="json"),
-        "validation": validate_sse_candidate(events, deterministic),
-        "generation_source": "deterministic_fallback" if ai_suggester is not None else "deterministic",
-        "warnings": warnings,
+        "sample_summary": {
+            "event_count": len(events),
+            "duration_ms": max((event.received_offset_ms for event in events), default=0),
+            "truncated": False,
+        },
+        "event_facts": facts,
+        "candidates": candidates,
+        "end_rule_candidate": end_rule_candidate,
+        "analysis": {
+            "ai_status": ai_status,
+            "generation_mode": generation_mode,
+            "summary": f"发现 {len(candidates)} 个候选指标",
+        },
+        "result_status": result_status,
+        "messages": messages,
     }
 
 
@@ -385,19 +539,202 @@ def _equals_match(event_name: str, path: str, expected: str) -> dict[str, Any]:
     }
 
 
-def _ai_input(events: list[CapturedSseEvent]) -> dict[str, Any]:
+def _ai_input(events: list[CapturedSseEvent], facts: list[dict[str, Any]]) -> dict[str, Any]:
     return {
-        "requested_metrics": ["首次 call_llm_start", "首次 answer"],
-        "events": [
-            {
-                "sequence": item.sequence,
-                "event_name": item.event.event_name,
-                "received_offset_ms": item.received_offset_ms,
-                "data_json": _sanitize_ai_value(item.event.data_json),
-            }
-            for item in events
-        ],
+        "task": "discover_performance_metric_candidates",
+        "sample": {
+            "event_count": len(events),
+            "duration_ms": max((event.received_offset_ms for event in events), default=0),
+        },
+        "facts": facts,
     }
+
+
+def _iter_fact_values(value: Any, path: str = "$"):
+    if isinstance(value, dict):
+        for key, nested in value.items():
+            nested_path = f"{path}.{key}"
+            if key in _FACT_KEYS and isinstance(nested, (str, int, float, bool)):
+                yield nested_path, nested
+            elif key in _CONTENT_KEYS and nested not in (None, "", [], {}, False):
+                yield nested_path, "<non-empty>"
+            if isinstance(nested, (dict, list)):
+                yield from _iter_fact_values(nested, nested_path)
+    elif isinstance(value, list):
+        for nested in value:
+            yield from _iter_fact_values(nested, f"{path}[*]")
+
+
+def _normalize_fact_value(value: Any) -> str | None:
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, (int, float)):
+        return str(value)
+    if not isinstance(value, str):
+        return None
+    normalized = value.strip()
+    if not normalized or len(normalized) > 120:
+        return None
+    if re.fullmatch(r"[0-9a-fA-F-]{20,}", normalized):
+        return None
+    return normalized
+
+
+def _has_non_empty_content(value: Any) -> bool:
+    if isinstance(value, dict):
+        for key, nested in value.items():
+            if key in _CONTENT_KEYS and nested not in (None, "", [], {}):
+                return True
+            if _has_non_empty_content(nested):
+                return True
+    elif isinstance(value, list):
+        return any(_has_non_empty_content(item) for item in value)
+    return False
+
+
+def _validate_match(events: list[CapturedSseEvent], match: dict[str, Any]) -> dict[str, Any]:
+    matched = [item for item in events if event_matches(item.event, match)]
+    first = matched[0] if matched else None
+    return {
+        "valid": first is not None,
+        "matched_count": len(matched),
+        "first_event_sequence": first.sequence if first else None,
+        "sample_elapsed_ms": first.received_offset_ms if first else None,
+        "sample_event": _sample_event(first.event) if first else None,
+    }
+
+
+def _stable_metric_id(category: str, match: dict[str, Any]) -> str:
+    signature = json.dumps(match, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    digest = hashlib.sha256(signature.encode("utf-8")).hexdigest()[:8]
+    slug = re.sub(r"[^a-z0-9]+", "_", category.lower()).strip("_") or "event"
+    return f"sse_{slug}_{digest}"[:64]
+
+
+def _fact_match(fact: dict[str, Any]) -> dict[str, Any]:
+    if str(fact["path"]).rsplit(".", 1)[-1] in _CONTENT_KEYS:
+        return {
+            "event_name": str(fact["event_name"]),
+            "source": "data_json",
+            "path": str(fact["path"]),
+            "operator": "non_empty",
+        }
+    return _equals_match(str(fact["event_name"]), str(fact["path"]), fact["normalized_value"])
+
+
+def _ai_candidates(
+    events: list[CapturedSseEvent],
+    facts: list[dict[str, Any]],
+    suggestions: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    facts_by_id = {fact["fact_id"]: fact for fact in facts}
+    candidates: list[dict[str, Any]] = []
+    allowed_categories = {
+        "first_output",
+        "milestone_start",
+        "milestone_end",
+        "completion",
+        "first_external_action",
+        "state_transition",
+        "custom_event",
+    }
+    for suggestion in suggestions[:8]:
+        fact = facts_by_id.get(str(suggestion.get("fact_id") or ""))
+        if fact is None or str(fact["path"]).rsplit(".", 1)[-1] not in _CANDIDATE_FACT_KEYS:
+            continue
+        category = str(suggestion.get("category") or "custom_event")
+        if category not in allowed_categories:
+            category = "custom_event"
+        confidence = min(1.0, max(0.0, float(suggestion.get("confidence") or 0.5)))
+        match = _fact_match(fact)
+        score = min(1.0, 0.55 + confidence * 0.35)
+        candidates.append(
+            {
+                "suggestion_key": f"suggestion_ai_{fact['fact_id']}",
+                "metric_id": _stable_metric_id(category, match),
+                "name": str(suggestion.get("name") or f"事件 {fact['normalized_value']} 首次到达时间")[:80],
+                "category": category,
+                "match": match,
+                "occurrence": "first",
+                "recommended_missing_policy": "record_null",
+                "source": "ai",
+                "recommendation_level": "recommended" if score >= 0.75 else "optional",
+                "recommendation_score": score,
+                "semantic_confidence": confidence,
+                "reason": str(suggestion.get("reason") or "AI 根据当前样本将该事件识别为性能观测候选。")[:500],
+                "uncertainty": str(suggestion["uncertainty"])[:500] if suggestion.get("uncertainty") else None,
+                "evidence_fact_ids": [fact["fact_id"]],
+                "validation": _validate_match(events, match),
+            }
+        )
+    return candidates
+
+
+def _candidate_signature(candidate: dict[str, Any]) -> str:
+    return json.dumps(candidate["match"], ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+
+
+def _merge_candidates(
+    structural: list[dict[str, Any]],
+    ai_candidates: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    merged = {_candidate_signature(candidate): dict(candidate) for candidate in structural}
+    for candidate in ai_candidates:
+        signature = _candidate_signature(candidate)
+        existing = merged.get(signature)
+        if existing is None:
+            merged[signature] = candidate
+            continue
+        existing.update(
+            {
+                "name": candidate["name"],
+                "category": candidate["category"],
+                "metric_id": candidate["metric_id"],
+                "source": "merged",
+                "recommendation_score": max(existing["recommendation_score"], candidate["recommendation_score"]),
+                "semantic_confidence": candidate["semantic_confidence"],
+                "reason": candidate["reason"],
+                "uncertainty": candidate["uncertainty"],
+                "evidence_fact_ids": sorted(set(existing["evidence_fact_ids"] + candidate["evidence_fact_ids"])),
+            }
+        )
+        existing["recommendation_level"] = (
+            "recommended" if existing["recommendation_score"] >= 0.75 else "optional"
+        )
+    return sorted(merged.values(), key=lambda candidate: (-candidate["recommendation_score"], candidate["name"]))[:8]
+
+
+def _end_rule_from_fact(
+    events: list[CapturedSseEvent],
+    facts: list[dict[str, Any]],
+    fact_id: str,
+) -> dict[str, Any] | None:
+    fact = next((item for item in facts if item["fact_id"] == fact_id), None)
+    if fact is None or str(fact["path"]).rsplit(".", 1)[-1] not in _CANDIDATE_FACT_KEYS:
+        return None
+    match = _fact_match(fact)
+    return {
+        "fact_id": fact_id,
+        "match": match,
+        "reason": "该事件被识别为流结束候选。",
+        "validation": _validate_match(events, match),
+    }
+
+
+def _structural_end_rule_candidate(
+    events: list[CapturedSseEvent],
+    facts: list[dict[str, Any]],
+) -> dict[str, Any] | None:
+    event_count = len(events)
+    candidates = [
+        fact
+        for fact in facts
+        if fact["matched_count"] == 1
+        and fact["last_sequence"] == event_count
+        and str(fact["path"]).rsplit(".", 1)[-1] in _CANDIDATE_FACT_KEYS
+        and str(fact["normalized_value"]).lower() not in _NOISE_VALUES
+    ]
+    return _end_rule_from_fact(events, facts, candidates[0]["fact_id"]) if candidates else None
 
 
 def _sanitize_ai_value(value: Any) -> Any:
@@ -489,9 +826,10 @@ def _endpoint_url(base_url: str, path: str, path_parameters: dict[str, Any]) -> 
 
 __all__ = [
     "CapturedSseEvent",
-    "build_deterministic_sse_config",
+    "build_structural_sse_candidates",
     "capture_sse_events",
     "execute_sse_probe",
+    "extract_sse_event_facts",
     "generate_project_sse_metrics",
     "generate_sse_metric_candidate",
     "validate_sse_candidate",

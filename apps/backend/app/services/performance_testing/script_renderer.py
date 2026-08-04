@@ -110,6 +110,21 @@ def _render_scenario_helpers() -> str:
     return r'''
 
 
+def _scenario_variable(variables, key):
+    if key in variables:
+        return variables[key]
+    normalized = str(key or "").lower().replace("_", "-")
+    matches = []
+    for variable_name, value in variables.items():
+        if str(variable_name).lower().replace("_", "-") == normalized:
+            matches.append(value)
+    if len(matches) > 1:
+        raise ValueError("ambiguous scenario variable: " + str(key))
+    if matches:
+        return matches[0]
+    return None
+
+
 def _scenario_source(source, variables, outputs):
     kind = source.get("type")
     if kind == "literal":
@@ -117,7 +132,7 @@ def _scenario_source(source, variables, outputs):
     if kind == "object":
         return {key: _scenario_source(value, variables, outputs) for key, value in (source.get("properties") or {}).items()}
     if kind in {"scenario", "environment", "secret", "user_input"}:
-        return variables.get(source.get("name") or source.get("key"))
+        return _scenario_variable(variables, source.get("name") or source.get("key"))
     if kind == "step_output":
         return (outputs.get(source.get("step_id")) or {}).get(source.get("variable"))
     if kind == "generated":
@@ -147,6 +162,30 @@ def _scenario_transform(value, transform):
     if transform == "json_encode":
         return json.dumps(value, ensure_ascii=False)
     raise ValueError("unsupported scenario transform: " + str(transform))
+
+
+def _scenario_binding_source_name(source):
+    return str(source.get("name") or source.get("key") or source.get("variable") or source.get("type") or "unknown")
+
+
+def _apply_scenario_bindings(request, bindings, variables, outputs):
+    for binding in bindings:
+        target = str(binding.get("target") or "")
+        if not target.startswith("/request/"):
+            raise ValueError("unsupported scenario binding target: " + target)
+        source = binding.get("source") or {}
+        value = _scenario_source(source, variables, outputs)
+        if value is None:
+            if binding.get("required"):
+                raise ValueError(
+                    "required scenario binding unresolved: "
+                    + _scenario_binding_source_name(source)
+                    + " -> "
+                    + target
+                )
+            continue
+        value = _scenario_transform(value, binding.get("transform"))
+        _scenario_set_pointer(request, target.removeprefix("/request"), value)
 
 
 def _scenario_set_pointer(target, pointer, value):
@@ -251,13 +290,7 @@ def _run_scenario_step(user, step, data):
         return {}
 
     request = _resolve(step["request"], user.sequence, data)
-    for binding in step.get("bindings") or []:
-        value = _scenario_source(binding.get("source") or {}, user.variables, user.outputs)
-        value = _scenario_transform(value, binding.get("transform"))
-        target = str(binding.get("target") or "")
-        if not target.startswith("/request/"):
-            raise ValueError("unsupported scenario binding target: " + target)
-        _scenario_set_pointer(request, target.removeprefix("/request"), value)
+    _apply_scenario_bindings(request, step.get("bindings") or [], user.variables, user.outputs)
     path = request["path"]
     for key, value in request.get("path_parameters", {}).items():
         path = path.replace("{" + str(key) + "}", str(value))
@@ -448,12 +481,16 @@ def _sse_finish_frame(event_name, data_lines, started_at, config, observed, qual
     if not data_lines:
         return False
     data_text = "\\n".join(data_lines)
+    quality["frame_count"] += 1
+    quality["data_frame_count"] += 1
     requires_json = any(metric["match"]["source"] == "data_json" for metric in config["metrics"])
     requires_json = requires_json or bool(config.get("end_rule") and config["end_rule"]["source"] == "data_json")
-    if requires_json:
-        try:
-            json.loads(data_text)
-        except (TypeError, ValueError):
+    try:
+        json.loads(data_text)
+        quality["json_frame_count"] += 1
+    except (TypeError, ValueError):
+        quality["non_json_frame_count"] += 1
+        if requires_json:
             quality["parse_error_count"] += 1
     elapsed_ms = (time.perf_counter() - started_at) * 1000
     for metric in config["metrics"]:
@@ -469,8 +506,19 @@ def _execute_sse_request(user, request, path, measurement_context=None):
     headers.setdefault("Accept", "text/event-stream")
     started_at = time.perf_counter()
     observed = {}
-    event_name, data_lines, frame_size, stream_size, ended = "", [], 0, 0, False
-    quality = {"parse_error_count": 0}
+    event_name, data_lines, frame_size, stream_size, ended = "message", [], 0, 0, False
+    quality = {
+        "parse_error_count": 0,
+        "line_count": 0,
+        "frame_count": 0,
+        "data_frame_count": 0,
+        "json_frame_count": 0,
+        "non_json_frame_count": 0,
+        "non_sse_line_count": 0,
+        "stream_bytes": 0,
+        "content_type": "",
+        "response_error_code": "",
+    }
     failure_reason = ""
     with user.client.request(
         method=request["method"],
@@ -482,8 +530,11 @@ def _execute_sse_request(user, request, path, measurement_context=None):
         stream=True,
         catch_response=True,
     ) as response:
+        quality["content_type"] = str(response.headers.get("Content-Type") or "").split(";", 1)[0].strip().lower()
         if not 200 <= response.status_code < 300:
             failure_reason = f"unexpected status code: {response.status_code}"
+        elif quality["content_type"] != "text/event-stream":
+            failure_reason = "sse_invalid_content_type"
         else:
             for raw_line in response.iter_lines(decode_unicode=True):
                 if (time.perf_counter() - started_at) > config["max_stream_seconds"]:
@@ -491,35 +542,58 @@ def _execute_sse_request(user, request, path, measurement_context=None):
                     break
                 if isinstance(raw_line, bytes):
                     raw_line = raw_line.decode("utf-8", errors="replace")
-                line = (raw_line or "").removeprefix("\\ufeff")
+                line = (raw_line or "").removeprefix("\\ufeff").rstrip("\\r\\n")
+                quality["line_count"] += 1
                 stream_size += len(line.encode("utf-8"))
+                quality["stream_bytes"] = stream_size
                 if stream_size > 16777216:
                     failure_reason = "sse_stream_too_large"
                     break
                 if not line:
                     ended = _sse_finish_frame(event_name, data_lines, started_at, config, observed, quality) or ended
-                    event_name, data_lines, frame_size = "", [], 0
+                    event_name, data_lines, frame_size = "message", [], 0
                     if ended:
                         break
                 elif line.startswith(":"):
                     continue
                 else:
-                    field, separator, value = line.partition(":")
-                    if separator:
+                    json_payload = None
+                    separator = ""
+                    if line.lstrip().startswith(("{", "[")):
+                        try:
+                            json_payload = json.loads(line)
+                        except (TypeError, ValueError):
+                            json_payload = None
+                    if isinstance(json_payload, dict) and json_payload.get("code") is not None:
+                        quality["non_sse_line_count"] += 1
+                        quality["response_error_code"] = re.sub(
+                            r"[^A-Za-z0-9_.-]", "_", str(json_payload["code"])
+                        )[:64]
+                    else:
+                        field, separator, value = line.partition(":")
+                    if separator and json_payload is None:
                         value = value.removeprefix(" ")
                         frame_size += len(line.encode("utf-8"))
                         if frame_size > 262144:
                             failure_reason = "sse_frame_too_large"
                             break
                         if field == "event":
-                            event_name = value
+                            event_name = value or "message"
                         elif field == "data":
                             data_lines.append(value)
+                    elif not isinstance(json_payload, dict):
+                        quality["non_sse_line_count"] += 1
             if data_lines and not ended and not failure_reason:
                 ended = _sse_finish_frame(event_name, data_lines, started_at, config, observed, quality)
+            if not failure_reason and quality["data_frame_count"] == 0:
+                if quality["response_error_code"]:
+                    failure_reason = "sse_business_error:" + quality["response_error_code"]
+                else:
+                    failure_reason = "sse_no_data_frames"
             if not failure_reason and config.get("end_rule") and not ended:
                 failure_reason = "sse_end_rule_not_matched"
         missing = [metric["id"] for metric in config["metrics"] if metric["id"] not in observed]
+        reported_missing = [metric["id"] for metric in config["metrics"] if metric["id"] in missing and metric["missing_policy"] != "ignore"]
         required_missing = [metric["id"] for metric in config["metrics"] if metric["id"] in missing and metric["missing_policy"] == "fail_request"]
         if required_missing and not failure_reason:
             failure_reason = "sse_metric_missing:" + ",".join(required_missing)
@@ -527,7 +601,12 @@ def _execute_sse_request(user, request, path, measurement_context=None):
             response.failure(failure_reason)
         else:
             response.success()
-    measurement = {"stream_completed_ms": round((time.perf_counter() - started_at) * 1000, 4), "metrics": observed, "missing_metric_ids": missing, "failure_reason": failure_reason, **quality, **(measurement_context or {})}
+    first_content_id = next((metric["id"] for metric in config["metrics"] if metric["match"].get("source") == "data_json" and metric["match"].get("path") == "$.data.answer" and metric["match"].get("operator") == "non_empty"), None)
+    llm_start_id = next((metric["id"] for metric in config["metrics"] if metric["match"].get("source") == "data_json" and metric["match"].get("path") == "$.data.event_type" and metric["match"].get("operator") == "equals" and metric["match"].get("expected") == "call_llm_start"), None)
+    derived_metrics = {}
+    if first_content_id in observed and llm_start_id in observed:
+        derived_metrics["llm_start_to_first_content_ms"] = max(0, observed[first_content_id] - observed[llm_start_id])
+    measurement = {"stream_completed_ms": round((time.perf_counter() - started_at) * 1000, 4), "metrics": observed, "derived_metrics": derived_metrics, "missing_metric_ids": reported_missing, "failure_reason": failure_reason, **quality, **(measurement_context or {})}
     if callable(SSE_MEASUREMENT_SINK):
         SSE_MEASUREMENT_SINK(measurement)
     return failure_reason

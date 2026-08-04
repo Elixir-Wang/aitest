@@ -66,6 +66,7 @@ async def generate_pytest_playwright_case(
     case_payload: dict,
     evidence_payload: dict,
     artifacts: dict[str, str],
+    revision_context: dict | None = None,
     max_actions: int = 100,
 ) -> dict:
     agent = create_pytest_playwright_agent(model=model, suite_path=suite_path, max_actions=max_actions)
@@ -73,15 +74,31 @@ async def generate_pytest_playwright_case(
         "case": case_payload,
         "evidence": evidence_payload,
         "artifacts": artifacts,
+        "revision": revision_context or {},
     }
+    if revision_context and revision_context.get("reason_code") == "missing_business_step_mapping":
+        instruction = (
+            "这是对已有 UI 自动化资产的业务步骤映射修订。必须先读取当前 test、data、plan 和关联 POM，"
+            "仅根据原始用例步骤与当前 plan 中已有技术步骤补充 business_step_id 和 title。"
+            "当前资产本身就是本次修订的事实依据，即使没有站点探索 artifacts 也必须继续。"
+            "禁止新增或改写 locator、断言、参数化、测试动作和执行顺序，也不要重写测试逻辑。"
+        )
+    elif revision_context:
+        instruction = (
+            "这是对已有 UI 自动化资产的修订任务。必须先读取当前 test、data、plan 和关联 POM，"
+            "在当前实现基础上做最小必要修改；保留现有 locator、断言、参数化和执行顺序，"
+            "除非用户要求或校验证明无法满足目标，否则不要重写测试逻辑。"
+        )
+    else:
+        instruction = "为下面这一条已采纳 UI 测试用例生成或更新自动化代码。先读取当前项目框架和已有 POM。"
     result = await agent.ainvoke(
         {
             "messages": [
                 {
                     "role": "user",
                     "content": (
-                        "为下面这一条已采纳 UI 测试用例生成或更新自动化代码。先读取当前项目框架和已有 POM。"
-                        "artifacts.test_file、artifacts.data_file、artifacts.plan_file 是唯一合法目标；"
+                        instruction
+                        + "artifacts.test_file、artifacts.data_file、artifacts.plan_file 是唯一合法目标；"
                         "可以调整 artifacts.data_file，但禁止修改原始用例事实。只能使用 evidence 中可追溯的 locator。"
                         "生成 AutomationPlan 后依次调用校验、渲染和 collection 工具。\n\n"
                         f"{json.dumps(payload, ensure_ascii=False, indent=2)}"

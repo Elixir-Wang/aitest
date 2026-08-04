@@ -1,4 +1,5 @@
 import asyncio
+import ast
 import csv
 import json
 import shutil
@@ -145,18 +146,17 @@ def apply_performance_analysis(
 @run_router.get("/{run_id}/stats")
 def get_performance_run_stats(project_id: str, run_id: str, actor=Depends(current_user)) -> dict:
     _require_run(project_id, run_id, actor)
+    request_stats, sse_metrics = _request_stats_payload(project_id, run_id)
     with connect() as db:
         run = run_repo.get_run(db, run_id)
         return {
             "run": _run_payload(run),
             "stats": [_stat_payload(row) for row in run_repo.list_stats(db, run_id)],
-            "request_stats": _request_stats(project_id, run_id),
+            "request_stats": request_stats,
             "failures": [dict(row) for row in run_repo.list_failures(db, run_id)],
             "exceptions": [dict(row) for row in run_repo.list_exceptions(db, run_id)],
             "events": [dict(row) for row in run_repo.list_events(db, run_id)],
-            "sse_metrics": headless_worker.summarize_sse_measurements(
-                _run_report_directory(project_id, run_id) / "sse-measurements.jsonl"
-            ),
+            "sse_metrics": sse_metrics,
         }
 
 
@@ -352,39 +352,194 @@ def _history_samples(project_id: str, run_id: str) -> list[dict[str, object]]:
 
 
 def _request_stats(project_id: str, run_id: str) -> list[dict[str, object]]:
-    path = _run_report_directory(project_id, run_id) / "result_stats.csv"
+    return _request_stats_payload(project_id, run_id)[0]
+
+
+def _request_stats_payload(project_id: str, run_id: str) -> tuple[list[dict[str, object]], dict[str, object]]:
+    run_dir = _run_report_directory(project_id, run_id)
+    path = run_dir / "result_stats.csv"
     if not path.is_file():
-        return []
+        return [], headless_worker.summarize_sse_measurements(
+            run_dir / "sse-measurements.jsonl", max_attempts=0
+        )
     try:
         with path.open("r", encoding="utf-8-sig", newline="") as handle:
             rows = list(csv.DictReader(handle))
     except (OSError, UnicodeDecodeError):
-        return []
-    result = []
+        return [], headless_worker.summarize_sse_measurements(
+            run_dir / "sse-measurements.jsonl", max_attempts=0
+        )
+    actual_rows: dict[tuple[str, str], dict[str, object]] = {}
     for row in rows:
-        if row.get("Type") == "Aggregated" or row.get("Name") == "Aggregated":
+        method = str(row.get("Type") or "")
+        name = str(row.get("Name") or "")
+        if method in {"Aggregated", "SCENARIO"} or name == "Aggregated":
             continue
         request_count = int(float(row.get("Request Count") or 0))
         failure_count = int(float(row.get("Failure Count") or 0))
+        actual_rows[(method, name)] = {
+            "name": name,
+            "method": method,
+            "request_count": request_count,
+            "failure_count": failure_count,
+            "failure_rate": failure_count / request_count if request_count else 0,
+            "average_response_time_ms": float(row.get("Average Response Time") or 0),
+            "median_response_time_ms": float(row.get("Median Response Time") or row.get("50%") or 0),
+            "p50_response_time_ms": float(row.get("50%") or 0),
+            "p95_response_time_ms": float(row.get("95%") or 0),
+            "p99_response_time_ms": float(row.get("99%") or 0),
+            "min_response_time_ms": float(row.get("Min Response Time") or 0),
+            "max_response_time_ms": float(row.get("Max Response Time") or 0),
+            "requests_per_second": float(row.get("Requests/s") or 0),
+            "content_size": int(float(row.get("Average Content Size") or 0)),
+        }
+
+    plan = _generated_performance_plan(run_dir)
+    planned_requests = _planned_requests(plan)
+    result = []
+    completed_sse_requests = 0
+    for request in planned_requests:
+        key = (request["method"], request["name"])
+        row = actual_rows.pop(
+            key,
+            _empty_request_stat(method=request["method"], name=request["name"]),
+        )
+        if request.get("transport") == "sse":
+            row = {**row, "timing_semantics": "connection"}
+            completed_sse_requests += int(row.get("request_count") or 0)
+        result.append(row)
+    result.extend(actual_rows.values())
+
+    sse_summary = headless_worker.summarize_sse_measurements(
+        run_dir / "sse-measurements.jsonl",
+        max_attempts=completed_sse_requests,
+    )
+    summaries = {str(item.get("metric_id") or ""): item for item in sse_summary.get("metrics", [])}
+    for metric in _planned_sse_metrics(plan):
+        summary = summaries.get(metric["metric_id"], {})
+        attempt_count = int(summary.get("attempt_count") or 0)
+        missing_count = int(summary.get("missing_count") or 0)
         result.append(
             {
-                "name": row.get("Name", ""),
-                "method": row.get("Type", ""),
-                "request_count": request_count,
-                "failure_count": failure_count,
-                "failure_rate": failure_count / request_count if request_count else 0,
-                "average_response_time_ms": float(row.get("Average Response Time") or 0),
-                "median_response_time_ms": float(row.get("Median Response Time") or row.get("50%") or 0),
-                "p50_response_time_ms": float(row.get("50%") or 0),
-                "p95_response_time_ms": float(row.get("95%") or 0),
-                "p99_response_time_ms": float(row.get("99%") or 0),
-                "min_response_time_ms": float(row.get("Min Response Time") or 0),
-                "max_response_time_ms": float(row.get("Max Response Time") or 0),
-                "requests_per_second": float(row.get("Requests/s") or 0),
-                "content_size": int(float(row.get("Average Content Size") or 0)),
+                "name": metric["name"],
+                "method": "SSE",
+                "request_count": attempt_count,
+                "failure_count": missing_count,
+                "failure_rate": missing_count / attempt_count if attempt_count else 0,
+                "average_response_time_ms": summary.get("average_ms") or 0,
+                "median_response_time_ms": summary.get("p50_ms") or 0,
+                "p50_response_time_ms": summary.get("p50_ms") or 0,
+                "p95_response_time_ms": summary.get("p95_ms") or 0,
+                "p99_response_time_ms": summary.get("p99_ms") or 0,
+                "min_response_time_ms": summary.get("min_ms") or 0,
+                "max_response_time_ms": summary.get("max_ms") or 0,
+                "requests_per_second": 0,
+                "content_size": 0,
+                "metric_id": metric["metric_id"],
             }
         )
-    return result
+    return result, sse_summary
+
+
+def _generated_performance_plan(run_dir: Path) -> dict[str, object]:
+    path = run_dir / "generated_locustfile.py"
+    if not path.is_file():
+        return {}
+    try:
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, SyntaxError):
+        return {}
+    for node in tree.body:
+        if not isinstance(node, ast.Assign) or not any(isinstance(target, ast.Name) and target.id == "PLAN" for target in node.targets):
+            continue
+        if not isinstance(node.value, ast.Call) or not node.value.args:
+            return {}
+        try:
+            payload = ast.literal_eval(node.value.args[0])
+            plan = json.loads(payload)
+        except (ValueError, TypeError, json.JSONDecodeError):
+            return {}
+        return plan if isinstance(plan, dict) else {}
+    return {}
+
+
+def _planned_requests(plan: dict[str, object]) -> list[dict[str, str]]:
+    requests = []
+    candidates = plan.get("steps") if plan.get("target_type") == "scenario" else [plan]
+    for candidate in candidates if isinstance(candidates, list) else []:
+        request = candidate.get("request") if isinstance(candidate, dict) else None
+        if not isinstance(request, dict):
+            continue
+        method = str(request.get("method") or "")
+        name = str(request.get("name") or "")
+        if method and name:
+            requests.append(
+                {
+                    "method": method,
+                    "name": name,
+                    "transport": str(request.get("transport") or "http"),
+                }
+            )
+    return requests
+
+
+def _planned_sse_metrics(plan: dict[str, object]) -> list[dict[str, str]]:
+    metrics = []
+    include_llm_start_to_first_content = False
+    candidates = plan.get("steps") if plan.get("target_type") == "scenario" else [plan]
+    for candidate in candidates if isinstance(candidates, list) else []:
+        request = candidate.get("request") if isinstance(candidate, dict) else None
+        if not isinstance(request, dict) or request.get("transport") != "sse":
+            continue
+        config = request.get("sse")
+        has_first_content = False
+        has_llm_start = False
+        for metric in config.get("metrics", []) if isinstance(config, dict) else []:
+            if not isinstance(metric, dict) or not metric.get("id"):
+                continue
+            metrics.append({"metric_id": str(metric["id"]), "name": str(metric.get("name") or metric["id"])})
+            match = metric.get("match") if isinstance(metric.get("match"), dict) else {}
+            has_first_content = has_first_content or (
+                match.get("source") == "data_json"
+                and match.get("path") == "$.data.answer"
+                and match.get("operator") == "non_empty"
+            )
+            has_llm_start = has_llm_start or (
+                match.get("source") == "data_json"
+                and match.get("path") == "$.data.event_type"
+                and match.get("operator") == "equals"
+                and match.get("expected") == "call_llm_start"
+            )
+        include_llm_start_to_first_content = (
+            include_llm_start_to_first_content or (has_first_content and has_llm_start)
+        )
+    if include_llm_start_to_first_content:
+        metrics.append(
+            {
+                "metric_id": "derived:llm_start_to_first_content",
+                "name": "LLM 启动到首次有效内容",
+            }
+        )
+    return metrics
+
+
+def _empty_request_stat(*, method: str, name: str) -> dict[str, object]:
+    return {
+        "name": name,
+        "method": method,
+        "request_count": 0,
+        "failure_count": 0,
+        "failure_rate": 0,
+        "average_response_time_ms": 0,
+        "median_response_time_ms": 0,
+        "p50_response_time_ms": 0,
+        "p95_response_time_ms": 0,
+        "p99_response_time_ms": 0,
+        "min_response_time_ms": 0,
+        "max_response_time_ms": 0,
+        "requests_per_second": 0,
+        "content_size": 0,
+    }
 
 
 def _run_payload(row) -> dict:

@@ -382,6 +382,10 @@ def test_collect_performance_evidence_adds_prior_preflight_route_constraint(
     }
     assert evidence["diagnostic_constraints"]["route_reachability"] == "confirmed_by_prior_preflight"
     assert "不得将路径不存在" in evidence["diagnostic_constraints"]["rules"][0]
+    assert any(
+        "sse_end_rule_not_matched 只证明运行时解析器未匹配结束规则" in rule
+        for rule in evidence["diagnostic_constraints"]["rules"]
+    )
     assert evidence["redaction_semantics"]["timing"] == "after_execution_during_ai_evidence_collection"
     assert evidence["request_execution_facts"]["redaction_marker_is_runtime_value"] is False
     assert evidence["request_execution_facts"]["runtime_headers_overridden_by_plan"] == [

@@ -21,6 +21,7 @@ import {
   apiRequest,
   createPerformanceTest,
   generatePerformanceScript,
+  getPerformanceTest,
   listApiAutomationEndpoints,
   listApiAutomationEnvironments,
   listApiAutomationScenarios,
@@ -32,6 +33,7 @@ import {
   type PerformanceSseConfig,
   type PerformanceSseMetricGoal,
   previewPerformanceRequest,
+  updatePerformanceTest,
 } from "@/lib/api-client";
 import { toast } from "@/lib/toast";
 
@@ -76,9 +78,15 @@ const initialCircuitBreaker: PerformanceCircuitBreaker = {
   consecutive_windows: 3,
 };
 
-export function PerformanceTestForm() {
+type PerformanceTestFormProps = {
+  editTestId?: string;
+  projectIdForEdit?: string;
+};
+
+export function PerformanceTestForm({ editTestId, projectIdForEdit }: PerformanceTestFormProps) {
   const router = useRouter();
   const previewSequence = useRef(0);
+  const preserveEditedRequest = useRef(Boolean(editTestId));
   const [projects, setProjects] = useState<ApiProject[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState("");
   const [endpoints, setEndpoints] = useState<ApiAutomationEndpoint[]>([]);
@@ -108,6 +116,11 @@ export function PerformanceTestForm() {
   const [previewing, setPreviewing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [requestTouched, setRequestTouched] = useState(false);
+  const [editLoaded, setEditLoaded] = useState(!editTestId);
+
+  useEffect(() => {
+    if (projectIdForEdit) setSelectedProjectId(projectIdForEdit);
+  }, [projectIdForEdit]);
 
   useEffect(() => {
     apiRequest<ApiProject[]>("/projects")
@@ -155,6 +168,53 @@ export function PerformanceTestForm() {
   }, [selectedProjectId]);
 
   useEffect(() => {
+    if (!editTestId || !selectedProjectId) return;
+    getPerformanceTest(selectedProjectId, editTestId)
+      .then((item) => {
+        const r = item.request_config,
+          l = item.load_config,
+          g = item.performance_goal;
+        setName(item.name);
+        setDescription(item.description);
+        setTargetType(item.target_type);
+        setEndpointId(item.endpoint_id ?? "");
+        setScenarioId(item.scenario_id ?? "");
+        setEnvironmentId(item.api_environment_id ?? "");
+        preserveEditedRequest.current = true;
+        setPathJson(formatJson(r.path_parameters));
+        setQueryJson(formatJson(r.query_parameters));
+        setHeadersJson(formatJson(r.headers));
+        setBodyJson(formatJson(r.body));
+        setTransport(r.transport);
+        setScenarioSseStepId(r.scenario_step_id ?? "");
+        setSseConfig(r.sse);
+        setSseMaxStreamSeconds(String(r.sse?.max_stream_seconds ?? 60));
+        setMode(l.mode);
+        setStages(l.stages);
+        setDataConfig(item.data_config);
+        setCircuitBreaker(item.circuit_breaker);
+        setNumbers({
+          users: String(l.users),
+          spawnRate: String(l.spawn_rate),
+          duration: String(l.measurement_duration_seconds),
+          waitMin: String(l.wait_time_min_seconds),
+          waitMax: String(l.wait_time_max_seconds),
+          timeout: String(l.request_timeout_seconds),
+          maxFailPercent: String((g.max_fail_ratio ?? 0) * 100),
+          maxAverageMs: String(g.max_average_response_time_ms ?? 3000),
+        });
+        setSseGoalTargets(
+          Object.fromEntries(
+            (g.sse_metric_goals ?? []).map((x) => [`${x.metric_id}:${x.percentile}`, String(x.target_ms)]),
+          ),
+        );
+        setRequestTouched(false);
+        setEditLoaded(true);
+      })
+      .catch((error) => toast.error(apiErrorMessage(error, "性能测试加载失败")));
+  }, [editTestId, selectedProjectId]);
+
+  useEffect(() => {
     if (targetType !== "endpoint" || !selectedProjectId || !endpointId) return;
     const sequence = ++previewSequence.current;
     setPreview(null);
@@ -166,6 +226,10 @@ export function PerformanceTestForm() {
       .then((result) => {
         if (sequence !== previewSequence.current) return;
         setPreview(result);
+        if (preserveEditedRequest.current) {
+          preserveEditedRequest.current = false;
+          return;
+        }
         setPathJson(formatJson(result.request_config.path_parameters));
         setQueryJson(formatJson(result.request_config.query_parameters));
         setHeadersJson(formatJson(result.request_config.headers));
@@ -193,7 +257,8 @@ export function PerformanceTestForm() {
   }
 
   function changeTargetType(nextTargetType: "endpoint" | "scenario") {
-    if (requestTouched && targetType === "endpoint" && !window.confirm("切换压测对象会重置当前请求配置，继续？")) return;
+    if (requestTouched && targetType === "endpoint" && !window.confirm("切换压测对象会重置当前请求配置，继续？"))
+      return;
     setTargetType(nextTargetType);
     setEndpointId("");
     setScenarioId("");
@@ -274,7 +339,7 @@ export function PerformanceTestForm() {
         if (!sseConfig) throw new Error("请先运行接口编排并生成 SSE 指标");
         sse = { ...sseConfig, max_stream_seconds: positiveNumber(sseMaxStreamSeconds, "SSE 流超时") };
       }
-      const created = await createPerformanceTest(selectedProjectId, {
+      const savedPayload = {
         name: name.trim(),
         description: description.trim(),
         target_type: targetType,
@@ -304,10 +369,13 @@ export function PerformanceTestForm() {
         data_config: dataConfig,
         circuit_breaker: circuitBreaker,
         performance_goal: compactGoal(numbers, buildSseMetricGoals(sse, sseGoalTargets)),
-      });
-      const script = await generatePerformanceScript(selectedProjectId, created.id);
-      toast.success("性能测试已创建，Locust 脚本已生成");
-      router.push(`/projects/${selectedProjectId}/performance-tests/${created.id}/scripts/${script.id}`);
+      };
+      const saved = editTestId
+        ? await updatePerformanceTest(selectedProjectId, editTestId, savedPayload)
+        : await createPerformanceTest(selectedProjectId, savedPayload);
+      const script = await generatePerformanceScript(selectedProjectId, saved.id);
+      toast.success(editTestId ? "性能测试已更新，Locust 脚本已重新生成" : "性能测试已创建，Locust 脚本已生成");
+      router.push(`/projects/${selectedProjectId}/performance-tests/${saved.id}/scripts/${script.id}`);
     } catch (error) {
       toast.error(apiErrorMessage(error, "性能测试创建失败"));
     } finally {
@@ -320,10 +388,12 @@ export function PerformanceTestForm() {
       .find((scenario) => scenario.id === scenarioId)
       ?.steps.filter((step) => step.enabled && step.step_type === "api_request" && step.endpoint_id) ?? [];
 
+  if (!editLoaded) return null;
+
   return (
     <div className="w-full">
       <ShellSection className="overflow-hidden p-0">
-        <FieldGroup className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-x-5 gap-y-4 p-5 [&>*]:min-w-0 md:grid-cols-2">
+        <FieldGroup className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-x-5 gap-y-4 p-5 md:grid-cols-2 [&>*]:min-w-0">
           {/* 头部：基础信息 + 操作按钮 */}
           <div className="flex flex-wrap items-center justify-between gap-2 border-b pb-2 md:col-span-2">
             <div className="flex items-center gap-2">
@@ -458,124 +528,124 @@ export function PerformanceTestForm() {
                 <h3 className="font-semibold text-base">请求配置</h3>
               </div>
 
-          {previewing ? <p className="text-muted-foreground text-xs md:col-span-2">正在生成请求预览</p> : null}
-          {preview?.warnings.map((warning) => (
-            <div
-              className="mb-2 flex items-start gap-2 bg-amber-50 px-3 py-2 text-amber-800 text-xs md:col-span-2"
-              key={warning}
-            >
-              <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
-              {warning}
-            </div>
-          ))}
+              {previewing ? <p className="text-muted-foreground text-xs md:col-span-2">正在生成请求预览</p> : null}
+              {preview?.warnings.map((warning) => (
+                <div
+                  className="mb-2 flex items-start gap-2 bg-amber-50 px-3 py-2 text-amber-800 text-xs md:col-span-2"
+                  key={warning}
+                >
+                  <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
+                  {warning}
+                </div>
+              ))}
 
-          {hasEntries(preview?.request_config.path_parameters) ? (
-            <Field className="md:col-span-2">
-              <FieldLabel htmlFor="test-path-params">Path 参数</FieldLabel>
-              <Textarea
-                id="test-path-params"
-                className="min-h-20 resize-y font-mono text-xs"
-                onChange={(event) => {
-                  setPathJson(event.target.value);
-                  setRequestTouched(true);
-                }}
-                spellCheck={false}
-                value={pathJson}
-              />
-            </Field>
-          ) : null}
+              {hasEntries(preview?.request_config.path_parameters) ? (
+                <Field className="md:col-span-2">
+                  <FieldLabel htmlFor="test-path-params">Path 参数</FieldLabel>
+                  <Textarea
+                    id="test-path-params"
+                    className="min-h-20 resize-y font-mono text-xs"
+                    onChange={(event) => {
+                      setPathJson(event.target.value);
+                      setRequestTouched(true);
+                    }}
+                    spellCheck={false}
+                    value={pathJson}
+                  />
+                </Field>
+              ) : null}
 
-          {hasEntries(preview?.request_config.query_parameters) ? (
-            <Field className="md:col-span-2">
-              <FieldLabel htmlFor="test-query-params">Query 参数</FieldLabel>
-              <Textarea
-                id="test-query-params"
-                className="min-h-20 resize-y font-mono text-xs"
-                onChange={(event) => {
-                  setQueryJson(event.target.value);
-                  setRequestTouched(true);
-                }}
-                spellCheck={false}
-                value={queryJson}
-              />
-            </Field>
-          ) : null}
+              {hasEntries(preview?.request_config.query_parameters) ? (
+                <Field className="md:col-span-2">
+                  <FieldLabel htmlFor="test-query-params">Query 参数</FieldLabel>
+                  <Textarea
+                    id="test-query-params"
+                    className="min-h-20 resize-y font-mono text-xs"
+                    onChange={(event) => {
+                      setQueryJson(event.target.value);
+                      setRequestTouched(true);
+                    }}
+                    spellCheck={false}
+                    value={queryJson}
+                  />
+                </Field>
+              ) : null}
 
-          {hasEntries(preview?.request_config.headers) ? (
-            <Field className="md:col-span-2">
-              <FieldLabel htmlFor="test-headers">Headers</FieldLabel>
-              <Textarea
-                id="test-headers"
-                className="min-h-20 resize-y font-mono text-xs"
-                onChange={(event) => {
-                  setHeadersJson(event.target.value);
-                  setRequestTouched(true);
-                }}
-                spellCheck={false}
-                value={headersJson}
-              />
-            </Field>
-          ) : null}
+              {hasEntries(preview?.request_config.headers) ? (
+                <Field className="md:col-span-2">
+                  <FieldLabel htmlFor="test-headers">Headers</FieldLabel>
+                  <Textarea
+                    id="test-headers"
+                    className="min-h-20 resize-y font-mono text-xs"
+                    onChange={(event) => {
+                      setHeadersJson(event.target.value);
+                      setRequestTouched(true);
+                    }}
+                    spellCheck={false}
+                    value={headersJson}
+                  />
+                </Field>
+              ) : null}
 
-          {hasBody(preview?.request_config.body) ? (
-            <Field className="md:col-span-2">
-              <FieldLabel htmlFor="test-body">Request Body</FieldLabel>
-              <Textarea
-                id="test-body"
-                className="min-h-20 resize-y font-mono text-xs"
-                onChange={(event) => {
-                  setBodyJson(event.target.value);
-                  setRequestTouched(true);
-                }}
-                spellCheck={false}
-                value={bodyJson}
-              />
-            </Field>
-          ) : null}
+              {hasBody(preview?.request_config.body) ? (
+                <Field className="md:col-span-2">
+                  <FieldLabel htmlFor="test-body">Request Body</FieldLabel>
+                  <Textarea
+                    id="test-body"
+                    className="min-h-20 resize-y font-mono text-xs"
+                    onChange={(event) => {
+                      setBodyJson(event.target.value);
+                      setRequestTouched(true);
+                    }}
+                    spellCheck={false}
+                    value={bodyJson}
+                  />
+                </Field>
+              ) : null}
 
-          <Field>
-            <FieldLabel htmlFor="test-transport">响应传输</FieldLabel>
-            <Select
-              id="test-transport"
-              placeholder="选择响应传输"
-              setValue={(value) => setTransport(value as "http" | "sse")}
-              value={transport}
-            >
-              <SelectOption value="http">普通 HTTP</SelectOption>
-              <SelectOption value="sse">SSE 流式响应</SelectOption>
-            </Select>
-          </Field>
-
-          {transport === "sse" ? (
-            <>
               <Field>
-                <FieldLabel htmlFor="sse-max-stream">SSE 流超时（秒）</FieldLabel>
-                <Input
-                  id="sse-max-stream"
-                  min={0.1}
-                  onChange={(event) => setSseMaxStreamSeconds(event.target.value)}
-                  step={1}
-                  type="number"
-                  value={sseMaxStreamSeconds}
-                />
+                <FieldLabel htmlFor="test-transport">响应传输</FieldLabel>
+                <Select
+                  id="test-transport"
+                  placeholder="选择响应传输"
+                  setValue={(value) => setTransport(value as "http" | "sse")}
+                  value={transport}
+                >
+                  <SelectOption value="http">普通 HTTP</SelectOption>
+                  <SelectOption value="sse">SSE 流式响应</SelectOption>
+                </Select>
               </Field>
-              <PerformanceSseMetricsConfig
-                endpointId={endpointId}
-                environmentId={environmentId}
-                getRequestValues={() => ({
-                  path_parameters: parseObject(pathJson, "Path 参数"),
-                  query_parameters: parseObject(queryJson, "Query 参数"),
-                  headers: parseObject(headersJson, "Headers"),
-                  body: parseJson(bodyJson, "Request Body"),
-                })}
-                maxStreamSeconds={Number(sseMaxStreamSeconds)}
-                onChange={changeSseConfig}
-                projectId={selectedProjectId}
-                targetType="endpoint"
-                value={sseConfig}
-              />
-            </>
-          ) : null}
+
+              {transport === "sse" ? (
+                <>
+                  <Field>
+                    <FieldLabel htmlFor="sse-max-stream">SSE 流超时（秒）</FieldLabel>
+                    <Input
+                      id="sse-max-stream"
+                      min={0.1}
+                      onChange={(event) => setSseMaxStreamSeconds(event.target.value)}
+                      step={1}
+                      type="number"
+                      value={sseMaxStreamSeconds}
+                    />
+                  </Field>
+                  <PerformanceSseMetricsConfig
+                    endpointId={endpointId}
+                    environmentId={environmentId}
+                    getRequestValues={() => ({
+                      path_parameters: parseObject(pathJson, "Path 参数"),
+                      query_parameters: parseObject(queryJson, "Query 参数"),
+                      headers: parseObject(headersJson, "Headers"),
+                      body: parseJson(bodyJson, "Request Body"),
+                    })}
+                    maxStreamSeconds={Number(sseMaxStreamSeconds)}
+                    onChange={changeSseConfig}
+                    projectId={selectedProjectId}
+                    targetType="endpoint"
+                    value={sseConfig}
+                  />
+                </>
+              ) : null}
             </>
           ) : (
             <>

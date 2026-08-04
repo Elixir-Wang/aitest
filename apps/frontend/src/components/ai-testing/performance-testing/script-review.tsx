@@ -207,10 +207,32 @@ export function ScriptReview({ projectId, testId, scriptId }: { projectId: strin
               </div>
               <div className="space-y-2">
                 {(script.plan.steps ?? []).map((step, index) => (
-                  <div className="flex items-center justify-between gap-3 border px-3 py-2" key={String(step.id ?? index)}>
-                    <span>{String(step.name ?? `步骤 ${index + 1}`)}</span>
-                    <span className="text-muted-foreground text-xs">{String(step.step_type ?? "")}</span>
-                  </div>
+                  <details className="group border" key={String(step.id ?? index)}>
+                    <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-2.5 [&::-webkit-details-marker]:hidden">
+                      <div className="min-w-0">
+                        <p className="truncate font-medium">{String(step.name ?? `步骤 ${index + 1}`)}</p>
+                        {step.request ? (
+                          <p className="mt-1 truncate font-mono text-muted-foreground text-xs">
+                            <span className="mr-2 font-semibold text-foreground">{String(step.request.method ?? "")}</span>
+                            {String(step.request.path ?? "")}
+                          </p>
+                        ) : null}
+                      </div>
+                      <span className="shrink-0 text-muted-foreground text-xs">{String(step.step_type ?? "")}</span>
+                    </summary>
+                    {step.request ? (
+                      <div className="space-y-3 border-t bg-muted/20 px-3 py-3 text-xs">
+                        <RequestDetail label="查询参数" value={step.request.query_parameters} />
+                        <RequestDetail label="请求头" value={step.request.headers} />
+                        <RequestDetail
+                          label={step.request.multipart_form ? "请求体（multipart/form-data）" : "请求体"}
+                          value={step.request.body ?? step.request.form ?? step.request.multipart_form}
+                        />
+                        <RequestDetail label="断言" value={step.assertions} />
+                        <RequestDetail label="提取器" value={step.extractors} />
+                      </div>
+                    ) : null}
+                  </details>
                 ))}
               </div>
             </div>
@@ -325,6 +347,21 @@ function PythonCodeBlock({ code }: { code: string }) {
         ))}
       </code>
     </pre>
+  );
+}
+
+function RequestDetail({ label, value }: { label: string; value: unknown }) {
+  if (value === undefined || value === null || (typeof value === "object" && Object.keys(value).length === 0)) {
+    return null;
+  }
+
+  return (
+    <div>
+      <p className="mb-1 font-medium text-muted-foreground">{label}</p>
+      <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-all rounded border bg-background p-2 font-mono text-[11px] leading-5">
+        {typeof value === "string" ? value : JSON.stringify(value, null, 2)}
+      </pre>
+    </div>
   );
 }
 
