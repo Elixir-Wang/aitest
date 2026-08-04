@@ -2,6 +2,7 @@ from typing import Any
 
 from app.agents.performance_testing.script_generation.schemas import LocustScriptPlan
 from app.core.exceptions import api_error
+from app.services.performance_testing.sse import normalize_sse_config
 
 
 def build_scenario_plan(
@@ -66,7 +67,7 @@ def build_scenario_plan(
                 "multipart_form": request.get("multipart_form"),
                 "timeout_seconds": load_config.get("request_timeout_seconds", 30),
                 "transport": transport,
-                "sse": sse,
+                "sse": normalize_sse_config(sse),
             }
         compiled_steps.append(compiled)
 

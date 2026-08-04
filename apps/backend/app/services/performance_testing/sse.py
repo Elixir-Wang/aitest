@@ -27,6 +27,40 @@ class SseEvent:
             return None
 
 
+def normalize_sse_config(config: Any) -> Any:
+    """Upgrade known legacy SSE metric rules without mutating stored configuration."""
+    if not isinstance(config, dict):
+        return config
+    normalized = {**config}
+    metrics = []
+    for raw_metric in config.get("metrics", []):
+        if not isinstance(raw_metric, dict):
+            metrics.append(raw_metric)
+            continue
+        metric = {**raw_metric}
+        match = dict(metric.get("match") or {})
+        identifies_first_output = (
+            "first_output" in str(metric.get("id") or "")
+            or "首次有效内容" in str(metric.get("name") or "")
+        )
+        is_legacy_answer_event = (
+            match.get("source") == "data_json"
+            and match.get("path") == "$.data.event_type"
+            and match.get("operator") == "equals"
+            and match.get("expected") == "answer"
+        )
+        if identifies_first_output and is_legacy_answer_event:
+            metric["match"] = {
+                "event_name": str(match.get("event_name") or "message"),
+                "source": "data_json",
+                "path": "$.data.answer",
+                "operator": "non_empty",
+            }
+        metrics.append(metric)
+    normalized["metrics"] = metrics
+    return normalized
+
+
 def parse_sse_events(
     chunks: Iterable[str], *, max_frame_bytes: int = 262_144, max_stream_bytes: int = 4_194_304
 ) -> list[SseEvent]:

@@ -56,6 +56,80 @@ def _performance_test() -> dict:
     }
 
 
+def _legacy_first_output_sse_config() -> dict:
+    return {
+        "max_stream_seconds": 60,
+        "metrics": [
+            {
+                "id": "sse_first_output_98bdefc2",
+                "name": "首次有效内容时间",
+                "match": {
+                    "event_name": "message",
+                    "source": "data_json",
+                    "path": "$.data.event_type",
+                    "operator": "equals",
+                    "expected": "answer",
+                },
+            },
+            {
+                "id": "sse_milestone_start_da4c4636",
+                "name": "call_llm 开始时间",
+                "match": {
+                    "event_name": "message",
+                    "source": "data_json",
+                    "path": "$.data.event_type",
+                    "operator": "equals",
+                    "expected": "call_llm_start",
+                },
+            },
+        ],
+    }
+
+
+def test_planners_upgrade_legacy_first_output_rule_to_non_empty_answer() -> None:
+    performance_test = _performance_test()
+    performance_test["request_config"] = {
+        **performance_test["request_config"],
+        "transport": "sse",
+        "sse": _legacy_first_output_sse_config(),
+    }
+    endpoint_plan = build_default_plan(performance_test)
+    scenario_plan = build_scenario_plan(
+        {
+            "id": "perftest-sse",
+            "request_config": {
+                "scenario_step_id": "step-sse",
+                "transport": "sse",
+                "sse": _legacy_first_output_sse_config(),
+            },
+            "load_config": {},
+        },
+        {
+            "id": "scenario-1",
+            "name": "SSE 场景",
+            "revision": 1,
+            "steps": [
+                {
+                    "id": "step-sse",
+                    "name": "SSE",
+                    "step_type": "api_request",
+                    "endpoint": {"id": "endpoint-sse", "method": "POST", "path": "/sse"},
+                }
+            ],
+        },
+        {},
+    )
+
+    for config in (endpoint_plan.request.sse, scenario_plan.steps[0].request.sse):
+        first_output = next(metric for metric in config["metrics"] if metric["id"].startswith("sse_first_output_"))
+        assert first_output["match"] == {
+            "event_name": "message",
+            "source": "data_json",
+            "path": "$.data.answer",
+            "operator": "non_empty",
+        }
+
+
 def test_scenario_compiler_keeps_required_endpoint_header_defaults() -> None:
     plan = build_scenario_plan(
         {

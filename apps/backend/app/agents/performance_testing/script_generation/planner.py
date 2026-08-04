@@ -3,6 +3,7 @@
 from typing import Any
 
 from app.agents.performance_testing.script_generation.schemas import LocustScriptPlan
+from app.services.performance_testing.sse import normalize_sse_config
 
 
 def build_default_plan(performance_test: dict[str, Any]) -> LocustScriptPlan:
@@ -26,7 +27,7 @@ def build_default_plan(performance_test: dict[str, Any]) -> LocustScriptPlan:
                 "body": request_config.get("body"),
                 "timeout_seconds": load_config.get("request_timeout_seconds", 30),
                 "transport": request_config.get("transport", "http"),
-                "sse": request_config.get("sse"),
+                "sse": normalize_sse_config(request_config.get("sse")),
             },
             "load": {
                 "mode": load_config.get("mode", "fixed"),
