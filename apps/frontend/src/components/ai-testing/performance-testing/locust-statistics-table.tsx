@@ -2,6 +2,8 @@
 
 import { useMemo } from "react";
 
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+
 const STATISTICS_COLUMNS = [
   ["request", "名称"],
   ["request_count", "请求数"],
@@ -133,7 +135,14 @@ function RequestName({ row }: { row: Record<string, unknown> }) {
   return (
     <span className="flex min-w-[180px] items-center gap-2">
       {method ? <span className={methodBadgeClass(method)}>{method}</span> : null}
-      <span className="truncate font-medium text-slate-700 dark:text-slate-200">{name}</span>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span className="min-w-0 truncate font-medium text-slate-700 dark:text-slate-200">{name}</span>
+        </TooltipTrigger>
+        <TooltipContent className="max-w-md whitespace-normal break-all leading-5" side="top" sideOffset={6}>
+          {name}
+        </TooltipContent>
+      </Tooltip>
     </span>
   );
 }

@@ -217,6 +217,7 @@ def test_sse_renderer_streams_and_keeps_measurements_separate() -> None:
     assert "reported_missing" in source
     assert 'metric["missing_policy"] != "ignore"' in source
     assert '"missing_metric_ids": reported_missing' in source
+    assert 'metric["id"] in first_output_ids and llm_start_id and llm_start_id not in observed' in source
     assert 'event_name, data_lines, frame_size, stream_size, ended = "message", [], 0, 0, False' in source
     assert 'event_name, data_lines, frame_size = "message", [], 0' in source
     assert 'event_name = value or "message"' in source
@@ -251,6 +252,8 @@ def test_rendered_sse_runtime_parses_raw_frames_and_flushes_final_frame() -> Non
     runtime = _rendered_sse_runtime(measurements)
     response = _FakeSseResponse(
         [
+            'data: {"data":{"event_type":"answer","answer":"模型调用前的内容"}}',
+            "",
             'data: {"data":\r',
             'data: {"event_type":"call_llm_start"}}\r',
             "\r",
@@ -269,10 +272,11 @@ def test_rendered_sse_runtime_parses_raw_frames_and_flushes_final_frame() -> Non
     assert failure_reason == ""
     assert response.succeeded is True
     assert set(measurements[0]["metrics"]) == {"llm_start", "first_output"}
-    assert measurements[0]["derived_metrics"]["llm_start_to_first_content_ms"] >= 0
+    assert measurements[0]["metrics"]["first_output"] >= measurements[0]["metrics"]["llm_start"]
+    assert "derived_metrics" not in measurements[0]
     assert measurements[0]["missing_metric_ids"] == []
-    assert measurements[0]["frame_count"] == 3
-    assert measurements[0]["data_frame_count"] == 3
+    assert measurements[0]["frame_count"] == 4
+    assert measurements[0]["data_frame_count"] == 4
     assert measurements[0]["parse_error_count"] == 0
 
 
@@ -292,18 +296,13 @@ def test_sse_measurement_summary_keeps_missing_and_percentiles(tmp_path: Path) -
     summary = summarize_sse_measurements(path)
     content = next(metric for metric in summary["metrics"] if metric["metric_id"] == "first_content")
     tool = next(metric for metric in summary["metrics"] if metric["metric_id"] == "first_tool_call")
-    derived = next(
-        metric for metric in summary["metrics"] if metric["metric_id"] == "derived:llm_start_to_first_content"
-    )
-
     assert summary["attempt_count"] == 3
     assert content["matched_count"] == 3
     assert content["p95_ms"] == 300
     assert tool["matched_count"] == 1
     assert tool["missing_count"] == 2
     assert tool["failure_count"] == 1
-    assert derived["matched_count"] == 1
-    assert derived["average_ms"] == 80
+    assert all(metric["metric_id"] != "derived:llm_start_to_first_content" for metric in summary["metrics"])
     assert summary["schema_version"] == "v1"
     assert summary["checksum"].startswith("sha256:")
     assert summary["failure_reasons"] == {"sse_stream_timeout": 1}

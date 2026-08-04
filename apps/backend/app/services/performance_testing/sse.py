@@ -43,18 +43,24 @@ def normalize_sse_config(config: Any) -> Any:
             "first_output" in str(metric.get("id") or "")
             or "首次有效内容" in str(metric.get("name") or "")
         )
-        is_legacy_answer_event = (
-            match.get("source") == "data_json"
-            and match.get("path") == "$.data.event_type"
-            and match.get("operator") == "equals"
-            and match.get("expected") == "answer"
+        is_legacy_first_output_rule = match.get("source") == "data_json" and (
+            (
+                match.get("path") == "$.data.event_type"
+                and match.get("operator") == "equals"
+                and match.get("expected") == "answer"
+            )
+            or (
+                match.get("path") == "$.data.answer"
+                and match.get("operator") == "non_empty"
+            )
         )
-        if identifies_first_output and is_legacy_answer_event:
+        if identifies_first_output and is_legacy_first_output_rule:
             metric["match"] = {
                 "event_name": str(match.get("event_name") or "message"),
                 "source": "data_json",
-                "path": "$.data.answer",
-                "operator": "non_empty",
+                "path": "$.data.index",
+                "operator": "equals",
+                "expected": 0,
             }
         metrics.append(metric)
     normalized["metrics"] = metrics

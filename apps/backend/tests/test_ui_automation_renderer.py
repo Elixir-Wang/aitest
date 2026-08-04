@@ -12,7 +12,7 @@ from app.agents.ui_automation.pytest_playwright.schemas import AutomationPlan
 def _plan() -> AutomationPlan:
     return AutomationPlan.model_validate(
         {
-            "schema_version": "v1",
+            "schema_version": "v2",
             "project_id": "project-1",
             "automation_case_id": "uiauto-1",
             "source_test_case_id": "case-1",
@@ -50,11 +50,15 @@ def _plan() -> AutomationPlan:
             "steps": [
                 {
                     "source_step_id": "step-1",
+                    "business_step_id": "step-1",
+                    "title": "进入登录页",
                     "kind": "navigate",
                     "page_key": "login",
                 },
                 {
                     "source_step_id": "step-2",
+                    "business_step_id": "step-2",
+                    "title": "填写用户名",
                     "kind": "fill",
                     "page_key": "login",
                     "element_key": "username_input",
@@ -62,6 +66,8 @@ def _plan() -> AutomationPlan:
                 },
                 {
                     "source_step_id": "step-3",
+                    "business_step_id": "step-3",
+                    "title": "提交登录",
                     "kind": "click",
                     "page_key": "login",
                     "element_key": "submit_button",
@@ -92,7 +98,11 @@ def test_initialize_suite_creates_project_framework(tmp_path):
     assert (tmp_path / "pages/base_page.py").exists()
     assert (tmp_path / "utils/data_loader.py").exists()
     assert (tmp_path / "scripts/save_auth_state.py").exists()
-    assert (tmp_path / ".deepagents/skills/pytest-playwright-ui-generation/SKILL.md").exists()
+    skill_path = tmp_path / ".deepagents/skills/pytest-playwright-ui-generation/SKILL.md"
+    assert skill_path.exists()
+    skill_source = skill_path.read_text(encoding="utf-8")
+    assert "strict v2 AutomationPlan" in skill_source
+    assert "strict v1 AutomationPlan" not in skill_source
 
     base_page = (tmp_path / "pages/base_page.py").read_text(encoding="utf-8")
     waiters = (tmp_path / "utils/waiters.py").read_text(encoding="utf-8")
@@ -171,6 +181,8 @@ def test_render_plan_parameterizes_dynamic_text_selection(tmp_path):
     payload["parameters"] = ["target_model"]
     payload["steps"][2] = {
         "source_step_id": "step-3",
+        "business_step_id": "step-3",
+        "title": "提交登录",
         "kind": "click_parameter_text",
         "page_key": "login",
         "value_ref": "target_model",
@@ -229,14 +241,14 @@ def test_rendered_step_definitions_are_valid_python_literals(tmp_path):
     assert "UI_AUTOMATION_INSTRUMENTATION_VERSION = 3" in source
 
 
-def test_render_plan_does_not_guess_business_step_for_v1_plan(tmp_path):
+def test_render_plan_uses_required_business_step_mapping(tmp_path):
     initialize_suite(tmp_path)
 
     source = render_automation_plan(tmp_path, _plan())["test_file"].read_text(encoding="utf-8")
 
-    assert 'with ui_case.step("step-1", "step-1"' in source
-    assert 'with ui_case.step("step-2", "step-2"' in source
-    assert 'with ui_case.step("step-3", "step-3"' in source
+    assert 'with ui_case.step("step-1", "进入登录页"' in source
+    assert 'with ui_case.step("step-2", "填写用户名"' in source
+    assert 'with ui_case.step("step-3", "提交登录"' in source
 
 
 def test_render_plan_waits_for_new_stable_response_without_welcome_message(tmp_path):
@@ -255,6 +267,8 @@ def test_render_plan_waits_for_new_stable_response_without_welcome_message(tmp_p
     payload["steps"].append(
         {
             "source_step_id": "step-4",
+            "business_step_id": "step-4",
+            "title": "等待登录响应",
             "kind": "wait_for_response",
             "page_key": "login",
             "element_key": "last_response",
@@ -267,6 +281,7 @@ def test_render_plan_waits_for_new_stable_response_without_welcome_message(tmp_p
     snapshot = "_response_before_3 = _last_locator_text(login_page.last_response)"
     assert source.index(snapshot) < source.index("login_page.submit_button.click()")
     assert "_wait_for_response(login_page.last_response, _response_before_3)" in source
+    assert "def _wait_for_response(locator, previous_text, timeout_ms=30_000, stable_ms=2_000):" in source
     assert "if current and current != previous_text:" in source
     assert "stable_ms=2_000" in source
 
@@ -301,6 +316,8 @@ def test_render_plan_commits_auto_populated_input_without_hardcoded_value(tmp_pa
     payload = _plan().model_dump(mode="json")
     payload["steps"][1] = {
         "source_step_id": "step-2",
+        "business_step_id": "step-2",
+        "title": "确认用户名",
         "kind": "commit_value",
         "page_key": "login",
         "element_key": "username_input",

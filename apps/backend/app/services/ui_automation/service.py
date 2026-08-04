@@ -334,10 +334,16 @@ def _execute_revision_run_in_workspace(row) -> dict:
         if not current_plan_path or not current_plan_path.is_file():
             raise ValueError("当前资产缺少 plan 文件，无法进行修订。")
         case_data = context.build_case_data(case, automation_case_id=f"uiauto-{asset['id']}")
+        asset_case_data = context.read_case_data(
+            resolve_suite_file(staging_path, asset["data_file_path"])
+        )
         plan = json.loads(current_plan_path.read_text(encoding="utf-8"))
         repaired_plan = None
-        if row["reason_code"] == "missing_business_step_mapping" and not row["instruction"]:
-            repaired_plan = revision.repair_business_step_mapping(plan, case_data)
+        validation_case_data = case_data
+        if row["reason_code"] == "missing_business_step_mapping":
+            mapping_case_data = asset_case_data or case_data
+            repaired_plan = revision.repair_business_step_mapping(plan, mapping_case_data)
+            validation_case_data = mapping_case_data
 
         strategy = "deterministic"
         if repaired_plan is not None:
@@ -378,7 +384,11 @@ def _execute_revision_run_in_workspace(row) -> dict:
             plan = json.loads(current_plan_path.read_text(encoding="utf-8"))
 
         validated_plan = AutomationPlan.model_validate(plan).require_generation_contract(
-            {str(step["id"]): str(step.get("action", "")) for step in case_data["steps"] if step.get("id")}
+            {
+                str(step["id"]): str(step.get("action", ""))
+                for step in validation_case_data["steps"]
+                if step.get("id")
+            }
         )
         collection = collect_suite(staging_path, test_paths=[asset["test_file_path"]])
         if not collection["ok"]:

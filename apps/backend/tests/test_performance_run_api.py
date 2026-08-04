@@ -177,7 +177,7 @@ def test_request_stats_returns_scenario_endpoints_and_sse_metrics_as_four_busine
                             {
                                 "id": "first_output",
                                 "name": "首次有效内容时间",
-                                "match": {"source": "data_json", "path": "$.data.answer", "operator": "non_empty"},
+                                "match": {"source": "data_json", "path": "$.data.index", "operator": "equals", "expected": 0},
                             },
                             {
                                 "id": "llm_started",
@@ -218,12 +218,9 @@ def test_request_stats_returns_scenario_endpoints_and_sse_metrics_as_four_busine
         ("POST", "02 POST /chat/sse"),
         ("SSE", "首次有效内容时间"),
         ("SSE", "LLM 开始时间"),
-        ("SSE", "LLM 启动到首次有效内容"),
     ]
     assert rows[0]["request_count"] == 12
     assert rows[1]["request_count"] == 2
     assert rows[1]["timing_semantics"] == "connection"
     assert rows[2]["request_count"] == 2
-    assert rows[4]["request_count"] == 2
-    assert rows[4]["average_response_time_ms"] == 80
     assert all(row["method"] != "SCENARIO" for row in rows)

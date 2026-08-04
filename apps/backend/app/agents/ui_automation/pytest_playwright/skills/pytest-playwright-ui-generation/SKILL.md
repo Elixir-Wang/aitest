@@ -9,7 +9,7 @@ description: Generate or update one UI automation case in the owning business pr
 2. Read the backend-owned case data file and exploration evidence.
 3. Reuse existing POM and shared helpers before adding code.
 4. Normalize the derived data file when needed; keep secrets as environment references.
-5. Produce a strict v1 AutomationPlan using only evidence-backed locators.
+5. Produce a strict v2 AutomationPlan using only evidence-backed locators.
    - Copy declared `case.parameters` keys into `AutomationPlan.parameters`.
    - Map every generated operation to an existing source step with `business_step_id` and a readable `title`.
    - Use `click_parameter_text` with `value_ref` when a step selects the current parameter value.

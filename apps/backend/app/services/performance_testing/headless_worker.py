@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import ast
 import csv
 import hashlib
 import json
+import math
 import os
 import re
 import secrets
@@ -22,14 +24,23 @@ from app.services.performance_testing.locust_runtime import runtime_locustfile_s
 _PROCESSES: dict[str, subprocess.Popen] = {}
 _STOP_REQUESTED: set[str] = set()
 _MONITOR_FINISHED: dict[str, threading.Event] = {}
+_STOP_TIMEOUTS: dict[str, float] = {}
 _PROCESS_LOCK = threading.Lock()
+GRACEFUL_STOP_BUFFER_SECONDS = 5
 
 
 def _control_path(run_dir: Path) -> Path:
     return run_dir / "locust-control.json"
 
 
-def build_headless_command(*, run_dir: Path, users: int, spawn_rate: float, duration_seconds: int) -> list[str]:
+def build_headless_command(
+    *,
+    run_dir: Path,
+    users: int,
+    spawn_rate: float,
+    duration_seconds: int,
+    stop_timeout_seconds: int = GRACEFUL_STOP_BUFFER_SECONDS,
+) -> list[str]:
     csv_prefix = run_dir / "result"
     return [
         sys.executable,
@@ -44,12 +55,62 @@ def build_headless_command(*, run_dir: Path, users: int, spawn_rate: float, dura
         str(spawn_rate),
         "--run-time",
         f"{duration_seconds}s",
+        "--stop-timeout",
+        str(stop_timeout_seconds),
         "--csv",
         str(csv_prefix),
         "--csv-full-history",
         "--html",
         str(run_dir / "result.html"),
     ]
+
+
+def _generated_plan(script_code: str) -> dict[str, Any]:
+    try:
+        tree = ast.parse(script_code)
+    except SyntaxError:
+        return {}
+    for node in tree.body:
+        if not isinstance(node, ast.Assign) or not any(
+            isinstance(target, ast.Name) and target.id == "PLAN" for target in node.targets
+        ):
+            continue
+        if not isinstance(node.value, ast.Call) or not node.value.args:
+            return {}
+        try:
+            payload = ast.literal_eval(node.value.args[0])
+            plan = json.loads(payload)
+        except (ValueError, TypeError, json.JSONDecodeError):
+            return {}
+        return plan if isinstance(plan, dict) else {}
+    return {}
+
+
+def _request_stop_budget(request: Any) -> float:
+    if not isinstance(request, dict):
+        return 0
+    request_timeout = max(0.0, float(request.get("timeout_seconds") or 0))
+    if request.get("transport") != "sse":
+        return request_timeout
+    sse = request.get("sse") if isinstance(request.get("sse"), dict) else {}
+    return max(request_timeout, max(0.0, float(sse.get("max_stream_seconds") or 0)))
+
+
+def graceful_stop_timeout_seconds(script_code: str) -> int:
+    plan = _generated_plan(script_code)
+    if plan.get("target_type") == "scenario":
+        task_budget = 0.0
+        for step in plan.get("steps") if isinstance(plan.get("steps"), list) else []:
+            if not isinstance(step, dict):
+                continue
+            if step.get("step_type") == "wait":
+                control = step.get("control_config") if isinstance(step.get("control_config"), dict) else {}
+                task_budget += max(0.0, float(control.get("duration_ms") or 0)) / 1000
+            else:
+                task_budget += _request_stop_budget(step.get("request"))
+    else:
+        task_budget = _request_stop_budget(plan.get("request"))
+    return max(GRACEFUL_STOP_BUFFER_SECONDS, math.ceil(task_budget + GRACEFUL_STOP_BUFFER_SECONDS))
 
 
 def _run_dir(project_id: str, run_id: str) -> Path:
@@ -128,11 +189,14 @@ def start_headless_run(run_id: str, options: dict[str, Any] | None = None) -> bo
         runtime = json.loads(runtime_path.read_text(encoding="utf-8"))
         runtime["environment"]["api_base_url"] = host
         runtime_path.write_text(json.dumps(runtime, ensure_ascii=False), encoding="utf-8")
+    script_code = (run_dir / "generated_locustfile.py").read_text(encoding="utf-8")
+    stop_timeout_seconds = graceful_stop_timeout_seconds(script_code)
     command = build_headless_command(
         run_dir=run_dir,
         users=users,
         spawn_rate=spawn_rate,
         duration_seconds=duration_seconds,
+        stop_timeout_seconds=stop_timeout_seconds,
     )
     stdout_file = (run_dir / "stdout.log").open("w", encoding="utf-8")
     stderr_file = (run_dir / "stderr.log").open("w", encoding="utf-8")
@@ -164,6 +228,7 @@ def start_headless_run(run_id: str, options: dict[str, Any] | None = None) -> bo
     with _PROCESS_LOCK:
         _PROCESSES[run_id] = process
         _MONITOR_FINISHED[run_id] = monitor_finished
+        _STOP_TIMEOUTS[run_id] = stop_timeout_seconds
     with connect() as db:
         run_repo.update_run_status(db, run_id, "starting")
         run_repo.append_event(db, run_id, "worker_started", "info", "性能测试 Worker 已启动", {"pid": process.pid})
@@ -481,28 +546,10 @@ def summarize_sse_measurements(path: Path, *, max_attempts: int | None = None) -
             if isinstance(value, (int, float)):
                 bucket["values"].append(float(value))
 
-        derived_values = (
-            measurement.get("derived_metrics")
-            if isinstance(measurement.get("derived_metrics"), dict)
-            else {}
-        )
-        derived_value = derived_values.get("llm_start_to_first_content_ms")
-        if isinstance(derived_value, (int, float)):
-            metric_id = "derived:llm_start_to_first_content"
-            bucket = buckets.setdefault(
-                metric_id,
-                {"metric_id": metric_id, "values": [], "missing_count": 0, "failure_count": 0},
-            )
-            bucket["values"].append(float(derived_value))
-            if failed:
-                bucket["failure_count"] += 1
-
     metrics = []
     for bucket in sorted(buckets.values(), key=lambda item: item["metric_id"]):
         values = sorted(bucket.pop("values"))
         missing_count = bucket["missing_count"]
-        if bucket["metric_id"] == "derived:llm_start_to_first_content":
-            missing_count = attempts - len(values)
         metrics.append(
             {
                 "metric_id": bucket["metric_id"],
@@ -616,6 +663,7 @@ def _monitor_run(
         stopped = run_id in _STOP_REQUESTED
         _PROCESSES.pop(run_id, None)
         _STOP_REQUESTED.discard(run_id)
+        _STOP_TIMEOUTS.pop(run_id, None)
     with connect() as db:
         _persist_realtime_sample(db, run_id, run_dir, last_sampled_at, last_history_mtime_ns)
         _collect_locust_results(db, run_id, run_dir)
@@ -667,21 +715,35 @@ def stop_headless_run(run_id: str) -> bool:
         if process is None:
             return False
         _STOP_REQUESTED.add(run_id)
+        stop_timeout = _STOP_TIMEOUTS.get(run_id, GRACEFUL_STOP_BUFFER_SECONDS)
+    with connect() as db:
+        current = run_repo.get_run(db, run_id)
+        if current and current["status"] in {"starting", "running"}:
+            run_repo.update_run_status(db, run_id, "stopping")
     process.terminate()
-    try:
-        process.wait(timeout=3)
-    except subprocess.TimeoutExpired:
-        process.kill()
+    threading.Thread(
+        target=_force_kill_after_grace,
+        args=(process, stop_timeout + GRACEFUL_STOP_BUFFER_SECONDS),
+        daemon=True,
+    ).start()
     return True
 
 
-def stop_headless_run_and_wait(run_id: str, *, timeout: float = 15.0) -> bool:
+def _force_kill_after_grace(process: subprocess.Popen, timeout: float) -> None:
+    try:
+        process.wait(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        process.kill()
+
+
+def stop_headless_run_and_wait(run_id: str, *, timeout: float | None = None) -> bool:
     with _PROCESS_LOCK:
         finished = _MONITOR_FINISHED.get(run_id)
+        stop_timeout = _STOP_TIMEOUTS.get(run_id, GRACEFUL_STOP_BUFFER_SECONDS)
     stop_headless_run(run_id)
     if finished is None:
         return True
-    return finished.wait(timeout)
+    return finished.wait(timeout if timeout is not None else stop_timeout + GRACEFUL_STOP_BUFFER_SECONDS)
 
 
 def reset_headless_stats(run_id: str) -> bool:

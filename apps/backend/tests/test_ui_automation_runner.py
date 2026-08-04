@@ -110,6 +110,7 @@ def test_runner_uses_headed_browser_with_xvfb_when_enabled(monkeypatch, tmp_path
         environment={"site_url": "https://example.test", "storage_state_path": ""},
     )
 
+    assert captured["timeout"] == 7200
     assert captured["command"][0] == "/usr/bin/xvfb-run"
     assert "--server-args=-screen 0 1440x900x24" in captured["command"]
     assert "--headed" in captured["command"]

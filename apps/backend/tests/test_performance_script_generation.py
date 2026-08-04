@@ -86,7 +86,7 @@ def _legacy_first_output_sse_config() -> dict:
     }
 
 
-def test_planners_upgrade_legacy_first_output_rule_to_non_empty_answer() -> None:
+def test_planners_upgrade_legacy_first_output_rule_to_index_zero() -> None:
     performance_test = _performance_test()
     performance_test["request_config"] = {
         **performance_test["request_config"],
@@ -125,8 +125,9 @@ def test_planners_upgrade_legacy_first_output_rule_to_non_empty_answer() -> None
         assert first_output["match"] == {
             "event_name": "message",
             "source": "data_json",
-            "path": "$.data.answer",
-            "operator": "non_empty",
+            "path": "$.data.index",
+            "operator": "equals",
+            "expected": 0,
         }
 
 

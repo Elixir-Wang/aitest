@@ -400,6 +400,10 @@ def test_create_run_does_not_require_source_endpoint(monkeypatch: pytest.MonkeyP
     generated = script_service.generate_script("project-1", performance_test["id"], ADMIN)
     with connect() as db:
         api_automation_repo.delete_endpoint(db, "endpoint-project-1")
+        db.execute(
+            "UPDATE performance_test_scripts SET code = ? WHERE id = ?",
+            ("# stale generated runtime", generated["id"]),
+        )
 
     captured = {}
 
@@ -418,3 +422,4 @@ def test_create_run_does_not_require_source_endpoint(monkeypatch: pytest.MonkeyP
 
     assert result == {"id": "perfrun-1", "status": "created"}
     assert captured["script_code"] == generated["code"]
+    assert "# stale generated runtime" not in captured["script_code"]

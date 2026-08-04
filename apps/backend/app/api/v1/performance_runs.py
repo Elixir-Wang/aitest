@@ -485,41 +485,16 @@ def _planned_requests(plan: dict[str, object]) -> list[dict[str, str]]:
 
 def _planned_sse_metrics(plan: dict[str, object]) -> list[dict[str, str]]:
     metrics = []
-    include_llm_start_to_first_content = False
     candidates = plan.get("steps") if plan.get("target_type") == "scenario" else [plan]
     for candidate in candidates if isinstance(candidates, list) else []:
         request = candidate.get("request") if isinstance(candidate, dict) else None
         if not isinstance(request, dict) or request.get("transport") != "sse":
             continue
         config = request.get("sse")
-        has_first_content = False
-        has_llm_start = False
         for metric in config.get("metrics", []) if isinstance(config, dict) else []:
             if not isinstance(metric, dict) or not metric.get("id"):
                 continue
             metrics.append({"metric_id": str(metric["id"]), "name": str(metric.get("name") or metric["id"])})
-            match = metric.get("match") if isinstance(metric.get("match"), dict) else {}
-            has_first_content = has_first_content or (
-                match.get("source") == "data_json"
-                and match.get("path") == "$.data.answer"
-                and match.get("operator") == "non_empty"
-            )
-            has_llm_start = has_llm_start or (
-                match.get("source") == "data_json"
-                and match.get("path") == "$.data.event_type"
-                and match.get("operator") == "equals"
-                and match.get("expected") == "call_llm_start"
-            )
-        include_llm_start_to_first_content = (
-            include_llm_start_to_first_content or (has_first_content and has_llm_start)
-        )
-    if include_llm_start_to_first_content:
-        metrics.append(
-            {
-                "metric_id": "derived:llm_start_to_first_content",
-                "name": "LLM 启动到首次有效内容",
-            }
-        )
     return metrics
 
 
@@ -579,8 +554,11 @@ def _stat_payload(row) -> dict:
 
 @contextmanager
 def _script_lookup(project_id: str, test_id: str, script_id: str, actor):
+    from app.agents.performance_testing.script_generation.schemas import LocustScriptPlan
     from app.core.db import connect
     from app.core.exceptions import api_error
+    from app.services.performance_testing.script_renderer import render_locust_script
+    from app.services.performance_testing.validator import validate_locust_script
 
     with connect() as db:
         _ensure_project_visible_db(db, project_id, actor)
@@ -600,11 +578,21 @@ def _script_lookup(project_id: str, test_id: str, script_id: str, actor):
         validation_result = api_automation_repo.loads_json(script_row["validation_result_json"], {})
         if script_row["validation_status"] != "valid" or not validation_result.get("valid"):
             raise api_error(409, "PERFORMANCE_SCRIPT_INVALID", "脚本校验通过后才能启动正式压测。")
+        try:
+            plan = LocustScriptPlan.model_validate(
+                api_automation_repo.loads_json(script_row["plan_json"], {})
+            )
+            script_code = render_locust_script(plan)
+            current_validation = validate_locust_script(plan, script_code)
+        except (TypeError, ValueError) as exc:
+            raise api_error(409, "PERFORMANCE_SCRIPT_INVALID", "性能测试脚本计划无效，请重新生成脚本。") from exc
+        if not current_validation.valid:
+            raise api_error(409, "PERFORMANCE_SCRIPT_INVALID", "脚本按当前运行时重新校验失败，请重新生成脚本。")
         environment = api_automation_repo.find_api_environment(db, test_row["api_environment_id"])
         if not environment or environment["project_id"] != project_id:
             raise api_error(409, "PERFORMANCE_ENVIRONMENT_INVALID", "接口环境引用已失效。")
         yield {
-            "script_code": script_row["code"],
+            "script_code": script_code,
             "runtime_environment": _build_runtime_environment(environment),
             "load_config": api_automation_repo.loads_json(test_row["load_config_json"], {}),
         }

@@ -107,7 +107,7 @@ class ArtifactPlan(StrictModel):
 
 
 class AutomationPlan(StrictModel):
-    schema_version: Literal["v1", "v2"] = "v1"
+    schema_version: Literal["v2"]
     project_id: str = Field(min_length=1)
     automation_case_id: str = Field(min_length=1)
     source_test_case_id: str = Field(min_length=1)
@@ -147,22 +147,21 @@ class AutomationPlan(StrictModel):
         business_step_ids = {step.business_step_id for step in self.steps if step.business_step_id}
         if any(step.business_step_id and not step.title for step in self.steps):
             raise ValueError("显式业务步骤映射必须包含 title。")
-        if self.schema_version == "v2":
-            missing_mappings = [
-                step.source_step_id
-                for step in self.steps
-                if not step.business_step_id or not step.title
-            ]
-            if missing_mappings:
-                raise ValueError(
-                    "v2 自动化计划的每个动作都必须包含 business_step_id 和 title: "
-                    + ", ".join(missing_mappings)
-                )
-            titles_by_business_step: dict[str, str] = {}
-            for step in self.steps:
-                existing_title = titles_by_business_step.setdefault(step.business_step_id, step.title)
-                if existing_title != step.title:
-                    raise ValueError(f"同一业务步骤 {step.business_step_id} 必须使用一致的 title。")
+        missing_mappings = [
+            step.source_step_id
+            for step in self.steps
+            if not step.business_step_id or not step.title
+        ]
+        if missing_mappings:
+            raise ValueError(
+                "v2 自动化计划的每个动作都必须包含 business_step_id 和 title: "
+                + ", ".join(missing_mappings)
+            )
+        titles_by_business_step: dict[str, str] = {}
+        for step in self.steps:
+            existing_title = titles_by_business_step.setdefault(step.business_step_id, step.title)
+            if existing_title != step.title:
+                raise ValueError(f"同一业务步骤 {step.business_step_id} 必须使用一致的 title。")
         if any(not re.fullmatch(r"[A-Za-z0-9_.:-]+", step_id) for step_id in business_step_ids):
             raise ValueError("business_step_id 包含非法字符。")
         invalid_checkpoints = [
@@ -177,8 +176,6 @@ class AutomationPlan(StrictModel):
     def require_generation_contract(
         self, source_business_steps: dict[str, str] | None = None
     ) -> AutomationPlan:
-        if self.schema_version != "v2":
-            raise ValueError("新生成的 UI 自动化计划必须使用 schema_version v2。")
         if source_business_steps is not None:
             invalid_ids = sorted(
                 {

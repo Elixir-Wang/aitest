@@ -20,6 +20,7 @@ def test_build_headless_command_uses_load_configuration(tmp_path: Path) -> None:
     assert command[command.index("--users") + 1] == "20"
     assert command[command.index("--spawn-rate") + 1] == "5"
     assert command[command.index("--run-time") + 1] == "120s"
+    assert command[command.index("--stop-timeout") + 1] == "5"
     assert command[command.index("-f") + 1] == "locustfile.py"
 
 
@@ -42,6 +43,92 @@ def test_headless_command_enables_full_history_for_realtime_sampling(tmp_path: P
     )
 
     assert "--csv-full-history" in command
+
+
+def test_scenario_graceful_stop_timeout_covers_all_remaining_steps() -> None:
+    script = """import json
+PLAN = json.loads('{"target_type":"scenario","steps":[{"step_type":"api_request","request":{"transport":"http","timeout_seconds":30}},{"step_type":"wait","control_config":{"duration_ms":1500}},{"step_type":"api_request","request":{"transport":"sse","timeout_seconds":30,"sse":{"max_stream_seconds":60}}}]}')
+"""
+
+    assert headless_worker.graceful_stop_timeout_seconds(script) == 97
+
+
+def test_endpoint_graceful_stop_timeout_uses_longer_sse_stream_limit() -> None:
+    script = """import json
+PLAN = json.loads('{"target_type":"endpoint","request":{"transport":"sse","timeout_seconds":30,"sse":{"max_stream_seconds":60}}}')
+"""
+
+    assert headless_worker.graceful_stop_timeout_seconds(script) == 65
+
+
+def test_force_kill_only_after_grace_timeout() -> None:
+    calls = []
+
+    class Process:
+        def wait(self, timeout):
+            calls.append(("wait", timeout))
+            raise headless_worker.subprocess.TimeoutExpired("locust", timeout)
+
+        def kill(self):
+            calls.append(("kill",))
+
+    headless_worker._force_kill_after_grace(Process(), 12)
+
+    assert calls == [("wait", 12), ("kill",)]
+
+
+def test_stop_headless_run_uses_locust_grace_period_before_force_kill(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls = []
+
+    class Process:
+        def terminate(self):
+            calls.append(("terminate",))
+
+    class FakeConnection:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, traceback):
+            return False
+
+    class Thread:
+        def __init__(self, *, target, args, daemon):
+            calls.append(("thread", target, args, daemon))
+
+        def start(self):
+            calls.append(("thread_start",))
+
+    process = Process()
+    headless_worker._PROCESSES["perfrun-1"] = process
+    headless_worker._STOP_TIMEOUTS["perfrun-1"] = 65
+    monkeypatch.setattr(headless_worker, "connect", FakeConnection)
+    monkeypatch.setattr(headless_worker.run_repo, "get_run", lambda db, run_id: {"status": "running"})
+    monkeypatch.setattr(
+        headless_worker.run_repo,
+        "update_run_status",
+        lambda db, run_id, status: calls.append(("status", run_id, status)),
+    )
+    monkeypatch.setattr(headless_worker.threading, "Thread", Thread)
+    try:
+        assert headless_worker.stop_headless_run("perfrun-1") is True
+    finally:
+        headless_worker._PROCESSES.pop("perfrun-1", None)
+        headless_worker._STOP_TIMEOUTS.pop("perfrun-1", None)
+        headless_worker._STOP_REQUESTED.discard("perfrun-1")
+
+    assert calls == [
+        ("status", "perfrun-1", "stopping"),
+        ("terminate",),
+        (
+            "thread",
+            headless_worker._force_kill_after_grace,
+            (process, 70),
+            True,
+        ),
+        ("thread_start",),
+    ]
 
 
 def test_stop_headless_run_and_wait_waits_for_monitor_cleanup(monkeypatch: pytest.MonkeyPatch) -> None:

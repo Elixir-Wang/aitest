@@ -440,6 +440,7 @@ def test_build_case_data_creates_derived_snapshot_without_mutating_source():
     derived["variables"] = {"username": {"source": "environment", "key": "UI_TEST_USERNAME"}}
 
     assert source.get("variables") is None
+    assert derived["schema_version"] == "v2"
     assert derived["source_test_case"]["id"] == "case-1"
     assert derived["steps"][0]["id"] == "step-1"
     assert derived["expected_results"][0]["text"] == "进入工作台"
@@ -465,7 +466,7 @@ def test_build_case_data_extracts_parameterization_definition_from_step():
 
 def test_write_case_data_uses_backend_owned_path(tmp_path: Path):
     data_path = tmp_path / "data/projects/project_1/cases/login.yaml"
-    payload = {"schema_version": "v1", "variables": {}}
+    payload = {"schema_version": "v2", "variables": {}}
 
     artifact_storage.write_yaml_atomic(data_path, payload, suite_path=tmp_path)
 

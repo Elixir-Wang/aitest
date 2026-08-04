@@ -84,11 +84,11 @@ def test_structural_candidates_use_observed_facts_without_required_metric_ids() 
     )
 
 
-def test_first_output_candidate_requires_non_empty_answer_content() -> None:
+def test_first_output_candidate_prefers_index_zero_like_reference_client() -> None:
     events = [
-        _captured(1, 0, "call_llm_start", role="assistant"),
-        _captured(2, 800, "answer", role="assistant", answer=""),
-        _captured(3, 900, "answer", role="assistant", answer="首个有效片段"),
+        _captured(1, 0, "start", role="assistant", answer="前置内容", index=-1),
+        _captured(2, 800, "call_llm_start", role="assistant"),
+        _captured(3, 900, "answer", role="assistant", answer="首个有效片段", index=0),
     ]
 
     candidates = build_structural_sse_candidates(events, extract_sse_event_facts(events))
@@ -97,8 +97,9 @@ def test_first_output_candidate_requires_non_empty_answer_content() -> None:
     assert first_output["match"] == {
         "event_name": "message",
         "source": "data_json",
-        "path": "$.data.answer",
-        "operator": "non_empty",
+        "path": "$.data.index",
+        "operator": "equals",
+        "expected": 0,
     }
     assert first_output["validation"]["first_event_sequence"] == 3
 

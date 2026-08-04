@@ -522,7 +522,7 @@ def _response_wait_helper() -> list[str]:
         "        return \"\"",
         "",
         "",
-        "def _wait_for_response(locator, previous_text, timeout_ms=120_000, stable_ms=2_000):",
+        "def _wait_for_response(locator, previous_text, timeout_ms=30_000, stable_ms=2_000):",
         "    deadline = time.monotonic() + timeout_ms / 1_000",
         "    stable_since = None",
         "    candidate = \"\"",

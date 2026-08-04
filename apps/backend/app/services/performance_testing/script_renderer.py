@@ -477,6 +477,27 @@ def _sse_matches(event_name, data_text, match):
     return False
 
 
+def _sse_metric_roles(config):
+    llm_start_id = next(
+        (
+            metric["id"]
+            for metric in config["metrics"]
+            if metric["match"].get("source") == "data_json"
+            and metric["match"].get("path") == "$.data.event_type"
+            and metric["match"].get("operator") == "equals"
+            and metric["match"].get("expected") == "call_llm_start"
+        ),
+        None,
+    )
+    first_output_ids = {
+        metric["id"]
+        for metric in config["metrics"]
+        if "first_output" in str(metric.get("id") or "")
+        or "首次有效内容" in str(metric.get("name") or "")
+    }
+    return llm_start_id, first_output_ids
+
+
 def _sse_finish_frame(event_name, data_lines, started_at, config, observed, quality):
     if not data_lines:
         return False
@@ -493,7 +514,10 @@ def _sse_finish_frame(event_name, data_lines, started_at, config, observed, qual
         if requires_json:
             quality["parse_error_count"] += 1
     elapsed_ms = (time.perf_counter() - started_at) * 1000
+    llm_start_id, first_output_ids = _sse_metric_roles(config)
     for metric in config["metrics"]:
+        if metric["id"] in first_output_ids and llm_start_id and llm_start_id not in observed:
+            continue
         if metric["id"] not in observed and _sse_matches(event_name, data_text, metric["match"]):
             observed[metric["id"]] = elapsed_ms
     end_rule = config.get("end_rule")
@@ -601,12 +625,7 @@ def _execute_sse_request(user, request, path, measurement_context=None):
             response.failure(failure_reason)
         else:
             response.success()
-    first_content_id = next((metric["id"] for metric in config["metrics"] if metric["match"].get("source") == "data_json" and metric["match"].get("path") == "$.data.answer" and metric["match"].get("operator") == "non_empty"), None)
-    llm_start_id = next((metric["id"] for metric in config["metrics"] if metric["match"].get("source") == "data_json" and metric["match"].get("path") == "$.data.event_type" and metric["match"].get("operator") == "equals" and metric["match"].get("expected") == "call_llm_start"), None)
-    derived_metrics = {}
-    if first_content_id in observed and llm_start_id in observed:
-        derived_metrics["llm_start_to_first_content_ms"] = max(0, observed[first_content_id] - observed[llm_start_id])
-    measurement = {"stream_completed_ms": round((time.perf_counter() - started_at) * 1000, 4), "metrics": observed, "derived_metrics": derived_metrics, "missing_metric_ids": reported_missing, "failure_reason": failure_reason, **quality, **(measurement_context or {})}
+    measurement = {"stream_completed_ms": round((time.perf_counter() - started_at) * 1000, 4), "metrics": observed, "missing_metric_ids": reported_missing, "failure_reason": failure_reason, **quality, **(measurement_context or {})}
     if callable(SSE_MEASUREMENT_SINK):
         SSE_MEASUREMENT_SINK(measurement)
     return failure_reason

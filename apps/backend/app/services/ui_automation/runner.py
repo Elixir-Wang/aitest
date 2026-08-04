@@ -32,7 +32,7 @@ def run_case(
     pytest_node_id: str,
     environment: dict,
     parameter_names: list[str] | None = None,
-    timeout: int = 600,
+    timeout: int = 7200,
 ) -> dict:
     suite_path = suite_path.resolve()
     run_dir = run_dir.resolve()

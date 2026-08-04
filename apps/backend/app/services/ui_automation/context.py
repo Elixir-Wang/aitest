@@ -15,7 +15,7 @@ def build_case_data(source_case, *, automation_case_id: str) -> dict:
     steps = _loads_json(_value(source_case, "steps_json", "[]"), [])
     expected = str(_value(source_case, "expected_result", "")).strip()
     payload = {
-        "schema_version": "v1",
+        "schema_version": "v2",
         "project_id": _value(source_case, "project_id", ""),
         "automation_case_id": automation_case_id,
         "source_test_case": {
@@ -56,6 +56,18 @@ def build_evidence_context(*, exploration_run_id: str, artifact_rows: list) -> d
             }
         )
     return {"exploration_run_id": exploration_run_id, "artifacts": artifacts}
+
+
+def read_case_data(path: Path | None) -> dict | None:
+    if path is None or not path.is_file():
+        return None
+    try:
+        payload = _read_supported(path)
+    except (OSError, ValueError, yaml.YAMLError):
+        return None
+    if not isinstance(payload, dict) or not isinstance(payload.get("steps"), list):
+        return None
+    return payload
 
 
 def _read_supported(path: Path):
@@ -108,4 +120,4 @@ def _value(row, key: str, default=None):
         return default
 
 
-__all__ = ["build_case_data", "build_evidence_context"]
+__all__ = ["build_case_data", "build_evidence_context", "read_case_data"]

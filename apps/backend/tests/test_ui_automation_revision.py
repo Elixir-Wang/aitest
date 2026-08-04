@@ -1,6 +1,8 @@
 import json
 import shutil
 
+import yaml
+
 from app.core import db as core_db
 from app.repositories import ui_automation_repo
 from app.seed.init_db import init_db
@@ -23,11 +25,11 @@ def _seed_revision_asset(monkeypatch, tmp_path):
     test_path.parent.mkdir(parents=True)
     data_path.parent.mkdir(parents=True)
     test_path.write_text("def test_uiauto_1():\n    pass\n", encoding="utf-8")
-    data_path.write_text("schema_version: v1\n", encoding="utf-8")
+    data_path.write_text("schema_version: v2\n", encoding="utf-8")
     plan_path.write_text(
         json.dumps(
             {
-                "schema_version": "v1",
+                "schema_version": "v2",
                 "project_id": "project-1",
                 "automation_case_id": "uiauto-1",
                 "source_test_case_id": "manual-1",
@@ -94,7 +96,7 @@ def _seed_revision_asset(monkeypatch, tmp_path):
 
 def test_repair_business_step_mapping_groups_operations_without_changing_behavior():
     plan = {
-        "schema_version": "v1",
+        "schema_version": "v2",
         "steps": [
             {
                 "source_step_id": "step-1",
@@ -139,7 +141,7 @@ def test_repair_business_step_mapping_groups_operations_without_changing_behavio
 
 
 def test_repair_business_step_mapping_returns_none_for_unmapped_or_ambiguous_operations():
-    plan = {"schema_version": "v1", "steps": [{"source_step_id": "step-99", "action": "click"}]}
+    plan = {"schema_version": "v2", "steps": [{"source_step_id": "step-99", "action": "click"}]}
     case_data = {"steps": [{"id": "step-1", "action": "开始"}]}
 
     assert repair_business_step_mapping(plan, case_data) is None
@@ -232,7 +234,7 @@ def test_execute_revision_missing_formal_suite_marks_run_failed(monkeypatch, tmp
     assert failed["error_message"]
 
 
-def test_execute_mapping_revision_uses_current_asset_without_exploration_artifacts(monkeypatch, tmp_path):
+def test_execute_mapping_revision_with_instruction_still_uses_deterministic_repair(monkeypatch, tmp_path):
     suite_path, plan_path = _seed_revision_asset(monkeypatch, tmp_path)
     created = service.create_revision_run(
         "project-1",
@@ -240,28 +242,61 @@ def test_execute_mapping_revision_uses_current_asset_without_exploration_artifac
         {"reason_code": "missing_business_step_mapping", "instruction": "补充步骤信息"},
         ACTOR,
     )
-    captured = {}
+    async def unexpected_ai_revision(**kwargs):
+        raise AssertionError("deterministic mapping repair must run before AI revision")
 
-    async def revise_current_plan(**kwargs):
-        captured.update(kwargs)
-        current_plan_path = kwargs["suite_path"] / "data/projects/project_1/cases/login.plan.json"
-        plan = json.loads(current_plan_path.read_text(encoding="utf-8"))
-        plan["schema_version"] = "v2"
-        plan["steps"][0]["business_step_id"] = "step-1"
-        plan["steps"][0]["title"] = "进入登录页"
-        current_plan_path.write_text(json.dumps(plan, ensure_ascii=False), encoding="utf-8")
-
-    monkeypatch.setattr(service, "resolve_model_selection", lambda capability_id: object())
-    monkeypatch.setattr(service, "build_agent_model", lambda selection: object())
-    monkeypatch.setattr(service, "generate_pytest_playwright_case", revise_current_plan)
+    monkeypatch.setattr(service, "generate_pytest_playwright_case", unexpected_ai_revision)
     monkeypatch.setattr(service, "collect_suite", lambda *args, **kwargs: {"ok": True, "stderr": ""})
 
     completed = service.execute_generation_run(created["id"])
 
     assert completed["status"] == "completed"
-    assert completed["revision_strategy"] == "ai"
-    assert captured["evidence_payload"]["artifacts"] == []
-    assert captured["revision_context"]["reason_code"] == "missing_business_step_mapping"
-    assert captured["revision_context"]["instruction"] == "补充步骤信息"
+    assert completed["revision_strategy"] == "deterministic"
     revised_plan = json.loads(plan_path.read_text(encoding="utf-8"))
     assert revised_plan["steps"][0]["business_step_id"] == "step-1"
+    assert revised_plan["steps"][0]["title"] == "进入登录页"
+
+
+def test_execute_mapping_revision_uses_asset_step_ids_when_current_case_was_reordered(
+    monkeypatch, tmp_path
+):
+    suite_path, plan_path = _seed_revision_asset(monkeypatch, tmp_path)
+    data_path = suite_path / "data/projects/project_1/cases/login.yaml"
+    data_path.write_text(
+        yaml.safe_dump(
+            {
+                "schema_version": "v2",
+                "steps": [
+                    {"id": "step-1", "action": "进入登录页"},
+                    {"id": "step-3", "action": "提交登录"},
+                ],
+            },
+            allow_unicode=True,
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+    plan = json.loads(plan_path.read_text(encoding="utf-8"))
+    plan["steps"] = [{"source_step_id": "step-3", "kind": "navigate", "page_key": "login"}]
+    plan_path.write_text(json.dumps(plan, ensure_ascii=False), encoding="utf-8")
+    with core_db.connect() as db:
+        db.execute(
+            "UPDATE manual_test_cases SET steps_json = ? WHERE id = 'manual-1'",
+            (json.dumps([{"action": "进入登录页"}, {"action": "提交登录"}], ensure_ascii=False),),
+        )
+
+    created = service.create_revision_run(
+        "project-1",
+        "uiasset-1",
+        {"reason_code": "missing_business_step_mapping", "instruction": "补充业务步骤"},
+        ACTOR,
+    )
+    monkeypatch.setattr(service, "collect_suite", lambda *args, **kwargs: {"ok": True, "stderr": ""})
+
+    completed = service.execute_generation_run(created["id"])
+
+    assert completed["status"] == "completed"
+    assert completed["revision_strategy"] == "deterministic"
+    revised_plan = json.loads(plan_path.read_text(encoding="utf-8"))
+    assert revised_plan["steps"][0]["business_step_id"] == "step-3"
+    assert revised_plan["steps"][0]["title"] == "提交登录"

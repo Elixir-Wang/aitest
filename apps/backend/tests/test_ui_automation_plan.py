@@ -14,7 +14,7 @@ def test_locator_requires_evidence_refs():
 
 def test_automation_plan_rejects_unknown_fields():
     payload = {
-        "schema_version": "v1",
+        "schema_version": "v2",
         "project_id": "project-1",
         "automation_case_id": "uiauto-1",
         "source_test_case_id": "case-1",
@@ -39,7 +39,7 @@ def test_automation_plan_rejects_unknown_fields():
 def test_automation_plan_accepts_supported_actions_and_assertions():
     plan = AutomationPlan.model_validate(
         {
-            "schema_version": "v1",
+            "schema_version": "v2",
             "project_id": "project-1",
             "automation_case_id": "uiauto-1",
             "source_test_case_id": "case-1",
@@ -68,6 +68,8 @@ def test_automation_plan_accepts_supported_actions_and_assertions():
             "steps": [
                 {
                     "source_step_id": "step-1",
+                    "business_step_id": "step-1",
+                    "title": "点击登录",
                     "kind": "click",
                     "page_key": "login",
                     "element_key": "submit_button",
@@ -119,7 +121,7 @@ def test_v2_automation_plan_requires_business_step_mapping_and_title():
         AutomationPlan.model_validate(payload)
 
 
-def test_generation_contract_rejects_legacy_v1_plan():
+def test_automation_plan_rejects_legacy_v1_schema():
     payload = {
         "schema_version": "v1",
         "project_id": "project-1",
@@ -134,8 +136,8 @@ def test_generation_contract_rejects_legacy_v1_plan():
         },
     }
 
-    with pytest.raises(ValueError, match="schema_version v2"):
-        AutomationPlan.model_validate(payload).require_generation_contract()
+    with pytest.raises(ValidationError, match="schema_version"):
+        AutomationPlan.model_validate(payload)
 
 
 def test_generation_contract_rejects_unknown_business_step():
@@ -170,7 +172,7 @@ def test_generation_contract_rejects_unknown_business_step():
 
 def test_automation_plan_rejects_another_project_namespace():
     payload = {
-        "schema_version": "v1",
+        "schema_version": "v2",
         "project_id": "project-1",
         "automation_case_id": "uiauto-1",
         "source_test_case_id": "case-1",
@@ -192,7 +194,7 @@ def test_automation_plan_rejects_another_project_namespace():
 
 def test_wait_for_response_must_follow_send_action_on_same_page():
     payload = {
-        "schema_version": "v1",
+        "schema_version": "v2",
         "project_id": "project-1",
         "automation_case_id": "uiauto-1",
         "source_test_case_id": "case-1",
@@ -202,6 +204,8 @@ def test_wait_for_response_must_follow_send_action_on_same_page():
         "steps": [
             {
                 "source_step_id": "step-1",
+                "business_step_id": "step-1",
+                "title": "输入消息",
                 "kind": "fill",
                 "page_key": "chat",
                 "element_key": "input",
@@ -209,6 +213,8 @@ def test_wait_for_response_must_follow_send_action_on_same_page():
             },
             {
                 "source_step_id": "step-2",
+                "business_step_id": "step-2",
+                "title": "等待回复",
                 "kind": "wait_for_response",
                 "page_key": "chat",
                 "element_key": "last_response",
@@ -228,7 +234,7 @@ def test_wait_for_response_must_follow_send_action_on_same_page():
 
 def test_assertion_checkpoint_must_reference_existing_step():
     payload = {
-        "schema_version": "v1",
+        "schema_version": "v2",
         "project_id": "project-1",
         "automation_case_id": "uiauto-1",
         "source_test_case_id": "case-1",

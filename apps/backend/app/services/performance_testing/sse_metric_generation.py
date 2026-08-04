@@ -19,7 +19,7 @@ from app.services.performance_testing.sse import SseEvent, event_matches, parse_
 
 _PATH_PARAMETER = re.compile(r"\{([^{}]+)\}")
 _CONTENT_KEYS = {"answer", "content", "text", "delta", "message", "output", "result"}
-_FACT_KEYS = {"event_type", "status", "state", "phase", "stage", "action", "type", "finish", "role"}
+_FACT_KEYS = {"event_type", "status", "state", "phase", "stage", "action", "type", "finish", "role", "index"}
 _CANDIDATE_FACT_KEYS = {"event_type", "status", "state", "phase", "stage", "action"} | _CONTENT_KEYS
 _NOISE_VALUES = {"heartbeat", "ping", "pong", "keepalive", "keep_alive", "ack", "debug", "log"}
 _START_MARKER = re.compile(r"(^|[_-])(start|begin|started)$", re.IGNORECASE)
@@ -337,6 +337,14 @@ def build_structural_sse_candidates(
 ) -> list[dict[str, Any]]:
     candidates: list[dict[str, Any]] = []
     event_count = len(events)
+    first_output_index_fact = next(
+        (
+            fact
+            for fact in facts
+            if str(fact["path"]).endswith(".index") and fact["normalized_value"] == "0"
+        ),
+        None,
+    )
     content_facts = [
         fact
         for fact in facts
@@ -346,8 +354,8 @@ def build_structural_sse_candidates(
         and not _START_MARKER.search(str(fact["normalized_value"]))
         and not _END_MARKER.search(str(fact["normalized_value"]))
     ]
-    first_output_fact_id = None
-    if content_facts:
+    first_output_fact_id = first_output_index_fact["fact_id"] if first_output_index_fact else None
+    if first_output_fact_id is None and content_facts:
         first_output_fact_id = min(
             content_facts,
             key=lambda fact: (
@@ -357,7 +365,10 @@ def build_structural_sse_candidates(
             ),
         )["fact_id"]
     for fact in facts:
-        if str(fact["path"]).rsplit(".", 1)[-1] not in _CANDIDATE_FACT_KEYS:
+        if (
+            str(fact["path"]).rsplit(".", 1)[-1] not in _CANDIDATE_FACT_KEYS
+            and fact["fact_id"] != first_output_fact_id
+        ):
             continue
         value = str(fact["normalized_value"])
         lowered = value.lower()
@@ -402,16 +413,23 @@ def build_structural_sse_candidates(
             reason = "该事件仅出现一次且位于样本末尾，可能代表流式处理完成。"
         if category is None:
             continue
-        match = (
-            {
+        if category == "first_output" and str(fact["path"]).endswith(".index"):
+            match = {
+                "event_name": str(fact["event_name"]),
+                "source": "data_json",
+                "path": str(fact["path"]),
+                "operator": "equals",
+                "expected": 0,
+            }
+        elif category == "first_output":
+            match = {
                 "event_name": str(fact["event_name"]),
                 "source": "data_json",
                 "path": str(fact["path"]),
                 "operator": "non_empty",
             }
-            if category == "first_output"
-            else _equals_match(str(fact["event_name"]), str(fact["path"]), fact["normalized_value"])
-        )
+        else:
+            match = _equals_match(str(fact["event_name"]), str(fact["path"]), fact["normalized_value"])
         validation = _validate_match(events, match)
         candidates.append(
             {
