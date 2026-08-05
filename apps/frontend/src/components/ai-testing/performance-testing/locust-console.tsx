@@ -499,7 +499,7 @@ export function LocustConsole({ projectId, testId, runId }: { projectId: string;
           snapshot?.sse_metrics.parse_error_count ||
           snapshot?.sse_metrics.timeout_count ||
           snapshot?.sse_metrics.end_rule_not_matched_count ? (
-            <div className="mb-4 flex flex-wrap gap-x-6 gap-y-2 border-l-2 border-amber-500 bg-amber-50 px-4 py-3 text-amber-900 text-sm dark:bg-amber-950/30 dark:text-amber-100">
+            <div className="mb-4 flex flex-wrap gap-x-6 gap-y-2 border-amber-500 border-l-2 bg-amber-50 px-4 py-3 text-amber-900 text-sm dark:bg-amber-950/30 dark:text-amber-100">
               {snapshot.sse_metrics.truncated ? <span>测量样本已达到存储上限</span> : null}
               <span>JSON 解析错误 {snapshot.sse_metrics.parse_error_count}</span>
               <span>流超时 {snapshot.sse_metrics.timeout_count}</span>
@@ -653,6 +653,10 @@ function statisticsRows(snapshot: PerformanceRunStats | null) {
     if (row.name === "Aggregated") return { ...row, name: "汇总" };
     if (row.timing_semantics === "connection") {
       return { ...row, name: `${String(row.name)}（SSE 建连耗时）` };
+    }
+    if (row.timing_semantics === "request_to_event" || row.timing_semantics === "event_to_event") {
+      const formula = String(row.timing_formula ?? "").trim();
+      return { ...row, name: formula ? `${String(row.name)}（${formula}）` : row.name };
     }
     return row;
   });

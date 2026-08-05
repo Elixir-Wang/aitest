@@ -74,6 +74,14 @@ def test_runtime_locustfile_uses_current_environment_headers() -> None:
     }''' in source
 
 
+def test_runtime_locustfile_writes_final_stats_snapshot_on_quit() -> None:
+    source = runtime_locustfile_source()
+
+    assert 'FINAL_STATS = Path(__file__).with_name("locust-final-stats.json")' in source
+    assert "@events.quitting.add_listener" in source
+    assert "FINAL_STATS.write_text(" in source
+
+
 def test_runtime_locustfile_removes_trailing_slash_from_base_url() -> None:
     source = runtime_locustfile_source()
 

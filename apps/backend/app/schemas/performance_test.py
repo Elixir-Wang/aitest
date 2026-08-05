@@ -23,6 +23,11 @@ class PerformanceRequestConfig(BaseModel):
             raise ValueError("HTTP 请求不能配置 sse")
         if self.transport == "http" and self.scenario_step_id is not None:
             raise ValueError("HTTP 请求不能配置 SSE 场景步骤")
+        if self.transport == "sse" and self.sse is not None and self.scenario_step_id is not None:
+            for metric in self.sse.metrics:
+                source_request_id = metric.timing.source_request_id
+                if source_request_id is not None and source_request_id != self.scenario_step_id:
+                    raise ValueError("SSE 指标时间起点必须绑定当前 SSE 场景步骤")
         return self
 
 
@@ -43,11 +48,30 @@ class PerformanceSseMatch(BaseModel):
         return self
 
 
+class PerformanceSseMetricTiming(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    scope: Literal["request"] = "request"
+    start: Literal["request_started"] = "request_started"
+    source_request_id: str | None = Field(default=None, min_length=1, max_length=120)
+    source_request_name: str | None = Field(default=None, min_length=1, max_length=240)
+
+
 class PerformanceSseMetric(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     id: str = Field(min_length=1, max_length=64)
     name: str = Field(min_length=1, max_length=80)
+    category: Literal[
+        "first_output",
+        "milestone_start",
+        "milestone_end",
+        "completion",
+        "first_external_action",
+        "state_transition",
+        "custom_event",
+    ] = "custom_event"
+    timing: PerformanceSseMetricTiming = Field(default_factory=PerformanceSseMetricTiming)
     match: PerformanceSseMatch
     occurrence: Literal["first"] = "first"
     missing_policy: Literal["record_null", "fail_request", "ignore"] = "record_null"
@@ -257,6 +281,7 @@ class PerformanceTestUpdateIn(BaseModel):
 
     name: str | None = Field(default=None, min_length=1, max_length=120)
     description: str | None = Field(default=None, max_length=1000)
+    target_type: Literal["endpoint", "scenario"] | None = None
     endpoint_id: str | None = Field(default=None, min_length=1)
     scenario_id: str | None = Field(default=None, min_length=1)
     api_environment_id: str | None = Field(default=None, min_length=1)

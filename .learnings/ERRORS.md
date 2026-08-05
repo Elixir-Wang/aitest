@@ -602,3 +602,29 @@ Use the repository's configured backend runtime or install the declared dependen
 ### Metadata
 - Source: error
 - Tags: backend, pytest, dependency, websocket
+
+---
+
+## [ERR-20260805-001] windows-shell-resolution-and-inline-python-quoting
+
+**Logged**: 2026-08-05T16:00:00+08:00
+**Priority**: low
+**Status**: resolved
+**Area**: tooling
+
+### Summary
+The shell could not resolve `powershell.exe` by name, Unix `tail` was unavailable, and an inline Python SQLite query was corrupted by nested PowerShell quoting.
+
+### Error
+```text
+program not found
+Binary 'tail' not found on PATH
+SyntaxError while parsing the inline Python command
+```
+
+### Resolution
+Invoke Windows PowerShell by absolute path, use `rtk proxy` for PowerShell-native file operations, and pass quote-sensitive Python commands directly as `rtk` argument arrays instead of nesting them inside `powershell -Command`.
+
+### Metadata
+- Source: error
+- Tags: windows, powershell, rtk, python, quoting

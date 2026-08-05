@@ -529,6 +529,7 @@ def _execute_sse_request(user, request, path, measurement_context=None):
     headers = dict(request.get("headers") or {})
     headers.setdefault("Accept", "text/event-stream")
     started_at = time.perf_counter()
+    connection_ms = 0.0
     observed = {}
     event_name, data_lines, frame_size, stream_size, ended = "message", [], 0, 0, False
     quality = {
@@ -554,13 +555,14 @@ def _execute_sse_request(user, request, path, measurement_context=None):
         stream=True,
         catch_response=True,
     ) as response:
+        connection_ms = (time.perf_counter() - started_at) * 1000
         quality["content_type"] = str(response.headers.get("Content-Type") or "").split(";", 1)[0].strip().lower()
         if not 200 <= response.status_code < 300:
             failure_reason = f"unexpected status code: {response.status_code}"
         elif quality["content_type"] != "text/event-stream":
             failure_reason = "sse_invalid_content_type"
         else:
-            for raw_line in response.iter_lines(decode_unicode=True):
+            for raw_line in response.iter_lines(chunk_size=1, decode_unicode=True):
                 if (time.perf_counter() - started_at) > config["max_stream_seconds"]:
                     failure_reason = "sse_stream_timeout"
                     break
@@ -625,7 +627,27 @@ def _execute_sse_request(user, request, path, measurement_context=None):
             response.failure(failure_reason)
         else:
             response.success()
-    measurement = {"stream_completed_ms": round((time.perf_counter() - started_at) * 1000, 4), "metrics": observed, "missing_metric_ids": reported_missing, "failure_reason": failure_reason, **quality, **(measurement_context or {})}
+    llm_start_id, first_output_ids = _sse_metric_roles(config)
+    derived_metrics = {}
+    if llm_start_id in observed:
+        first_output_values = [observed[metric_id] for metric_id in first_output_ids if metric_id in observed]
+        if first_output_values:
+            first_output_ms = min(first_output_values)
+            if first_output_ms >= observed[llm_start_id]:
+                derived_metrics["llm_start_to_first_content_ms"] = first_output_ms - observed[llm_start_id]
+    context = measurement_context or {}
+    measurement = {
+        "stream_completed_ms": round((time.perf_counter() - started_at) * 1000, 4),
+        "connection_ms": round(connection_ms, 4),
+        "source_request_id": context.get("scenario_step_id") or request.get("scenario_step_id") or "",
+        "source_request_name": context.get("scenario_step_name") or request.get("name") or "",
+        "metrics": observed,
+        "derived_metrics": derived_metrics,
+        "missing_metric_ids": reported_missing,
+        "failure_reason": failure_reason,
+        **quality,
+        **context,
+    }
     if callable(SSE_MEASUREMENT_SINK):
         SSE_MEASUREMENT_SINK(measurement)
     return failure_reason

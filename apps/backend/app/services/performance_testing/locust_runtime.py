@@ -36,6 +36,7 @@ EVENT_LOG = Path(__file__).with_name("locust-events.jsonl")
 SSE_MEASUREMENTS = Path(__file__).with_name("sse-measurements.jsonl")
 SSE_MEASUREMENT_META = Path(__file__).with_name("sse-measurements.meta.json")
 SSE_MEASUREMENT_MAX_BYTES = 64 * 1024 * 1024
+FINAL_STATS = Path(__file__).with_name("locust-final-stats.json")
 CONTROL_FILE = Path(__file__).with_name("locust-control.json")
 
 
@@ -64,6 +65,24 @@ def _append_sse_measurement(payload):
 
 
 generated.SSE_MEASUREMENT_SINK = _append_sse_measurement
+
+
+@events.quitting.add_listener
+def _write_final_stats(environment, **kwargs):
+    if environment.runner is None:
+        return
+    entries = []
+    for (name, request_type), entry in environment.runner.stats.entries.items():
+        entries.append({
+            "request_type": request_type or "",
+            "name": name or "",
+            "request_count": entry.num_requests,
+            "failure_count": entry.num_failures,
+        })
+    FINAL_STATS.write_text(
+        json.dumps({"entries": entries}, ensure_ascii=False, separators=(",", ":")),
+        encoding="utf-8",
+    )
 
 
 def _redact_response_value(value, key=""):

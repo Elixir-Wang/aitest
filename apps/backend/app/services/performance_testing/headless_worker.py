@@ -255,6 +255,7 @@ def parse_locust_stats_csv(
     *,
     user_count: int = 0,
     request_type: str | None = None,
+    final_stats: dict[str, Any] | None = None,
 ) -> dict[str, Any] | None:
     """Parse the current aggregate row from Locust's non-history CSV output."""
     rows = list(csv.DictReader(content.splitlines()))
@@ -266,6 +267,18 @@ def parse_locust_stats_csv(
         return None
     request_count = int(float(aggregate.get("Total Request Count") or aggregate.get("Request Count") or 0))
     failure_count = int(float(aggregate.get("Total Failure Count") or aggregate.get("Failure Count") or 0))
+    if request_type is not None:
+        final_entry = next(
+            (
+                entry
+                for entry in (final_stats or {}).get("entries", [])
+                if entry.get("request_type") == request_type
+            ),
+            None,
+        )
+        if final_entry:
+            request_count = int(final_entry.get("request_count") or 0)
+            failure_count = int(final_entry.get("failure_count") or 0)
     return {
         "sampled_at": "",
         "user_count": user_count,
@@ -298,6 +311,7 @@ def read_realtime_sample(
             stats_path.read_text(encoding="utf-8-sig"),
             user_count=configured_users,
             request_type=request_type,
+            final_stats=read_locust_final_stats(run_dir),
         )
         history_sample = _read_history_sample(run_dir, request_type=request_type)
     except (OSError, UnicodeDecodeError, ValueError):
@@ -339,6 +353,17 @@ def _locust_float(value: object) -> float:
     if value in (None, "", "N/A"):
         return 0.0
     return float(value)
+
+
+def read_locust_final_stats(run_dir: Path) -> dict[str, Any]:
+    path = run_dir / "locust-final-stats.json"
+    if not path.is_file():
+        return {}
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return {}
+    return payload if isinstance(payload, dict) else {}
 
 
 def _read_history_sample(run_dir: Path, *, request_type: str | None = None) -> dict[str, Any] | None:
@@ -405,6 +430,17 @@ def _collect_locust_results(db, run_id: str, run_dir: Path) -> None:
         if aggregate:
             request_count = int(float(aggregate.get("Request Count") or 0))
             failure_count = int(float(aggregate.get("Failure Count") or 0))
+            final_entry = next(
+                (
+                    entry
+                    for entry in read_locust_final_stats(run_dir).get("entries", [])
+                    if entry.get("request_type") == request_type
+                ),
+                None,
+            )
+            if final_entry:
+                request_count = int(final_entry.get("request_count") or 0)
+                failure_count = int(final_entry.get("failure_count") or 0)
             run_repo.append_stats(db, run_id=run_id, sample={
                 "user_count": configured_users,
                 "request_count": request_count,
@@ -530,7 +566,11 @@ def summarize_sse_measurements(path: Path, *, max_attempts: int | None = None) -
             break
         attempts += 1
         parse_error_count += int(measurement.get("parse_error_count") or 0)
-        values = measurement.get("metrics") if isinstance(measurement.get("metrics"), dict) else {}
+        values = dict(measurement.get("metrics")) if isinstance(measurement.get("metrics"), dict) else {}
+        derived_values = measurement.get("derived_metrics") if isinstance(measurement.get("derived_metrics"), dict) else {}
+        for metric_id, value in derived_values.items():
+            normalized_id = str(metric_id).removesuffix("_ms")
+            values[f"derived:{normalized_id}"] = value
         missing = {str(item) for item in measurement.get("missing_metric_ids", []) if isinstance(item, str)}
         failed = bool(measurement.get("failure_reason"))
         if failed:

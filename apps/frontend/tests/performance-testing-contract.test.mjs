@@ -96,9 +96,15 @@ test("performance SSE metrics discover generic candidates and preserve unapplied
   assert.match(apiClientSource, /export function generatePerformanceSseMetrics/);
   assert.match(apiClientSource, /performance-tests\/sse-metrics\/generate/);
   assert.match(apiClientSource, /export type PerformanceSseMetricCandidate/);
+  assert.match(apiClientSource, /export type PerformanceSseMetricTiming/);
+  assert.match(apiClientSource, /source_request_name: string \| null/);
   assert.match(apiClientSource, /event_facts: PerformanceSseEventFact\[]/);
   assert.match(apiClientSource, /result_status: "ready" \| "empty" \| "partial" \| "failed"/);
   assert.match(formSource, /<PerformanceSseMetricsConfig/);
+  assert.match(sseMetricsConfigSource, /所属接口/);
+  assert.match(sseMetricsConfigSource, /开始时间/);
+  assert.match(sseMetricsConfigSource, /结束条件/);
+  assert.match(sseMetricsConfigSource, /计算方式/);
   assert.match(sseMetricsConfigSource, /业务响应指标/);
   assert.match(sseMetricsConfigSource, /运行样本并发现指标/);
   assert.match(sseMetricsConfigSource, /SSE 指标配置/);
@@ -110,7 +116,7 @@ test("performance SSE metrics discover generic candidates and preserve unapplied
   assert.match(sseMetricsConfigSource, /推荐原因/);
   assert.match(sseMetricsConfigSource, /其他事件/);
   assert.match(sseMetricsConfigSource, /样本事件/);
-  assert.match(sseMetricsConfigSource, /触发条件/);
+  assert.match(sseMetricsConfigSource, /结束条件/);
   assert.match(sseMetricsConfigSource, /高级匹配规则/);
   assert.match(sseMetricsConfigSource, /指标名称/);
   assert.match(sseMetricsConfigSource, /SSE 事件类型/);
@@ -125,6 +131,9 @@ test("performance SSE metrics discover generic candidates and preserve unapplied
   assert.match(sseMetricsConfigSource, /命中.*次/);
   assert.match(sseMetricsConfigSource, /待验证/);
   assert.match(sseMetricsConfigSource, /重新验证/);
+  assert.match(sseMetricsConfigSource, /if \(!result\) \{\s*void run\(\);\s*\}/);
+  assert.match(sseMetricsConfigSource, /currentMetricIds/);
+  assert.match(sseMetricsConfigSource, /currentMetricIds\.has\(candidate\.metric_id\)/);
   assert.match(sseMetricsConfigSource, /当前配置不会立即被覆盖/);
   assert.match(sseMetricsConfigSource, /end_rule: current\?\.end_rule \?\? null/);
   assert.doesNotMatch(sseMetricsConfigSource, /end_rule: generated\.end_rule_candidate\?\.match \?\? null/);
@@ -165,6 +174,19 @@ test("performance create form reuses endpoint and environment assets without sec
   assert.match(formSource, /耐久测试/);
   assert.doesNotMatch(formSource, /LoadProfileRail/);
   assert.doesNotMatch(formSource, /password|token|cookie|api_key/i);
+});
+
+test("performance load fields expose accessible hover descriptions", () => {
+  assert.match(formSource, /function LoadConfigFieldLabel/);
+  assert.match(formSource, /TooltipTrigger asChild/);
+  assert.match(formSource, /CircleHelp/);
+  assert.match(formSource, /aria-label=\{`\$\{label\}说明`\}/);
+  assert.match(formSource, /压测需要启动的虚拟用户总数。每个用户会循环执行测试任务。/);
+  assert.match(formSource, /每秒启动的虚拟用户数量，必须大于 0。/);
+  assert.match(formSource, /从压测启动开始计算的总运行时间，包含用户逐步启动的爬升时间。/);
+  assert.match(formSource, /用户完成一次任务后，再次执行前的最短等待时间，不能小于 0.1 秒。/);
+  assert.match(formSource, /用户完成一次任务后，再次执行前的最长等待时间，不能小于最小等待时间。/);
+  assert.match(formSource, /单个请求超过该时间仍未完成时，将被记录为超时失败。/);
 });
 
 test("performance create form does not preselect its identifying fields", () => {

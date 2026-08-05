@@ -122,6 +122,7 @@ def test_planners_upgrade_legacy_first_output_rule_to_index_zero() -> None:
 
     for config in (endpoint_plan.request.sse, scenario_plan.steps[0].request.sse):
         first_output = next(metric for metric in config["metrics"] if metric["id"].startswith("sse_first_output_"))
+        llm_start = next(metric for metric in config["metrics"] if metric["id"].startswith("sse_milestone_start_"))
         assert first_output["match"] == {
             "event_name": "message",
             "source": "data_json",
@@ -129,6 +130,39 @@ def test_planners_upgrade_legacy_first_output_rule_to_index_zero() -> None:
             "operator": "equals",
             "expected": 0,
         }
+        assert first_output["category"] == "first_output"
+        assert llm_start["category"] == "milestone_start"
+        assert first_output["timing"]["scope"] == "request"
+        assert first_output["timing"]["start"] == "request_started"
+
+    assert endpoint_plan.request.sse["metrics"][0]["timing"]["source_request_name"] == endpoint_plan.request.name
+    assert scenario_plan.steps[0].request.sse["metrics"][0]["timing"] == {
+        "scope": "request",
+        "start": "request_started",
+        "source_request_id": "step-sse",
+        "source_request_name": "01 POST /sse",
+    }
+
+
+def test_planners_preserve_confirmed_answer_content_rule() -> None:
+    performance_test = _performance_test()
+    sse_config = _legacy_first_output_sse_config()
+    sse_config["metrics"][0]["match"] = {
+        "event_name": "message",
+        "source": "data_json",
+        "path": "$.data.answer",
+        "operator": "non_empty",
+        "expected": None,
+    }
+    performance_test["request_config"] = {
+        **performance_test["request_config"],
+        "transport": "sse",
+        "sse": sse_config,
+    }
+
+    plan = build_default_plan(performance_test)
+
+    assert plan.request.sse["metrics"][0]["match"] == sse_config["metrics"][0]["match"]
 
 
 def test_scenario_compiler_keeps_required_endpoint_header_defaults() -> None:
@@ -252,6 +286,19 @@ def test_renderer_uses_locust_http_user_and_controlled_request() -> None:
     assert "cybertron-robot-token" in source
     assert "self.client.request(" in source
     assert "LoadTestShape" not in source
+
+
+def test_renderer_reads_sse_lines_without_requests_default_buffering() -> None:
+    performance_test = _performance_test()
+    performance_test["request_config"] = {
+        **performance_test["request_config"],
+        "transport": "sse",
+        "sse": _legacy_first_output_sse_config(),
+    }
+
+    source = render_locust_script(build_default_plan(performance_test))
+
+    assert "response.iter_lines(chunk_size=1, decode_unicode=True)" in source
 
 
 def test_renderer_keeps_http_and_business_success_rules() -> None:

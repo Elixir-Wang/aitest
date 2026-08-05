@@ -1393,6 +1393,8 @@ export type PerformanceSseMatch = {
 export type PerformanceSseMetric = {
   id: string;
   name: string;
+  category: PerformanceSseMetricCategory;
+  timing: PerformanceSseMetricTiming;
   match: PerformanceSseMatch;
   occurrence: "first";
   missing_policy: "record_null" | "fail_request" | "ignore";
@@ -1410,6 +1412,22 @@ export type PerformanceSseMetricEvidence = {
   first_event_sequence: number | null;
   sample_elapsed_ms: number | null;
   sample_event: Record<string, unknown> | null;
+};
+
+export type PerformanceSseMetricCategory =
+  | "first_output"
+  | "milestone_start"
+  | "milestone_end"
+  | "completion"
+  | "first_external_action"
+  | "state_transition"
+  | "custom_event";
+
+export type PerformanceSseMetricTiming = {
+  scope: "request";
+  start: "request_started";
+  source_request_id: string | null;
+  source_request_name: string | null;
 };
 
 export type PerformanceSseEventFact = {
@@ -1440,14 +1458,8 @@ export type PerformanceSseMetricCandidate = {
   suggestion_key: string;
   metric_id: string;
   name: string;
-  category:
-    | "first_output"
-    | "milestone_start"
-    | "milestone_end"
-    | "completion"
-    | "first_external_action"
-    | "state_transition"
-    | "custom_event";
+  category: PerformanceSseMetricCategory;
+  timing: PerformanceSseMetricTiming;
   match: PerformanceSseMatch;
   occurrence: "first";
   recommended_missing_policy: "record_null" | "fail_request" | "ignore";

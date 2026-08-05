@@ -54,10 +54,11 @@ def build_scenario_plan(
                 transport = performance_request_config.get("transport", "http")
                 sse = performance_request_config.get("sse")
                 matched_sse_step = True
+            request_name = f"{index:02d} {method} {path}"
             compiled["request"] = {
                 "method": method,
                 "path": path,
-                "name": f"{index:02d} {method} {path}",
+                "name": request_name,
                 "path_parameters": request.get("path_parameters") or request.get("path_params") or {},
                 "query_parameters": request.get("query_parameters") or request.get("query") or {},
                 "headers": headers,
@@ -67,7 +68,11 @@ def build_scenario_plan(
                 "multipart_form": request.get("multipart_form"),
                 "timeout_seconds": load_config.get("request_timeout_seconds", 30),
                 "transport": transport,
-                "sse": normalize_sse_config(sse),
+                "sse": normalize_sse_config(
+                    sse,
+                    source_request_id=str(compiled["id"]),
+                    source_request_name=request_name,
+                ),
             }
         compiled_steps.append(compiled)
 

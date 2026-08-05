@@ -156,6 +156,8 @@ def generate_project_sse_metrics(
                 "timeout_seconds": int(environment["timeout_seconds"]),
                 "verify_ssl": bool(environment["verify_ssl"]),
             }
+            source_request_id = str(payload.endpoint_id)
+            source_request_name = f"{request['method']} {endpoint['path']}"
             scenario_probe = None
         else:
             _, scenario, environment = performance_service._validate_target_references(
@@ -170,6 +172,7 @@ def generate_project_sse_metrics(
             if not snapshot or not snapshot.get("steps"):
                 raise api_error(400, "PERFORMANCE_SCENARIO_VERSION_MISSING", "接口场景没有当前保存版本，请先保存场景。")
             request = None
+            source_request_id, source_request_name = _scenario_source_request(snapshot, str(payload.scenario_step_id))
             scenario_probe = {
                 "scenario_id": str(payload.scenario_id),
                 "target_step_id": str(payload.scenario_step_id),
@@ -221,6 +224,8 @@ def generate_project_sse_metrics(
             probe["events"],
             max_stream_seconds=payload.max_stream_seconds,
             ai_suggester=suggest_sse_metrics,
+            source_request_id=source_request_id,
+            source_request_name=source_request_name,
         )
         generated["sample_summary"]["truncated"] = probe["truncated"]
     return {
@@ -450,7 +455,7 @@ def build_structural_sse_candidates(
                 "validation": validation,
             }
         )
-    candidates.sort(key=lambda candidate: (-candidate["recommendation_score"], candidate["name"]))
+    candidates.sort(key=_candidate_order_key)
     return candidates[:8]
 
 
@@ -501,6 +506,8 @@ def generate_sse_metric_candidate(
     *,
     max_stream_seconds: float,
     ai_suggester: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
+    source_request_id: str | None = None,
+    source_request_name: str | None = None,
 ) -> dict[str, Any]:
     facts = extract_sse_event_facts(events)
     structural = build_structural_sse_candidates(events, facts)
@@ -528,6 +535,13 @@ def generate_sse_metric_candidate(
             ai_status = "unavailable"
     result_status = "ready" if candidates else "empty"
     messages = [] if candidates else ["本次样本未发现高可信度性能指标，可从事件目录中手动选择。"]
+    timing = {
+        "scope": "request",
+        "start": "request_started",
+        "source_request_id": source_request_id,
+        "source_request_name": source_request_name,
+    }
+    candidates = [{**candidate, "timing": timing} for candidate in candidates]
     return {
         "sample_summary": {
             "event_count": len(events),
@@ -545,6 +559,19 @@ def generate_sse_metric_candidate(
         "result_status": result_status,
         "messages": messages,
     }
+
+
+def _scenario_source_request(snapshot: dict[str, Any], target_step_id: str) -> tuple[str, str]:
+    for index, step in enumerate(snapshot.get("steps") or [], start=1):
+        if not isinstance(step, dict) or str(step.get("id") or "") != target_step_id:
+            continue
+        endpoint = step.get("endpoint") if isinstance(step.get("endpoint"), dict) else {}
+        overrides = step.get("request_overrides") if isinstance(step.get("request_overrides"), dict) else {}
+        request = overrides.get("request") if isinstance(overrides.get("request"), dict) else overrides
+        method = str(request.get("method") or endpoint.get("method") or "POST").upper()
+        path = str(request.get("path") or endpoint.get("path") or "")
+        return target_step_id, f"{index:02d} {method} {path}".strip()
+    return target_step_id, target_step_id
 
 
 def _equals_match(event_name: str, path: str, expected: str) -> dict[str, Any]:
@@ -692,6 +719,19 @@ def _candidate_signature(candidate: dict[str, Any]) -> str:
     return json.dumps(candidate["match"], ensure_ascii=False, sort_keys=True, separators=(",", ":"))
 
 
+def _candidate_order_key(candidate: dict[str, Any]) -> tuple[int, int, int, float, str]:
+    validation = candidate.get("validation") or {}
+    first_sequence = validation.get("first_event_sequence")
+    sample_elapsed_ms = validation.get("sample_elapsed_ms")
+    return (
+        1 if first_sequence is None else 0,
+        int(first_sequence) if first_sequence is not None else 0,
+        int(sample_elapsed_ms) if sample_elapsed_ms is not None else 0,
+        -float(candidate.get("recommendation_score") or 0),
+        str(candidate.get("name") or ""),
+    )
+
+
 def _merge_candidates(
     structural: list[dict[str, Any]],
     ai_candidates: list[dict[str, Any]],
@@ -719,7 +759,7 @@ def _merge_candidates(
         existing["recommendation_level"] = (
             "recommended" if existing["recommendation_score"] >= 0.75 else "optional"
         )
-    return sorted(merged.values(), key=lambda candidate: (-candidate["recommendation_score"], candidate["name"]))[:8]
+    return sorted(merged.values(), key=_candidate_order_key)[:8]
 
 
 def _end_rule_from_fact(

@@ -320,6 +320,28 @@ def test_parse_locust_stats_csv_can_select_scenario_transaction_row() -> None:
     assert sample["average_response_time_ms"] == 150.0
 
 
+def test_parse_locust_stats_csv_prefers_final_snapshot_counts() -> None:
+    sample = headless_worker.parse_locust_stats_csv(
+        "Type,Name,Request Count,Failure Count,Median Response Time,Average Response Time,Requests/s,Failures/s,50%,95%,99%\n"
+        "POST,01 POST /segment,84,0,80,90,1.29,0,80,110,230\n"
+        "POST,02 POST /sse,83,0,29,31,1.28,0,29,44,52\n"
+        "SCENARIO,SCENARIO 测试,83,0,4800,4949,1.28,0,4800,7400,8500\n"
+        ",Aggregated,250,0,81,1682,3.88,0,82,6400,7600\n",
+        user_count=10,
+        request_type="SCENARIO",
+        final_stats={
+            "entries": [
+                {"request_type": "POST", "name": "01 POST /segment", "request_count": 84, "failure_count": 0},
+                {"request_type": "POST", "name": "02 POST /sse", "request_count": 84, "failure_count": 0},
+                {"request_type": "SCENARIO", "name": "SCENARIO 测试", "request_count": 84, "failure_count": 0},
+            ]
+        },
+    )
+
+    assert sample is not None
+    assert sample["request_count"] == 84
+
+
 def test_read_realtime_sample_uses_current_stats_and_history_user_count(tmp_path: Path) -> None:
     (tmp_path / "result_stats.csv").write_text(
         "Type,Name,Request Count,Failure Count,Average Response Time,Requests/s,Failures/s,50%,95%,99%\n"

@@ -145,7 +145,7 @@ def test_request_stats_ignores_locust_245_aggregate_row_with_zero_requests(
     assert performance_runs._request_stats("project-1", "perfrun-1") == []
 
 
-def test_request_stats_returns_scenario_endpoints_and_sse_metrics_as_four_business_rows(
+def test_request_stats_returns_only_configured_sse_metrics(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
@@ -177,11 +177,25 @@ def test_request_stats_returns_scenario_endpoints_and_sse_metrics_as_four_busine
                             {
                                 "id": "first_output",
                                 "name": "首次有效内容时间",
+                                "category": "first_output",
+                                "timing": {
+                                    "scope": "request",
+                                    "start": "request_started",
+                                    "source_request_id": "step_sse_chat",
+                                    "source_request_name": "02 POST /chat/sse",
+                                },
                                 "match": {"source": "data_json", "path": "$.data.index", "operator": "equals", "expected": 0},
                             },
                             {
                                 "id": "llm_started",
                                 "name": "LLM 开始时间",
+                                "category": "milestone_start",
+                                "timing": {
+                                    "scope": "request",
+                                    "start": "request_started",
+                                    "source_request_id": "step_sse_chat",
+                                    "source_request_name": "02 POST /chat/sse",
+                                },
                                 "match": {
                                     "source": "data_json",
                                     "path": "$.data.event_type",
@@ -223,4 +237,6 @@ def test_request_stats_returns_scenario_endpoints_and_sse_metrics_as_four_busine
     assert rows[1]["request_count"] == 2
     assert rows[1]["timing_semantics"] == "connection"
     assert rows[2]["request_count"] == 2
+    assert rows[2]["source_request_name"] == "02 POST /chat/sse"
+    assert rows[2]["timing_formula"] == "首次有效内容时间 - 02 POST /chat/sse 请求发起时间"
     assert all(row["method"] != "SCENARIO" for row in rows)

@@ -370,6 +370,11 @@ def _request_stats_payload(project_id: str, run_id: str) -> tuple[list[dict[str,
             run_dir / "sse-measurements.jsonl", max_attempts=0
         )
     actual_rows: dict[tuple[str, str], dict[str, object]] = {}
+    final_entries = {
+        (str(entry.get("request_type") or ""), str(entry.get("name") or "")): entry
+        for entry in headless_worker.read_locust_final_stats(run_dir).get("entries", [])
+        if isinstance(entry, dict)
+    }
     for row in rows:
         method = str(row.get("Type") or "")
         name = str(row.get("Name") or "")
@@ -377,6 +382,10 @@ def _request_stats_payload(project_id: str, run_id: str) -> tuple[list[dict[str,
             continue
         request_count = int(float(row.get("Request Count") or 0))
         failure_count = int(float(row.get("Failure Count") or 0))
+        final_entry = final_entries.get((method, name))
+        if final_entry:
+            request_count = int(final_entry.get("request_count") or 0)
+            failure_count = int(final_entry.get("failure_count") or 0)
         actual_rows[(method, name)] = {
             "name": name,
             "method": method,
@@ -415,7 +424,8 @@ def _request_stats_payload(project_id: str, run_id: str) -> tuple[list[dict[str,
         max_attempts=completed_sse_requests,
     )
     summaries = {str(item.get("metric_id") or ""): item for item in sse_summary.get("metrics", [])}
-    for metric in _planned_sse_metrics(plan):
+    planned_sse_metrics = _planned_sse_metrics(plan)
+    for metric in planned_sse_metrics:
         summary = summaries.get(metric["metric_id"], {})
         attempt_count = int(summary.get("attempt_count") or 0)
         missing_count = int(summary.get("missing_count") or 0)
@@ -436,6 +446,10 @@ def _request_stats_payload(project_id: str, run_id: str) -> tuple[list[dict[str,
                 "requests_per_second": 0,
                 "content_size": 0,
                 "metric_id": metric["metric_id"],
+                "timing_semantics": "request_to_event",
+                "source_request_id": metric.get("source_request_id") or "",
+                "source_request_name": metric.get("source_request_name") or "",
+                "timing_formula": f"{metric['name']} - {metric.get('source_request_name') or '所属 SSE 接口'} 请求发起时间",
             }
         )
     return result, sse_summary
@@ -494,7 +508,16 @@ def _planned_sse_metrics(plan: dict[str, object]) -> list[dict[str, str]]:
         for metric in config.get("metrics", []) if isinstance(config, dict) else []:
             if not isinstance(metric, dict) or not metric.get("id"):
                 continue
-            metrics.append({"metric_id": str(metric["id"]), "name": str(metric.get("name") or metric["id"])})
+            timing = metric.get("timing") if isinstance(metric.get("timing"), dict) else {}
+            metrics.append(
+                {
+                    "metric_id": str(metric["id"]),
+                    "name": str(metric.get("name") or metric["id"]),
+                    "category": str(metric.get("category") or "custom_event"),
+                    "source_request_id": str(timing.get("source_request_id") or candidate.get("id") or ""),
+                    "source_request_name": str(timing.get("source_request_name") or request.get("name") or ""),
+                }
+            )
     return metrics
 
 

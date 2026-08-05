@@ -55,7 +55,8 @@ class _FakeSseResponse:
     def __exit__(self, *_args: object) -> None:
         return None
 
-    def iter_lines(self, decode_unicode: bool = True):
+    def iter_lines(self, chunk_size: int = 512, decode_unicode: bool = True):
+        assert chunk_size == 1
         assert decode_unicode is True
         return iter(self._lines)
 
@@ -170,6 +171,33 @@ def test_sse_config_rejects_invalid_path_and_duplicate_metric_id() -> None:
         PerformanceRequestConfig(transport="sse", sse=invalid)
 
 
+def test_sse_metric_timing_defaults_to_current_request_and_rejects_other_scenario_step() -> None:
+    request = PerformanceRequestConfig(
+        transport="sse",
+        scenario_step_id="step_sse_chat",
+        sse=_sse_config(),
+    )
+
+    metric = request.sse.metrics[0]
+    assert metric.category == "custom_event"
+    assert metric.timing.scope == "request"
+    assert metric.timing.start == "request_started"
+    assert metric.timing.source_request_id is None
+
+    invalid = _sse_config()
+    invalid["metrics"][0]["timing"] = {
+        "scope": "request",
+        "start": "request_started",
+        "source_request_id": "step_gen_segment_code",
+    }
+    with pytest.raises(ValidationError, match="当前 SSE 场景步骤"):
+        PerformanceRequestConfig(
+            transport="sse",
+            scenario_step_id="step_sse_chat",
+            sse=invalid,
+        )
+
+
 def test_sse_metric_goals_are_unique_and_reference_configured_metrics() -> None:
     with pytest.raises(ValidationError, match="只能配置一个"):
         PerformanceGoal(
@@ -234,6 +262,10 @@ def test_rendered_sse_runtime_rejects_json_business_error_disguised_as_stream() 
         _FakeSseUser(response),
         _runtime_sse_request(),
         "/chat",
+        measurement_context={
+            "scenario_step_id": "step_sse_chat",
+            "scenario_step_name": "02 POST /openapi/v1/gw/multi-agent/sse",
+        },
     )
 
     assert failure_reason == "sse_business_error:500001"
@@ -267,13 +299,22 @@ def test_rendered_sse_runtime_parses_raw_frames_and_flushes_final_frame() -> Non
         _FakeSseUser(response),
         _runtime_sse_request(),
         "/chat",
+        measurement_context={
+            "scenario_step_id": "step_sse_chat",
+            "scenario_step_name": "02 POST /openapi/v1/gw/multi-agent/sse",
+        },
     )
 
     assert failure_reason == ""
     assert response.succeeded is True
     assert set(measurements[0]["metrics"]) == {"llm_start", "first_output"}
     assert measurements[0]["metrics"]["first_output"] >= measurements[0]["metrics"]["llm_start"]
-    assert "derived_metrics" not in measurements[0]
+    assert measurements[0]["connection_ms"] <= measurements[0]["metrics"]["llm_start"]
+    assert measurements[0]["source_request_id"] == "step_sse_chat"
+    assert measurements[0]["source_request_name"] == "02 POST /openapi/v1/gw/multi-agent/sse"
+    assert measurements[0]["derived_metrics"]["llm_start_to_first_content_ms"] == pytest.approx(
+        measurements[0]["metrics"]["first_output"] - measurements[0]["metrics"]["llm_start"]
+    )
     assert measurements[0]["missing_metric_ids"] == []
     assert measurements[0]["frame_count"] == 4
     assert measurements[0]["data_frame_count"] == 4
@@ -296,13 +337,17 @@ def test_sse_measurement_summary_keeps_missing_and_percentiles(tmp_path: Path) -
     summary = summarize_sse_measurements(path)
     content = next(metric for metric in summary["metrics"] if metric["metric_id"] == "first_content")
     tool = next(metric for metric in summary["metrics"] if metric["metric_id"] == "first_tool_call")
+    derived = next(
+        metric for metric in summary["metrics"] if metric["metric_id"] == "derived:llm_start_to_first_content"
+    )
     assert summary["attempt_count"] == 3
     assert content["matched_count"] == 3
     assert content["p95_ms"] == 300
     assert tool["matched_count"] == 1
     assert tool["missing_count"] == 2
     assert tool["failure_count"] == 1
-    assert all(metric["metric_id"] != "derived:llm_start_to_first_content" for metric in summary["metrics"])
+    assert derived["matched_count"] == 1
+    assert derived["p50_ms"] == 80
     assert summary["schema_version"] == "v1"
     assert summary["checksum"].startswith("sha256:")
     assert summary["failure_reasons"] == {"sse_stream_timeout": 1}

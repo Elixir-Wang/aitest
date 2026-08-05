@@ -27,7 +27,12 @@ class SseEvent:
             return None
 
 
-def normalize_sse_config(config: Any) -> Any:
+def normalize_sse_config(
+    config: Any,
+    *,
+    source_request_id: str | None = None,
+    source_request_name: str | None = None,
+) -> Any:
     """Upgrade known legacy SSE metric rules without mutating stored configuration."""
     if not isinstance(config, dict):
         return config
@@ -43,16 +48,11 @@ def normalize_sse_config(config: Any) -> Any:
             "first_output" in str(metric.get("id") or "")
             or "首次有效内容" in str(metric.get("name") or "")
         )
-        is_legacy_first_output_rule = match.get("source") == "data_json" and (
-            (
-                match.get("path") == "$.data.event_type"
-                and match.get("operator") == "equals"
-                and match.get("expected") == "answer"
-            )
-            or (
-                match.get("path") == "$.data.answer"
-                and match.get("operator") == "non_empty"
-            )
+        is_legacy_first_output_rule = (
+            match.get("source") == "data_json"
+            and match.get("path") == "$.data.event_type"
+            and match.get("operator") == "equals"
+            and match.get("expected") == "answer"
         )
         if identifies_first_output and is_legacy_first_output_rule:
             metric["match"] = {
@@ -62,6 +62,25 @@ def normalize_sse_config(config: Any) -> Any:
                 "operator": "equals",
                 "expected": 0,
             }
+            match = metric["match"]
+        if not metric.get("category"):
+            if identifies_first_output:
+                metric["category"] = "first_output"
+            elif (
+                match.get("source") == "data_json"
+                and match.get("path") == "$.data.event_type"
+                and match.get("operator") == "equals"
+                and match.get("expected") == "call_llm_start"
+            ):
+                metric["category"] = "milestone_start"
+            else:
+                metric["category"] = "custom_event"
+        timing = dict(metric.get("timing") or {})
+        timing.setdefault("scope", "request")
+        timing.setdefault("start", "request_started")
+        timing.setdefault("source_request_id", source_request_id)
+        timing.setdefault("source_request_name", source_request_name)
+        metric["timing"] = timing
         metrics.append(metric)
     normalized["metrics"] = metrics
     return normalized

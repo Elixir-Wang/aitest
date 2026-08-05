@@ -129,6 +129,9 @@ test("performance run exposes SSE data quality counters separately", () => {
 test("performance run labels streaming HTTP duration as connection latency", () => {
   assert.match(locustConsoleSource, /timing_semantics === "connection"/);
   assert.match(locustConsoleSource, /SSE 建连耗时/);
+  assert.match(locustConsoleSource, /timing_semantics === "request_to_event"/);
+  assert.match(locustConsoleSource, /timing_semantics === "event_to_event"/);
+  assert.match(locustConsoleSource, /timing_formula/);
 });
 
 test("performance failure and exception tables use backend response fields", () => {

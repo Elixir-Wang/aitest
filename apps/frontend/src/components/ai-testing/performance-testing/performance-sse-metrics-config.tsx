@@ -47,6 +47,8 @@ function candidateMetric(candidate: PerformanceSseMetricCandidate): PerformanceS
   return {
     id: candidate.metric_id,
     name: candidate.name,
+    category: candidate.category,
+    timing: candidate.timing,
     match: candidate.match,
     occurrence: "first",
     missing_policy: candidate.recommended_missing_policy,
@@ -65,12 +67,22 @@ function metricMatchSummary(metric: PerformanceSseMetric) {
   return `当 ${scope}${target} 等于 ${expected}`;
 }
 
+function metricTimingFormula(metric: PerformanceSseMetric) {
+  return `${metric.name}命中时间 - 所属接口请求发起时间`;
+}
+
 function customCandidate(fact: PerformanceSseEventFact): PerformanceSseMetricCandidate {
   return {
     suggestion_key: `custom_${fact.fact_id}`,
     metric_id: fact.metric_id,
     name: `事件 ${fact.normalized_value} 首次到达时间`,
     category: "custom_event",
+    timing: {
+      scope: "request",
+      start: "request_started",
+      source_request_id: null,
+      source_request_name: null,
+    },
     match: {
       event_name: fact.event_name,
       source: "data_json",
@@ -187,19 +199,30 @@ export function PerformanceSseMetricsConfig({
         setDraftFingerprint(requestFingerprint());
         if (generated.validation?.valid) toast.success("当前指标配置已通过样本验证");
       } else {
-        const recommendedKeys = generated.candidates
-          .filter((item) => item.recommendation_level === "recommended")
+        const currentConfig = value ?? draft;
+        const currentMetricIds = new Set(currentConfig?.metrics.map((metric) => metric.id) ?? []);
+        const selectedKeys = generated.candidates
+          .filter((candidate) =>
+            currentMetricIds.size > 0
+              ? currentMetricIds.has(candidate.metric_id)
+              : candidate.recommendation_level === "recommended",
+          )
           .map((item) => item.suggestion_key);
-        const nextDraft = buildDraft(generated, recommendedKeys);
+        const nextDraft = buildDraft(generated, selectedKeys, currentConfig);
+        const generatedMetricIds = new Set(generated.candidates.map((candidate) => candidate.metric_id));
+        const unmatchedCurrentMetrics =
+          currentConfig?.metrics.filter((metric) => !generatedMetricIds.has(metric.id)) ?? [];
+        nextDraft.metrics.push(...unmatchedCurrentMetrics);
         setResult(generated);
-        setSelectedKeys(recommendedKeys);
+        setSelectedKeys(selectedKeys);
         setDraft(nextDraft);
         setValidation(undefined);
         setDraftFingerprint(requestFingerprint());
         setVerified(
           nextDraft.metrics.length > 0 &&
+            unmatchedCurrentMetrics.length === 0 &&
             generated.candidates
-              .filter((item) => recommendedKeys.includes(item.suggestion_key))
+              .filter((item) => selectedKeys.includes(item.suggestion_key))
               .every((item) => item.validation.valid),
         );
         if (generated.candidates.length > 0) {
@@ -350,6 +373,9 @@ export function PerformanceSseMetricsConfig({
                 setVerified(true);
                 setDraftFingerprint(requestFingerprint());
                 setOpen(true);
+                if (!result) {
+                  void run();
+                }
               }}
               type="button"
               variant="outline"
@@ -426,8 +452,21 @@ export function PerformanceSseMetricsConfig({
                     </span>
                   </div>
                   <div className="mt-3 rounded-md bg-muted/60 px-3 py-2 text-sm">
-                    <span className="mr-2 text-muted-foreground text-xs">触发条件</span>
-                    <span className="break-all">{metricMatchSummary(metric)}</span>
+                    <dl className="grid gap-2 sm:grid-cols-[88px_1fr]">
+                      <dt className="text-muted-foreground text-xs">所属接口</dt>
+                      <dd className="break-all">
+                        {metric.timing.source_request_name ??
+                          metric.timing.source_request_id ??
+                          scenarioStepId ??
+                          "当前 SSE 请求"}
+                      </dd>
+                      <dt className="text-muted-foreground text-xs">开始时间</dt>
+                      <dd>所属 SSE 接口请求发起</dd>
+                      <dt className="text-muted-foreground text-xs">结束条件</dt>
+                      <dd className="break-all">{metricMatchSummary(metric)}</dd>
+                      <dt className="text-muted-foreground text-xs">计算方式</dt>
+                      <dd>{metricTimingFormula(metric)}</dd>
+                    </dl>
                   </div>
                   {item ? (
                     <p className="mt-2 text-muted-foreground text-xs">

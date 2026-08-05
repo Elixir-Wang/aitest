@@ -4,7 +4,17 @@ import { useEffect, useRef, useState } from "react";
 
 import { useRouter } from "next/navigation";
 
-import { AlertTriangle, ArrowLeft, Check, FileText, Gauge, LoaderCircle, Settings, Sparkles } from "lucide-react";
+import {
+  AlertTriangle,
+  ArrowLeft,
+  Check,
+  CircleHelp,
+  FileText,
+  Gauge,
+  LoaderCircle,
+  Settings,
+  Sparkles,
+} from "lucide-react";
 
 import { ShellSection } from "@/components/ai-testing/page-shell";
 import { Select, SelectOption } from "@/components/ui/animated-select-1";
@@ -12,6 +22,7 @@ import { Button } from "@/components/ui/button";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   type ApiAutomationEndpoint,
   type ApiAutomationEnvironment,
@@ -62,6 +73,36 @@ const initialNumbers: NumericDraft = {
   maxFailPercent: "0",
   maxAverageMs: "3000",
 };
+
+function LoadConfigFieldLabel({
+  htmlFor,
+  label,
+  description,
+}: {
+  htmlFor: string;
+  label: string;
+  description: string;
+}) {
+  return (
+    <div className="flex items-center gap-1.5">
+      <FieldLabel htmlFor={htmlFor}>{label}</FieldLabel>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            aria-label={`${label}说明`}
+            className="inline-flex size-4 items-center justify-center rounded-full text-muted-foreground hover:text-foreground"
+            type="button"
+          >
+            <CircleHelp className="size-3.5" />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent className="max-w-80 leading-relaxed" side="top">
+          {description}
+        </TooltipContent>
+      </Tooltip>
+    </div>
+  );
+}
 
 const initialDataConfig: PerformanceDataConfig = {
   source: "fixed",
@@ -736,7 +777,11 @@ export function PerformanceTestForm({ editTestId, projectIdForEdit }: Performanc
           </div>
 
           <Field>
-            <FieldLabel htmlFor="test-users">用户数</FieldLabel>
+            <LoadConfigFieldLabel
+              description="压测需要启动的虚拟用户总数。每个用户会循环执行测试任务。"
+              htmlFor="test-users"
+              label="用户数"
+            />
             <Input
               id="test-users"
               min={1}
@@ -748,7 +793,11 @@ export function PerformanceTestForm({ editTestId, projectIdForEdit }: Performanc
           </Field>
 
           <Field>
-            <FieldLabel htmlFor="test-spawn-rate">启动速率（用户/秒）</FieldLabel>
+            <LoadConfigFieldLabel
+              description="每秒启动的虚拟用户数量，必须大于 0。"
+              htmlFor="test-spawn-rate"
+              label="启动速率（用户/秒）"
+            />
             <Input
               id="test-spawn-rate"
               min={0.1}
@@ -760,7 +809,11 @@ export function PerformanceTestForm({ editTestId, projectIdForEdit }: Performanc
           </Field>
 
           <Field>
-            <FieldLabel htmlFor="test-duration">运行时长（秒）</FieldLabel>
+            <LoadConfigFieldLabel
+              description="从压测启动开始计算的总运行时间，包含用户逐步启动的爬升时间。"
+              htmlFor="test-duration"
+              label="运行时长（秒）"
+            />
             <Input
               id="test-duration"
               min={1}
@@ -772,7 +825,11 @@ export function PerformanceTestForm({ editTestId, projectIdForEdit }: Performanc
           </Field>
 
           <Field>
-            <FieldLabel htmlFor="test-wait-min">最小等待时间（秒）</FieldLabel>
+            <LoadConfigFieldLabel
+              description="用户完成一次任务后，再次执行前的最短等待时间，不能小于 0.1 秒。"
+              htmlFor="test-wait-min"
+              label="最小等待时间（秒）"
+            />
             <Input
               id="test-wait-min"
               min={0.1}
@@ -784,7 +841,11 @@ export function PerformanceTestForm({ editTestId, projectIdForEdit }: Performanc
           </Field>
 
           <Field>
-            <FieldLabel htmlFor="test-wait-max">最大等待时间（秒）</FieldLabel>
+            <LoadConfigFieldLabel
+              description="用户完成一次任务后，再次执行前的最长等待时间，不能小于最小等待时间。"
+              htmlFor="test-wait-max"
+              label="最大等待时间（秒）"
+            />
             <Input
               id="test-wait-max"
               min={0.1}
@@ -796,7 +857,11 @@ export function PerformanceTestForm({ editTestId, projectIdForEdit }: Performanc
           </Field>
 
           <Field>
-            <FieldLabel htmlFor="test-timeout">请求超时（秒）</FieldLabel>
+            <LoadConfigFieldLabel
+              description="单个请求超过该时间仍未完成时，将被记录为超时失败。"
+              htmlFor="test-timeout"
+              label="请求超时（秒）"
+            />
             <Input
               id="test-timeout"
               min={0.1}

@@ -8,6 +8,7 @@ from app.services.performance_testing.sse import SseEvent
 from app.services.performance_testing.sse_metric_generation import (
     CapturedSseEvent,
     _scenario_execution_probe,
+    _scenario_source_request,
     build_structural_sse_candidates,
     capture_sse_events,
     execute_sse_probe,
@@ -39,6 +40,17 @@ def _sample_events() -> list[CapturedSseEvent]:
         _captured(5, 3717, "call_llm_end", role="assistant"),
         _captured(6, 3717, "query_end", role="assistant"),
     ]
+
+
+def test_scenario_source_request_uses_numbered_method_and_path_instead_of_step_title() -> None:
+    snapshot = {
+        "steps": [
+            {"id": "step-code", "name": "准备参数", "endpoint": {"method": "POST", "path": "/segment-code"}},
+            {"id": "step-sse", "name": "对话(SSE)", "endpoint": {"method": "POST", "path": "/chat/sse"}},
+        ]
+    }
+
+    assert _scenario_source_request(snapshot, "step-sse") == ("step-sse", "02 POST /chat/sse")
 
 
 def test_event_facts_aggregate_observed_values_without_exposing_content() -> None:
@@ -78,6 +90,9 @@ def test_structural_candidates_use_observed_facts_without_required_metric_ids() 
         {"call_llm_start", "first_answer"}
     )
     assert all(candidate["validation"]["matched_count"] > 0 for candidate in candidates)
+    assert [candidate["validation"]["first_event_sequence"] for candidate in candidates] == sorted(
+        candidate["validation"]["first_event_sequence"] for candidate in candidates
+    )
     assert not any(
         candidate["category"] == "first_output" and candidate["match"].get("expected") == "start"
         for candidate in candidates
@@ -201,6 +216,45 @@ def test_generation_uses_structural_candidates_when_ai_suggestion_is_invalid() -
     assert result["candidates"]
     assert result["messages"] == []
     assert "candidate_sse" not in result
+
+
+def test_ai_candidates_are_returned_in_sse_event_order() -> None:
+    events = _sample_events()
+    facts = extract_sse_event_facts(events)
+    end_fact = next(fact for fact in facts if fact["normalized_value"] == "call_llm_end")
+    start_fact = next(fact for fact in facts if fact["normalized_value"] == "call_llm_start")
+
+    result = generate_sse_metric_candidate(
+        events,
+        max_stream_seconds=60,
+        ai_suggester=lambda _: {
+            "candidates": [
+                {"fact_id": end_fact["fact_id"], "name": "LLM 完成", "category": "milestone_end", "confidence": 0.99},
+                {"fact_id": start_fact["fact_id"], "name": "LLM 开始", "category": "milestone_start", "confidence": 0.99},
+            ]
+        },
+    )
+
+    sequences = [candidate["validation"]["first_event_sequence"] for candidate in result["candidates"]]
+    assert sequences == sorted(sequences)
+
+
+def test_generated_candidates_bind_timing_to_the_confirmed_sse_request() -> None:
+    result = generate_sse_metric_candidate(
+        _sample_events(),
+        max_stream_seconds=60,
+        source_request_id="step_sse_chat",
+        source_request_name="02 POST /openapi/v1/gw/multi-agent/sse",
+    )
+
+    assert result["candidates"]
+    for candidate in result["candidates"]:
+        assert candidate["timing"] == {
+            "scope": "request",
+            "start": "request_started",
+            "source_request_id": "step_sse_chat",
+            "source_request_name": "02 POST /openapi/v1/gw/multi-agent/sse",
+        }
 
 
 def test_generation_allows_empty_result_when_sample_only_contains_heartbeat() -> None:

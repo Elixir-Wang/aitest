@@ -196,7 +196,7 @@ def update_performance_test(
         current = _require_performance_test(db, project_id, test_id)
         current_data = performance_test_repo.serialize_performance_test(current)
         raw_fields = payload.model_dump(exclude_unset=True)
-        target_type = str(current["target_type"])
+        target_type = str(raw_fields.get("target_type", current["target_type"]))
         endpoint_id = raw_fields.get("endpoint_id", current["endpoint_id"])
         scenario_id = raw_fields.get("scenario_id", current["scenario_id"])
         api_environment_id = raw_fields.get("api_environment_id", current["api_environment_id"])

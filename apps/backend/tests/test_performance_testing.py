@@ -300,7 +300,11 @@ def test_create_and_update_performance_test(monkeypatch: pytest.MonkeyPatch, tmp
     updated = service.update_performance_test(
         "project-1",
         created["id"],
-        PerformanceTestUpdateIn(name="查询条目基线", performance_goal={"max_p95_response_time_ms": 500}),
+        PerformanceTestUpdateIn(
+            name="查询条目基线",
+            target_type="endpoint",
+            performance_goal={"max_p95_response_time_ms": 500},
+        ),
         ADMIN,
     )
 

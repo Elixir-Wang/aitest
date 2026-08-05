@@ -10,6 +10,7 @@ from app.repositories import performance_analysis_repo, project_repo
 from app.services.performance_testing import run_repo
 from app.services.performance_testing.analysis_evidence import collect_performance_evidence, has_analyzable_evidence
 from app.services.performance_testing.diagnosis_orchestrator import generate_validated_diagnosis
+from app.services.performance_testing.diagnosis_scope import enforce_client_only_scope
 from app.services.performance_testing.fallback_report_service import build_fallback_report_snapshot
 from app.services.performance_testing.metric_snapshot_service import (
     CALCULATOR_VERSION,
@@ -106,7 +107,7 @@ def execute_analysis(analysis_id: str) -> None:
             metric_snapshot,
             diagnose=diagnose_performance,
         )
-        diagnosis = generation.diagnosis
+        diagnosis = enforce_client_only_scope(generation.diagnosis) if generation.diagnosis else None
         if diagnosis is None:
             report_snapshot = build_fallback_report_snapshot(metric_snapshot, warnings=generation.warnings)
             proposal = {
