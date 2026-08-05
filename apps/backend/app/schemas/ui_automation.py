@@ -16,7 +16,7 @@ class UiAutomationGenerateIn(BaseModel):
 class UiAutomationRevisionIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    reason_code: Literal["missing_business_step_mapping"] = "missing_business_step_mapping"
+    reason_code: Literal["missing_business_step_mapping", "user_requested_change"] = "missing_business_step_mapping"
     instruction: str = Field(default="", max_length=2000)
     environment_id: str = ""
     exploration_run_id: str = ""

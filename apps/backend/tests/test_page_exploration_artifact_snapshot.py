@@ -7,7 +7,9 @@ import pytest
 
 from app.services.page_exploration import event_bus
 from app.services.page_exploration import output_registry
+from app.services.page_exploration import runner as page_exploration_runner
 from app.services.page_exploration import service as page_exploration_service
+from app.services.page_exploration import timeline_projection
 from app.api.v1 import page_exploration as page_exploration_api
 
 
@@ -1596,6 +1598,8 @@ page:
             "display_name": "workspace",
             "breadcrumb": ["workspace"],
             "parent_id": "",
+            "navigation_group": "",
+            "node_type": "page",
             "url": "",
             "entry_path": "/workspace",
             "structure_summary": "发现工作台入口。",
@@ -1642,7 +1646,7 @@ page:
     assert "?" not in rows[0]["entry_path"]
 
 
-def test_list_project_pages_uses_page_edges_as_parent_relation(monkeypatch, tmp_path: Path) -> None:
+def test_list_project_pages_uses_business_edges_as_parent_relation(monkeypatch, tmp_path: Path) -> None:
     page_root = tmp_path / "project-1" / "page_exploration"
     project_pages = page_root / "pages"
     project_pages.mkdir(parents=True)
@@ -1681,6 +1685,8 @@ edges:
     to_page_id: page-botSetting
     action: click
     element_name: 创建
+    edge_type: business_drilldown
+    source_region_type: content
 """,
         encoding="utf-8",
     )
@@ -1694,6 +1700,129 @@ edges:
         "page-workspace": "",
         "page-botSetting": "page-workspace",
     }
+
+
+def test_list_project_pages_keeps_navigation_switch_targets_as_siblings(monkeypatch, tmp_path: Path) -> None:
+    page_root = tmp_path / "project-1" / "page_exploration"
+    project_pages = page_root / "pages"
+    project_pages.mkdir(parents=True)
+    for page_id, path in (("page-agentStore", "/agentStore"), ("page-workspace", "/workspace")):
+        (project_pages / f"{page_id}.yaml").write_text(
+            f"page:\n  id: {page_id}\n  title: {page_id}\n  normalized_path: {path}\n",
+            encoding="utf-8",
+        )
+    (page_root / "page_edges.yaml").write_text(
+        """
+edges:
+  - id: edge-nav
+    run_id: run-1
+    from_page_id: page-agentStore
+    to_page_id: page-workspace
+    action: click
+    edge_type: navigation_switch
+    source_region_type: navigation
+    navigation_group: primary-navigation
+""",
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(page_exploration_service.settings, "PROJECT_FILE_STORAGE_ROOT", tmp_path)
+
+    rows = page_exploration_service.list_project_pages(actor={"id": "u-1"}, project_id="project-1")
+    by_id = {row["id"]: row for row in rows}
+
+    assert by_id["page-agentStore"]["parent_id"] == ""
+    assert by_id["page-workspace"]["parent_id"] == ""
+    assert by_id["page-agentStore"]["navigation_group"] == "primary-navigation"
+    assert by_id["page-workspace"]["navigation_group"] == "primary-navigation"
+
+
+def test_projection_reads_external_large_snapshot_result(monkeypatch, tmp_path: Path) -> None:
+    result_root = tmp_path / "large_tool_results"
+    result_root.mkdir()
+    (result_root / "call-bot-setting").write_text(
+        json.dumps({"url": "https://example.test/botSetting?id=1", "title": "智能体配置", "elements": []}),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(timeline_projection.settings, "BACKEND_ROOT", tmp_path)
+
+    output = timeline_projection._coerce_tool_output_dict(
+        "/large_tool_results/call-bot-setting:\n  1: external result"
+    )
+
+    assert output["url"] == "https://example.test/botSetting?id=1"
+    assert output["title"] == "智能体配置"
+
+
+def test_completed_click_records_typed_business_edge_and_page_identity(monkeypatch) -> None:
+    pages = []
+    edges = []
+    monkeypatch.setattr(
+        page_exploration_runner,
+        "_checkpoint_page_identity",
+        lambda **kwargs: pages.append(kwargs),
+    )
+    monkeypatch.setattr(
+        page_exploration_runner,
+        "_append_project_page_edge",
+        lambda **kwargs: edges.append(kwargs),
+    )
+
+    page_exploration_runner._record_page_graph_from_tool_event(
+        {
+            "type": "agent_tool_completed",
+            "payload": {
+                "tool_name": "playwright_click_tool",
+                "before_url": "https://example.test/workspace",
+                "after_url": "https://example.test/botSetting?id=1",
+                "url_changed": True,
+                "source_region_type": "content",
+                "element_key": "button-create",
+            },
+        },
+        project_id="project-1",
+        run_id="run-1",
+        state={},
+    )
+
+    assert {item["url"] for item in pages} == {
+        "https://example.test/workspace",
+        "https://example.test/botSetting?id=1",
+    }
+    assert edges[0]["from_page_id"] == "page-workspace"
+    assert edges[0]["to_page_id"] == "page-botSetting"
+    assert edges[0]["edge_type"] == "business_drilldown"
+
+
+def test_completed_navigation_click_records_sibling_navigation_edge(monkeypatch) -> None:
+    edges = []
+    monkeypatch.setattr(page_exploration_runner, "_checkpoint_page_identity", lambda **_kwargs: None)
+    monkeypatch.setattr(
+        page_exploration_runner,
+        "_append_project_page_edge",
+        lambda **kwargs: edges.append(kwargs),
+    )
+
+    page_exploration_runner._record_page_graph_from_tool_event(
+        {
+            "type": "agent_tool_completed",
+            "payload": {
+                "tool_name": "playwright_click_tool",
+                "before_url": "https://example.test/agentStore",
+                "after_url": "https://example.test/workspace",
+                "url_changed": True,
+                "source_region_type": "navigation",
+                "navigation_group": "primary-navigation",
+                "element_key": "clickable-workspace",
+            },
+        },
+        project_id="project-1",
+        run_id="run-1",
+        state={},
+    )
+
+    assert edges[0]["edge_type"] == "navigation_switch"
+    assert edges[0]["navigation_group"] == "primary-navigation"
 
 
 def test_get_project_page_yaml_content_reads_shared_page_yaml(monkeypatch, tmp_path: Path) -> None:

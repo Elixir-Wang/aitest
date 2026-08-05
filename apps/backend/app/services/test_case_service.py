@@ -12,7 +12,7 @@ from app.core.db import connect
 from app.core.exceptions import api_error
 from app.core.storage import resolve_stored_path
 from app.repositories import document_repo, project_repo, test_case_repo, test_point_repo
-from app.schemas.test_case import ManualTestCaseCreateIn, TestCaseReviewIn, TestCaseSetCreateIn
+from app.schemas.test_case import ManualTestCaseCreateIn, ManualTestCaseUpdateIn, TestCaseReviewIn, TestCaseSetCreateIn
 from app.services.test_case_xmind_exporter import build_test_case_set_xmind, safe_xmind_filename
 from app.services import rejected_case_knowledge
 
@@ -62,6 +62,27 @@ def create_manual_test_case(project_id: str, payload: ManualTestCaseCreateIn, ac
         if not created:
             raise api_error(500, "MANUAL_TEST_CASE_CREATE_FAILED", "测试用例创建失败。")
         return _serialize_manual_case(created)
+
+
+def update_manual_test_case(project_id: str, case_id: str, payload: ManualTestCaseUpdateIn, actor) -> dict:
+    _require_admin(actor)
+    with connect() as db:
+        _require_visible_project(db, project_id, actor)
+        row = test_case_repo.find_manual_case_by_id(db, case_id)
+        if not row or row["project_id"] != project_id:
+            raise api_error(404, "NOT_FOUND", "测试用例不存在。")
+        test_case_repo.update_manual_case(
+            db,
+            case_id=case_id,
+            title=payload.title,
+            preconditions=payload.preconditions,
+            steps_json=json.dumps([step.model_dump() for step in payload.steps], ensure_ascii=False),
+            notes=payload.notes,
+        )
+        updated = test_case_repo.find_manual_case_by_id(db, case_id)
+        if not updated:
+            raise api_error(500, "MANUAL_TEST_CASE_UPDATE_FAILED", "测试用例更新失败。")
+        return _serialize_manual_case(updated)
 
 
 def delete_manual_test_case(project_id: str, case_id: str, actor) -> None:

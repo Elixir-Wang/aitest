@@ -765,7 +765,7 @@ function IterationSteps({
         </div>
         {legacyTechnicalSteps ? (
           <p className="mt-2 text-amber-700 text-xs dark:text-amber-300">
-            旧版资产缺少业务步骤映射，当前按技术动作展示；重新生成资产后可查看业务步骤名称与动作分组。
+            旧版资产缺少业务步骤映射，当前使用原始步骤标识展示；重新生成资产后可查看更易读的业务步骤名称。
           </p>
         ) : null}
       </header>
@@ -774,7 +774,8 @@ function IterationSteps({
         <div className="divide-y">
           {visibleSteps.map((step, index) => {
             const expanded = expandedSteps.has(step.step_id);
-            const hasDetails = Boolean(step.error || step.artifacts.length || step.operation_ids.length);
+            // Internal operation IDs are diagnostic data, so they should not make every step expandable.
+            const hasDetails = Boolean(step.error || step.artifacts.length);
             return (
               <article key={`${iteration.iteration_id}-${step.step_id}`}>
                 <button
@@ -788,11 +789,7 @@ function IterationSteps({
                     <span className="block font-medium text-sm leading-5">
                       {index + 1}. {step.title || step.step_id}
                     </span>
-                    <span className="mt-0.5 block text-[10px] text-muted-foreground">
-                      <span className="font-mono">{step.step_id}</span>
-                      <span aria-hidden="true"> · </span>
-                      <span>{stepResultLabel(step)}</span>
-                    </span>
+                    <span className="mt-0.5 block text-[10px] text-muted-foreground">{stepResultLabel(step)}</span>
                   </span>
                   <span className="pt-0.5 font-mono text-muted-foreground text-xs tabular-nums">
                     {formatDuration(step.duration_ms)}
@@ -844,29 +841,17 @@ function StepDetails({ step, artifactUrls }: { step: UiAutomationStepResult; art
           </pre>
         </div>
       ) : null}
-      {step.operation_ids.length ? (
-        <div>
-          <div className="mb-1.5 text-muted-foreground text-xs">技术动作</div>
-          <div className="flex flex-wrap gap-1.5">
-            {step.operation_ids.map((operationId) => (
-              <code className="border bg-background px-1.5 py-1 text-[10px]" key={operationId}>
-                {operationId}
-              </code>
-            ))}
-          </div>
-        </div>
-      ) : null}
       {step.artifacts.map((artifact) =>
         artifactUrls[artifact.artifact_id] ? (
           <figure className="max-w-3xl overflow-hidden border bg-background" key={artifact.artifact_id}>
             {/* biome-ignore lint/performance/noImgElement: authenticated evidence is loaded as a blob URL. */}
             <img
-              alt={`${step.title || step.step_id}失败截图`}
+              alt={`${step.title || step.step_id}${step.error ? "失败截图" : "执行证据"}`}
               className="aspect-video w-full object-contain"
               src={artifactUrls[artifact.artifact_id]}
             />
-            <figcaption className="border-t px-3 py-2 font-mono text-[10px] text-muted-foreground">
-              {artifact.artifact_id}
+            <figcaption className="border-t px-3 py-2 text-muted-foreground text-xs">
+              {step.error ? "失败截图" : "执行证据"}
             </figcaption>
           </figure>
         ) : null,

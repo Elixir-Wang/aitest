@@ -2,7 +2,7 @@ import { Loader } from "@/components/ui/loader";
 import { authStateStatusTone, explorationStatusTone, StatusBadge } from "@/components/ui/status-badge";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { ApiRequestError, formatDateTime } from "@/lib/api-client";
-import type { ExplorationEnvironment } from "@/lib/exploration-types";
+import type { ExplorationEnvironment, ExplorationMode } from "@/lib/exploration-types";
 
 export type EnvironmentForm = {
   projectId: string;
@@ -46,6 +46,12 @@ export const explorationStatusLabels: Record<string, string> = {
   interrupted: "已中断",
   completed: "已完成",
   blocked: "阻塞",
+};
+
+export const explorationModeLabels: Record<ExplorationMode, string> = {
+  goal: "目标探索",
+  autonomous: "自主探索",
+  loop: "Loop 全站探索",
 };
 
 export const loginStrategyLabels: Record<string, string> = {

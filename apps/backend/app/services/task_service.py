@@ -693,7 +693,8 @@ def _ui_automation_generation_tasks(db, project_names: dict[str, str]) -> list[d
             project_name=project_names[row["project_id"]],
             module="ui_automation",
             module_label="UI 自动化",
-            title=("修订 UI 自动化：" if row["generation_mode"] == "revise" else "生成 UI 自动化：") + row["case_title"],
+            title=("AI 修改自动化脚本：" if row["generation_mode"] == "revise" else "生成 UI 自动化：")
+            + row["case_title"],
             status=row["status"],
             status_meta=UI_AUTOMATION_GENERATION_STATUS,
             summary=row["error_message"] or "",
@@ -835,4 +836,3 @@ def _placeholders(values: dict) -> str:
 
 def _table_exists(db, table: str) -> bool:
     return db.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?", (table,)).fetchone() is not None
-

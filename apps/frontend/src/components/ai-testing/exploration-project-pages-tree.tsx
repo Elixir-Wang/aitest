@@ -13,6 +13,8 @@ export type ExplorationPageRecord = {
   title: string;
   display_name?: string;
   parent_id?: string;
+  navigation_group?: string;
+  node_type?: "page";
   url: string;
   entry_path: string;
 };
@@ -254,7 +256,7 @@ export function ExplorationProjectPagesTree({
   }, [projectId, selectedPage?.id]);
 
   return (
-    <div className="overflow-hidden rounded-lg border bg-background">
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border bg-background">
       {loading ? (
         <div className="p-6">
           <Table>
@@ -266,10 +268,10 @@ export function ExplorationProjectPagesTree({
       ) : pages.length === 0 ? (
         <IllustratedEmptyState description="执行页面探索后，已发现的页面会展示在这里。" title="暂无页面信息" />
       ) : (
-        <div className="grid min-h-[30rem] lg:grid-cols-[18rem_minmax(0,1fr)]">
-          <aside className="min-h-0 border-b bg-muted/20 lg:border-r lg:border-b-0">
+        <div className="grid min-h-0 flex-1 lg:grid-cols-[18rem_minmax(0,1fr)]">
+          <aside className="flex min-h-0 flex-col border-b bg-muted/20 lg:border-r lg:border-b-0">
             <div className="border-b px-3 py-2 font-medium text-sm">页面目录</div>
-            <div className="max-h-[34rem] overflow-auto p-2">
+            <div className="min-h-0 flex-1 overflow-auto p-2">
               {tree.children.map((node) => (
                 <ExplorationPageTreeItem
                   activePageId={selectedPage?.id ?? ""}
@@ -283,7 +285,7 @@ export function ExplorationProjectPagesTree({
               ))}
             </div>
           </aside>
-          <main className="min-w-0 p-4">
+          <main className="flex min-h-0 min-w-0 flex-col p-4">
             {selectedPage ? (
               <YamlCodePreview content={yamlContent?.content ?? ""} error={yamlError} loading={yamlLoading} />
             ) : null}
@@ -458,7 +460,7 @@ function YamlCodePreview({ content, error, loading }: { content: string; error: 
   }
 
   return (
-    <div className="overflow-hidden rounded-lg border bg-slate-50 shadow-sm dark:bg-slate-950/60">
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border bg-slate-50 shadow-sm dark:bg-slate-950/60">
       <div className="flex h-9 items-center justify-between border-b bg-white/80 px-3 dark:bg-slate-900/70">
         <div className="flex items-center gap-2 font-medium text-slate-700 text-xs dark:text-slate-200">
           <FileCode2 className="size-3.5 text-cyan-700 dark:text-cyan-300" />
@@ -466,7 +468,7 @@ function YamlCodePreview({ content, error, loading }: { content: string; error: 
         </div>
         <div className="text-slate-400 text-xs">{lines.length} 行</div>
       </div>
-      <pre className="max-h-[34rem] overflow-auto p-0 font-mono text-[12px] leading-6">
+      <pre className="min-h-0 flex-1 overflow-auto p-0 font-mono text-[12px] leading-6">
         {lines.map((line) => (
           <div
             className="grid grid-cols-[3.5rem_minmax(0,1fr)] border-slate-200/55 border-b last:border-b-0 dark:border-slate-800/70"

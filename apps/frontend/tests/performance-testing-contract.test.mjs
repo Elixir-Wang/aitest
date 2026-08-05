@@ -311,11 +311,13 @@ test("stress mode configures automatic capacity discovery instead of manual stag
   assert.match(formSource, /mode === "stress"/);
 });
 
-test("deleting a performance test confirms all history will be removed", () => {
+test("deleting a performance test uses the system dialog and confirms all history will be removed", () => {
   assert.match(projectListSource, /将同时删除该条目下的全部压测历史/);
   assert.match(allListSource, /将同时删除该条目下的全部压测历史/);
-  assert.match(projectListSource, /window\.confirm/);
-  assert.match(allListSource, /window\.confirm/);
+  assert.match(projectListSource, /<AlertDialog/);
+  assert.match(allListSource, /<AlertDialog/);
+  assert.doesNotMatch(projectListSource, /window\.confirm/);
+  assert.doesNotMatch(allListSource, /window\.confirm/);
 });
 
 test("performance script API and review route support generation, edits, and validation", () => {
@@ -326,13 +328,19 @@ test("performance script API and review route support generation, edits, and val
   assert.match(scriptReviewSource, /结构化请求配置/);
   assert.match(scriptReviewSource, /只读 Locust 脚本/);
   assert.match(scriptReviewSource, /校验通过/);
+  assert.doesNotMatch(scriptReviewSource, /生成来源：/);
+  assert.doesNotMatch(scriptReviewSource, /接口场景配置/);
+  assert.doesNotMatch(scriptReviewSource, /脚本使用生成时的场景当前保存版本/);
+  assert.doesNotMatch(scriptReviewSource, /<details/);
+  assert.match(scriptReviewSource, /<Sheet/);
+  assert.match(scriptReviewSource, /执行顺序/);
   assert.doesNotMatch(scriptReviewSource, /确认脚本|已确认|重新确认/);
   assert.match(scriptReviewSource, /requestPreview\?\.request\.headers \?\? planRequest\.headers/);
   assert.match(scriptReviewSource, /step\.request(?:\?\.|\.)method/);
   assert.match(scriptReviewSource, /step\.request(?:\?\.|\.)path/);
   assert.match(scriptReviewSource, /查询参数/);
   assert.match(scriptReviewSource, /请求体/);
-  assert.match(scriptReviewSource, /step\.request\.multipart_form/);
+  assert.match(scriptReviewSource, /step\.request\?\.multipart_form/);
 });
 
 test("performance script review reuses the clipboard control and keeps JSON editors white", () => {

@@ -19,6 +19,7 @@ from app.core import settings
 from app.core.db import connect
 from app.services.performance_testing import run_repo
 from app.services.performance_testing.locust_runtime import runtime_locustfile_source
+from app.services.performance_testing.script_renderer import runtime_module_source
 
 
 _PROCESSES: dict[str, subprocess.Popen] = {}
@@ -129,6 +130,7 @@ def _write_run_files(run_dir: Path, run_id: str, script_code: str, runtime_paylo
         encoding="utf-8",
     )
     (run_dir / "generated_locustfile.py").write_text(script_code, encoding="utf-8")
+    (run_dir / "scenario_runtime.py").write_text(runtime_module_source(), encoding="utf-8")
     (run_dir / "locustfile.py").write_text(runtime_locustfile_source(), encoding="utf-8")
 
 

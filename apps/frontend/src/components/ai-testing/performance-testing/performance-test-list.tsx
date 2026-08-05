@@ -4,10 +4,20 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { useRouter } from "next/navigation";
 
-import { ArrowRight, Eye, Gauge, Pencil, Trash2 } from "lucide-react";
+import { ArrowRight, Eye, Gauge, Loader2, Pencil, Trash2 } from "lucide-react";
 
 import { ListToolbar, RowActions, ShellSection } from "@/components/ai-testing/page-shell";
 import { TableLoadingRow } from "@/components/ai-testing/table-loading-row";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -31,6 +41,7 @@ export function PerformanceTestList({ projectId }: { projectId: string }) {
   const [busy, setBusy] = useState(false);
   const [search, setSearch] = useState("");
   const [paramsItem, setParamsItem] = useState<PerformanceTest | null>(null);
+  const [pendingDeleteIds, setPendingDeleteIds] = useState<string[]>([]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -70,15 +81,20 @@ export function PerformanceTestList({ projectId }: { projectId: string }) {
     );
   }
 
-  async function removeItems(ids: string[]) {
+  function requestRemoveItems(ids: string[]) {
     if (ids.length === 0) return;
-    if (!window.confirm("删除后将同时删除该条目下的全部压测历史、趋势、日志和下载文件，且无法恢复。")) return;
+    setPendingDeleteIds(ids);
+  }
+
+  async function removeItems() {
+    if (pendingDeleteIds.length === 0) return;
     setBusy(true);
     try {
-      await Promise.all(ids.map((id) => deletePerformanceTest(projectId, id)));
+      await Promise.all(pendingDeleteIds.map((id) => deletePerformanceTest(projectId, id)));
       setSelectedIds([]);
       await load();
-      toast.success(`已删除 ${ids.length} 个性能测试`);
+      toast.success(`已删除 ${pendingDeleteIds.length} 个性能测试`);
+      setPendingDeleteIds([]);
     } catch (error) {
       toast.error(apiErrorMessage(error, "删除失败"));
     } finally {
@@ -91,7 +107,9 @@ export function PerformanceTestList({ projectId }: { projectId: string }) {
       <ListToolbar
         createLabel="新建性能测试"
         description=""
-        onBatchDelete={busy || visibleSelectedIds.length === 0 ? undefined : () => removeItems(visibleSelectedIds)}
+        onBatchDelete={
+          busy || visibleSelectedIds.length === 0 ? undefined : () => requestRemoveItems(visibleSelectedIds)
+        }
         onCreate={() => router.push("/performance-tests/new")}
         onSearch={setSearch}
         placeholder="搜索名称或环境"
@@ -186,7 +204,7 @@ export function PerformanceTestList({ projectId }: { projectId: string }) {
                         icon: Trash2,
                         destructive: true,
                         disabled: busy,
-                        onSelect: busy ? undefined : () => removeItems([item.id]),
+                        onSelect: busy ? undefined : () => requestRemoveItems([item.id]),
                       },
                     ]}
                     label={`${item.name} 操作`}
@@ -213,6 +231,36 @@ export function PerformanceTestList({ projectId }: { projectId: string }) {
         </Table>
       </div>
       <PerformanceTestParamsDialog item={paramsItem} onOpenChange={(open) => !open && setParamsItem(null)} />
+      <AlertDialog
+        onOpenChange={(open) => !busy && !open && setPendingDeleteIds([])}
+        open={pendingDeleteIds.length > 0}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <div className="flex size-10 items-center justify-center rounded-lg bg-destructive/10 text-destructive">
+              <Trash2 className="size-5" />
+            </div>
+            <AlertDialogTitle>删除性能测试？</AlertDialogTitle>
+            <AlertDialogDescription>
+              删除后将同时删除该条目下的全部压测历史、趋势、日志和下载文件，且无法恢复。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={busy}>取消</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={busy}
+              onClick={(event) => {
+                event.preventDefault();
+                void removeItems();
+              }}
+            >
+              {busy ? <Loader2 className="size-4 animate-spin" /> : <Trash2 className="size-4" />}
+              {busy ? "删除中" : "确认删除"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </ShellSection>
   );
 }

@@ -16,8 +16,8 @@ import {
   Gauge,
   Loader2,
   Play,
-  RotateCcw,
   ShieldCheck,
+  Sparkles,
   TerminalSquare,
   Trash2,
   Workflow,
@@ -38,18 +38,11 @@ import {
 import { Select, SelectOption } from "@/components/ui/animated-select-1";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { chineseCompletionTone, StatusBadge } from "@/components/ui/status-badge";
-import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Textarea } from "@/components/ui/textarea";
 import {
   apiRequest,
   createUiAutomationExecutionRun,
@@ -218,7 +211,7 @@ export function UiAutomationAssetDetail({ projectId, assetId }: { projectId: str
 
   function openRevisionDialog() {
     if (!asset || !latestGeneration?.environment_id) {
-      toast.error("缺少最近生成环境，无法修订");
+      toast.error("缺少最近生成环境，无法进行 AI 修改");
       return;
     }
     setRevisionInstruction("");
@@ -228,23 +221,27 @@ export function UiAutomationAssetDetail({ projectId, assetId }: { projectId: str
 
   async function submitRevision() {
     if (!asset || !latestGeneration?.environment_id) {
-      toast.error("缺少最近生成环境，无法修订");
+      toast.error("缺少最近生成环境，无法进行 AI 修改");
+      return;
+    }
+    if (!revisionInstruction.trim()) {
+      toast.error("请输入修改要求");
       return;
     }
     setRegenerating(true);
     try {
       const run = await createUiAutomationRevisionRun(projectId, assetId, {
-        reason_code: "missing_business_step_mapping",
+        reason_code: "user_requested_change",
         instruction: revisionInstruction.trim(),
         environment_id: latestGeneration.environment_id,
         exploration_run_id: latestGeneration.exploration_run_id || undefined,
         run_after_revision: runAfterRevision,
       });
       setRevisionDialogOpen(false);
-      toast.success(`已创建修订任务 ${run.id}`);
+      toast.success(`已创建 AI 修改任务 ${run.id}`);
       await loadDetail(false);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "修订失败");
+      toast.error(error instanceof Error ? error.message : "AI 修改失败");
     } finally {
       setRegenerating(false);
     }
@@ -294,7 +291,8 @@ export function UiAutomationAssetDetail({ projectId, assetId }: { projectId: str
               </Link>
             </Button>
             <Button disabled={regenerating || !asset} onClick={openRevisionDialog} variant="outline">
-              {regenerating ? <Loader2 className="size-4 animate-spin" /> : <RotateCcw className="size-4" />}修订自动化
+              {regenerating ? <Loader2 className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
+              AI 修改
             </Button>
             <Button disabled={!canExecute} onClick={() => void execute()}>
               {executeLoading ? <Loader2 className="size-4 animate-spin" /> : <Play className="size-4" />}
@@ -444,43 +442,67 @@ export function UiAutomationAssetDetail({ projectId, assetId }: { projectId: str
         }}
         open={revisionDialogOpen}
       >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>修订 UI 自动化</DialogTitle>
-            <DialogDescription>
-              当前资产逻辑保持不变，系统将优先补全业务步骤名称和动作分组。无法安全映射时，才会让智能体基于当前资产做最小修订。
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="rounded-md border bg-muted/40 p-3 text-muted-foreground text-sm">
-              检测问题：当前资产缺少业务步骤映射，执行详情只能展示技术动作。
+        <DialogContent
+          aria-describedby={undefined}
+          className="grid gap-0 overflow-hidden p-0 sm:max-w-lg [&>[data-slot=dialog-close]]:top-4 [&>[data-slot=dialog-close]]:right-4"
+        >
+          <DialogHeader className="border-b bg-muted/20 px-6 py-5 pr-14">
+            <div className="flex items-center gap-3">
+              <span className="grid size-10 shrink-0 place-items-center rounded-lg border border-primary/20 bg-primary/10 text-primary shadow-xs">
+                <Sparkles className="size-[18px]" />
+              </span>
+              <DialogTitle className="font-semibold text-lg leading-6">AI 修改自动化脚本</DialogTitle>
             </div>
-            <Field>
-              <FieldLabel htmlFor="ui-automation-revision-instruction">补充修改要求（可选）</FieldLabel>
+          </DialogHeader>
+          <div className="space-y-5 px-6 py-6">
+            <Field className="gap-2.5">
+              <div className="flex items-center justify-between gap-4">
+                <FieldLabel className="font-semibold" htmlFor="ui-automation-revision-instruction">
+                  修改要求
+                </FieldLabel>
+                <span className="font-mono text-[11px] text-muted-foreground tabular-nums">
+                  {revisionInstruction.length}/2000
+                </span>
+              </div>
               <Textarea
+                autoFocus
+                className="min-h-36 resize-none bg-muted/15 px-4 py-3.5 text-sm leading-6 shadow-[inset_0_1px_2px_rgba(15,23,42,0.035)] placeholder:text-muted-foreground/75 focus-visible:bg-background"
                 id="ui-automation-revision-instruction"
                 maxLength={2000}
                 onChange={(event) => setRevisionInstruction(event.target.value)}
-                placeholder="例如：保留当前定位器和断言，只补全业务步骤名称和动作分组。留空时按当前资产和检测问题做最小修订。"
+                placeholder="告诉 AI 需要怎样修改脚本"
                 value={revisionInstruction}
               />
             </Field>
-            <label className="flex items-center gap-2 text-sm" htmlFor="ui-automation-run-after-revision">
+            <label
+              className="group flex cursor-pointer items-center gap-3 rounded-lg border border-border/70 bg-muted/20 px-4 py-3.5 text-sm transition-colors hover:border-primary/20 hover:bg-primary/[0.035]"
+              htmlFor="ui-automation-run-after-revision"
+            >
               <Checkbox
                 checked={runAfterRevision}
+                className="size-[18px]"
                 id="ui-automation-run-after-revision"
                 onCheckedChange={(checked) => setRunAfterRevision(Boolean(checked))}
               />
-              修订成功后立即运行 UI 用例验证
+              <span className="font-medium">修改完成后运行测试</span>
             </label>
           </div>
-          <DialogFooter>
-            <Button disabled={regenerating} onClick={() => setRevisionDialogOpen(false)} variant="outline">
+          <DialogFooter className="mx-0 mb-0 rounded-none bg-muted/25 px-6 py-4">
+            <Button
+              className="min-w-20"
+              disabled={regenerating}
+              onClick={() => setRevisionDialogOpen(false)}
+              variant="outline"
+            >
               取消
             </Button>
-            <Button disabled={regenerating} onClick={() => void submitRevision()}>
-              {regenerating ? <Loader2 className="size-4 animate-spin" /> : <RotateCcw className="size-4" />}
-              修订并验证
+            <Button
+              className="min-w-28 shadow-xs"
+              disabled={regenerating || !revisionInstruction.trim()}
+              onClick={() => void submitRevision()}
+            >
+              {regenerating ? <Loader2 className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
+              开始修改
             </Button>
           </DialogFooter>
         </DialogContent>

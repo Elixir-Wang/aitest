@@ -132,10 +132,12 @@ def create_generation_run(project_id: str, payload: dict, actor) -> dict:
 def create_revision_run(project_id: str, asset_id: str, payload: dict, actor) -> dict:
     _require_admin(actor)
     reason_code = str(payload.get("reason_code", "")).strip()
-    if reason_code != "missing_business_step_mapping":
+    if reason_code not in {"missing_business_step_mapping", "user_requested_change"}:
         raise api_error(400, "UI_AUTOMATION_REVISION_REASON_UNSUPPORTED", "不支持的 UI 自动化修订原因。")
     run_id = f"uigen-{secrets.token_hex(8)}"
     instruction = str(payload.get("instruction", "")).strip()
+    if reason_code == "user_requested_change" and not instruction:
+        raise api_error(400, "UI_AUTOMATION_REVISION_INSTRUCTION_REQUIRED", "AI 修改要求不能为空。")
     with connect() as db:
         _require_visible_project(db, project_id, actor)
         asset = ui_automation_repo.find_asset(db, asset_id)

@@ -413,7 +413,7 @@ def list_run_pages(actor, run_id: str) -> list[dict]:
 def list_project_pages(actor, project_id: str) -> list[dict]:
     """列出项目级探索页面产物。"""
     base_dir = settings.PROJECT_FILE_STORAGE_ROOT / project_id / "page_exploration"
-    parent_by_page_id = _project_page_parent_index(project_id)
+    parent_by_page_id, navigation_group_by_page_id = _project_page_relations(project_id)
     rows = []
     for page in _inline_list_pages(project_id):
         last_explored = page.get("last_explored") if isinstance(page.get("last_explored"), dict) else {}
@@ -429,6 +429,8 @@ def list_project_pages(actor, project_id: str) -> list[dict]:
                 "display_name": _string(page.get("display_name") or page_id),
                 "breadcrumb": page.get("breadcrumb") if isinstance(page.get("breadcrumb"), list) else [],
                 "parent_id": parent_by_page_id.get(page_id, ""),
+                "navigation_group": navigation_group_by_page_id.get(page_id, ""),
+                "node_type": "page",
                 "url": "",
                 "entry_path": _string(page.get("normalized_path") or ""),
                 "structure_summary": _string(page.get("structure_summary") or ""),
@@ -479,14 +481,29 @@ def clear_project_artifacts(actor, project_id: str) -> dict:
     }
 
 
-def _project_page_parent_index(project_id: str) -> dict[str, str]:
+def _project_page_relations(project_id: str) -> tuple[dict[str, str], dict[str, str]]:
     parent_by_page_id: dict[str, str] = {}
+    inferred_parent_by_page_id: dict[str, str] = {}
+    navigation_group_by_page_id: dict[str, str] = {}
     for edge in _list_project_page_edges(project_id):
         from_page_id = _string(edge.get("from_page_id"))
         to_page_id = _string(edge.get("to_page_id"))
-        if from_page_id and to_page_id and from_page_id != to_page_id:
-            parent_by_page_id[to_page_id] = from_page_id
-    return parent_by_page_id
+        if not from_page_id or not to_page_id or from_page_id == to_page_id:
+            continue
+        edge_type = _string(edge.get("edge_type"))
+        if edge_type == "hierarchy":
+            parent_by_page_id.setdefault(to_page_id, from_page_id)
+            continue
+        if edge_type == "business_drilldown":
+            inferred_parent_by_page_id.setdefault(to_page_id, from_page_id)
+            continue
+        if edge_type == "navigation_switch":
+            group_id = _string(edge.get("navigation_group")) or "primary-navigation"
+            navigation_group_by_page_id[from_page_id] = group_id
+            navigation_group_by_page_id[to_page_id] = group_id
+    for page_id, parent_id in inferred_parent_by_page_id.items():
+        parent_by_page_id.setdefault(page_id, parent_id)
+    return parent_by_page_id, navigation_group_by_page_id
 
 
 def get_exploration_report(actor, run_id: str) -> dict:

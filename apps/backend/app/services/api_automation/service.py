@@ -2078,6 +2078,7 @@ def create_api_scenario_run(
             raise api_error(422, "API_SCENARIO_COLLECTION_FAILED", f"场景脚本无法收集：{error_output[:2000]}")
     execution_snapshot = {
         "target_type": "scenario",
+        "endpoint_count": _scenario_endpoint_count(snapshot),
         "scenario": {
             "id": scenario_id,
             "name": snapshot.get("name", scenario["name"]),
@@ -3756,6 +3757,62 @@ def _script_source_hash(endpoint: dict, cases: list[dict]) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
+def _scenario_endpoint_count(snapshot: dict) -> int:
+    steps = snapshot.get("steps") if isinstance(snapshot, dict) else None
+    if not isinstance(steps, list):
+        return 0
+    return len(
+        {
+            step.get("endpoint_id")
+            for step in steps
+            if isinstance(step, dict)
+            and step.get("enabled", True)
+            and step.get("step_type", "api_request") == "api_request"
+            and step.get("endpoint_id")
+        }
+    )
+
+
+def _find_run_scenario_snapshot(db, row: Row, execution_snapshot: dict) -> dict:
+    data_file_path = execution_snapshot.get("data_file_path")
+    if data_file_path:
+        try:
+            data_path = _resolve_generated_path(row["project_id"], data_file_path)
+            stored_snapshot = json.loads(data_path.read_text(encoding="utf-8"))
+            if isinstance(stored_snapshot, dict):
+                return stored_snapshot
+        except (OSError, ValueError, json.JSONDecodeError):
+            pass
+
+    scenario = execution_snapshot.get("scenario")
+    if not isinstance(scenario, dict):
+        return {}
+    scenario_id = scenario.get("id")
+    published_hash = scenario.get("published_hash")
+    if not scenario_id or not published_hash:
+        return {}
+
+    current = db.execute(
+        """
+        SELECT published_snapshot_json AS snapshot_json
+        FROM api_scenarios
+        WHERE id = ? AND project_id = ? AND published_hash = ?
+        """,
+        (scenario_id, row["project_id"], published_hash),
+    ).fetchone()
+    if current:
+        return api_automation_repo.loads_json(current["snapshot_json"], {})
+    revision = db.execute(
+        """
+        SELECT snapshot_json
+        FROM api_scenario_revisions
+        WHERE scenario_id = ? AND project_id = ? AND published_hash = ?
+        """,
+        (scenario_id, row["project_id"], published_hash),
+    ).fetchone()
+    return api_automation_repo.loads_json(revision["snapshot_json"], {}) if revision else {}
+
+
 def _serialize_api_run(row: Row | None, db=None) -> dict:
     if row is None:
         raise api_error(404, "API_RUN_NOT_FOUND", "接口自动化运行记录不存在。")
@@ -3795,7 +3852,12 @@ def _serialize_api_run(row: Row | None, db=None) -> dict:
     scripts = snapshot.get("scripts", [])
     snapshot.setdefault("script_count", len(scripts) or len(script_ids))
     endpoint_count = len({item.get("endpoint_id") for item in scripts if item.get("endpoint_id")})
-    snapshot.setdefault("endpoint_count", endpoint_count or len(scripts) or len(script_ids))
+    target_type = row["target_type"] if "target_type" in keys else "scripts"
+    if target_type == "scenario" and "endpoint_count" not in snapshot:
+        scenario_snapshot = _find_run_scenario_snapshot(db, row, snapshot) if db is not None else {}
+        snapshot["endpoint_count"] = _scenario_endpoint_count(scenario_snapshot)
+    else:
+        snapshot.setdefault("endpoint_count", endpoint_count or len(scripts) or len(script_ids))
     snapshot.setdefault("case_count", sum(int(item.get("case_count") or 0) for item in scripts))
     return {
         "id": row["id"],
@@ -3806,7 +3868,7 @@ def _serialize_api_run(row: Row | None, db=None) -> dict:
         "task_id": row["task_id"],
         "status": row["status"],
         "script_ids": script_ids,
-        "target_type": row["target_type"] if "target_type" in keys else "scripts",
+        "target_type": target_type,
         "target_ids": api_automation_repo.loads_json(row["target_ids_json"], []) if "target_ids_json" in keys else [],
         "execution_snapshot": snapshot,
         "command_summary": row["command_summary"],

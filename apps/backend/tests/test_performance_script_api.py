@@ -227,9 +227,10 @@ def test_scenario_script_generation_uses_current_saved_version(
         "wait",
     ]
     assert generated["plan"]["steps"][1]["request"]["name"] == "02 GET /api/items/{item_id}"
-    assert "SCENARIO 查询条目场景" in generated["code"]
-    assert "events.request.fire" in generated["code"]
-    assert "def _run_scenario_step" in generated["code"]
+    assert '"scenario_name": "查询条目场景"' in generated["code"]
+    assert "from scenario_runtime import ScenarioUser" in generated["code"]
+    assert "events.request.fire" not in generated["code"]
+    assert "def _run_scenario_step" not in generated["code"]
     assert generated["runtime_preview"]["scenario"]["revision"] == 3
 
 
@@ -263,9 +264,10 @@ def test_scenario_script_generation_applies_sse_to_selected_step(
     assert request["transport"] == "sse"
     assert request["sse"]["metrics"][0]["id"] == "first_answer"
     assert request["multipart_form"] == {"message": "hello"}
-    assert "def _execute_sse_request" in generated["code"]
-    assert 'kwargs["files"]' in generated["code"]
-    assert '"scenario_step_id": step["id"]' in generated["code"]
+    assert "from scenario_runtime import ScenarioUser" in generated["code"]
+    assert '"transport": "sse"' in generated["code"]
+    assert '"multipart_form": {"message": "hello"}' in generated["code"]
+    assert '"id": "step-request"' in generated["code"]
     compile(generated["code"], "generated_scenario_locustfile.py", "exec")
 
 

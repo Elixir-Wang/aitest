@@ -82,8 +82,57 @@ def normalize_sse_config(
         timing.setdefault("source_request_name", source_request_name)
         metric["timing"] = timing
         metrics.append(metric)
-    normalized["metrics"] = metrics
+    normalized["metrics"] = _order_dependent_metrics(metrics)
     return normalized
+
+
+def _order_dependent_metrics(metrics: list[Any]) -> list[Any]:
+    """Place configured LLM-start markers before first-output metrics, stably."""
+    first_output_index = next(
+        (
+            index
+            for index, metric in enumerate(metrics)
+            if isinstance(metric, dict) and _is_first_output_metric(metric)
+        ),
+        None,
+    )
+    if first_output_index is None:
+        return metrics
+
+    delayed_starts = [
+        metric
+        for metric in metrics[first_output_index + 1 :]
+        if isinstance(metric, dict) and _is_llm_start_metric(metric)
+    ]
+    if not delayed_starts:
+        return metrics
+
+    delayed_ids = {id(metric) for metric in delayed_starts}
+    remaining = [metric for metric in metrics if id(metric) not in delayed_ids]
+    insertion_index = next(
+        index
+        for index, metric in enumerate(remaining)
+        if isinstance(metric, dict) and _is_first_output_metric(metric)
+    )
+    return remaining[:insertion_index] + delayed_starts + remaining[insertion_index:]
+
+
+def _is_first_output_metric(metric: dict[str, Any]) -> bool:
+    return (
+        metric.get("category") == "first_output"
+        or "first_output" in str(metric.get("id") or "")
+        or "首次有效内容" in str(metric.get("name") or "")
+    )
+
+
+def _is_llm_start_metric(metric: dict[str, Any]) -> bool:
+    match = metric.get("match") if isinstance(metric.get("match"), dict) else {}
+    return (
+        match.get("source") == "data_json"
+        and match.get("path") == "$.data.event_type"
+        and match.get("operator") == "equals"
+        and match.get("expected") == "call_llm_start"
+    )
 
 
 def parse_sse_events(

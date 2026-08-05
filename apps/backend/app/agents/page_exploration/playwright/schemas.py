@@ -100,6 +100,11 @@ class ClickResult(BaseModel):
     next_step_hint: str = ""
     risk: str = ""
     element_key: str = ""
+    before_url: str = ""
+    after_url: str = ""
+    url_changed: bool = False
+    source_region_type: str = "content"
+    navigation_group: str = ""
 
 
 class FillResult(BaseModel):

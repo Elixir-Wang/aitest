@@ -22,6 +22,7 @@ from app.services.page_exploration.event_log import _ExplorationEventLog, _publi
 from app.services.page_exploration.event_payload import _compact_event_payload
 from app.services.page_exploration.output_registry import (
     _append_project_page_edge,
+    _checkpoint_page_identity,
     _checkpoint_snapshot_artifact_from_event,
     _element_name_from_locator,
     _page_identity_from_url,
@@ -867,6 +868,12 @@ async def _astream_agent_with_timeline_events(
                 display=display,
                 timeline_event_id=persisted_event.get("event_id"),
             )
+            _record_page_graph_from_tool_event(
+                readable_event,
+                project_id=project_id,
+                run_id=run_id,
+                state=page_transition_state,
+            )
             snapshot_event = readable_event.get("snapshot_event")
             if isinstance(snapshot_event, dict):
                 _checkpoint_snapshot_artifact_from_event(snapshot_event, project_id=project_id, run_id=run_id)
@@ -892,12 +899,70 @@ def _remember_page_transition_action(readable_event: dict, state: dict) -> None:
         return
     if payload.get("tool_name") != "playwright_click_tool":
         return
+    if payload.get("after_url"):
+        return
     locator = _string(payload.get("locator"))
     state["last_action"] = {
         "action": "click",
         "locator": locator,
         "element_name": _element_name_from_locator(locator),
     }
+
+
+def _record_page_graph_from_tool_event(
+    readable_event: dict,
+    *,
+    project_id: str,
+    run_id: str,
+    state: dict,
+) -> None:
+    if readable_event.get("type") != "agent_tool_completed":
+        return
+    payload = readable_event.get("payload") if isinstance(readable_event.get("payload"), dict) else {}
+    tool_name = _string(payload.get("tool_name"))
+    after_url = _string(payload.get("after_url"))
+    if not after_url:
+        return
+
+    _checkpoint_page_identity(project_id=project_id, run_id=run_id, url=after_url)
+    current_page_id, current_path = _page_identity_from_url(after_url)
+
+    if tool_name == "playwright_navigate_tool":
+        state["last_page_id"] = current_page_id
+        state["last_url"] = current_path
+        state["last_action"] = {}
+        return
+
+    if tool_name != "playwright_click_tool" or not bool(payload.get("url_changed")):
+        return
+
+    before_url = _string(payload.get("before_url"))
+    if not before_url:
+        return
+    previous_page_id, _previous_path = _page_identity_from_url(before_url)
+    if previous_page_id == current_page_id:
+        return
+
+    _checkpoint_page_identity(project_id=project_id, run_id=run_id, url=before_url)
+    source_region_type = _string(payload.get("source_region_type")) or "content"
+    edge_type = "navigation_switch" if source_region_type == "navigation" else "business_drilldown"
+    _append_project_page_edge(
+        project_id=project_id,
+        run_id=run_id,
+        from_page_id=previous_page_id,
+        to_page_id=current_page_id,
+        action="click",
+        element_name=_string(payload.get("element_key")),
+        locator=_string(payload.get("locator")),
+        from_url=before_url,
+        to_url=after_url,
+        edge_type=edge_type,
+        navigation_group=_string(payload.get("navigation_group")),
+        source_region_type=source_region_type,
+    )
+    state["last_page_id"] = current_page_id
+    state["last_url"] = current_path
+    state["last_action"] = {}
 
 
 def _record_page_transition_from_snapshot(
@@ -928,6 +993,7 @@ def _record_page_transition_from_snapshot(
             locator=_string(last_action.get("locator")),
             from_url=previous_url,
             to_url=url,
+            edge_type="unknown",
         )
         state["last_action"] = {}
     elif previous_page_id == current_page_id and last_action:

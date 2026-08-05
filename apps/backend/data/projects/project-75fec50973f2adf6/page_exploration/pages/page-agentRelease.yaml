@@ -1,0 +1,358 @@
+schema_version: '4.0'
+page:
+  id: page-agentRelease
+  title: 百融百工
+  normalized_path: /agentRelease
+objects:
+- key: agentRelease
+  type: page
+  name: 百融百工
+states:
+- id: page-agentRelease__root__001
+  type: root
+  object: agentRelease
+elements:
+- key: clickable-哈哈 完成
+  object: agentRelease
+  states:
+  - page-agentRelease__root__001
+  role: clickable
+  name: 哈哈 完成
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: body > div:nth-of-type(1) > div > div:nth-of-type(1)
+- key: clickable-哈哈
+  object: agentRelease
+  states:
+  - page-agentRelease__root__001
+  role: clickable
+  name: 哈哈
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 哈哈
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: body > div:nth-of-type(1) > div > div:nth-of-type(1) > div:nth-of-type(1)
+      > div:nth-of-type(3)
+- key: clickable-完成
+  object: agentRelease
+  states:
+  - page-agentRelease__root__001
+  role: clickable
+  name: 完成
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 完成
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: body > div:nth-of-type(1) > div > div:nth-of-type(1) > div:nth-of-type(2)
+      > span
+- key: clickable-已成功发布 发布成功后，可进入发布管理查看!
+  object: agentRelease
+  states:
+  - page-agentRelease__root__001
+  role: clickable
+  name: 已成功发布 发布成功后，可进入发布管理查看!
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: body > div:nth-of-type(1) > div > div:nth-of-type(2) > div > div > div:nth-of-type(2)
+- key: link-发布管理
+  object: agentRelease
+  states:
+  - page-agentRelease__root__001
+  role: link
+  name: 发布管理
+  actions:
+  - click
+  locator:
+    strategy: role
+    role: link
+    name: 发布管理
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: a
+- key: clickable-发布平台 操作 API调用 通过API,可直接进行调用或发出请求 接口密钥 网页 用户可以在网页直接与您的智能体聊天 生成链接
+  object: agentRelease
+  states:
+  - page-agentRelease__root__001
+  role: clickable
+  name: 发布平台 操作 API调用 通过API,可直接进行调用或发出请求 接口密钥 网页 用户可以在网页直接与您的智能体聊天 生成链接
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(2) > div > form > div > div > div
+- key: clickable-发布平台 操作
+  object: agentRelease
+  states:
+  - page-agentRelease__root__001
+  role: clickable
+  name: 发布平台 操作
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(2) > div > form > div > div > div > div:nth-of-type(1)
+- key: clickable-API调用 通过API,可直接进行调用或发出请求 接口密钥
+  object: agentRelease
+  states:
+  - page-agentRelease__root__001
+  role: clickable
+  name: API调用 通过API,可直接进行调用或发出请求 接口密钥
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(2) > div > form > div > div > div > div:nth-of-type(2)
+- key: clickable-API调用 通过API,可直接进行调用或发出请求
+  object: agentRelease
+  states:
+  - page-agentRelease__root__001
+  role: clickable
+  name: API调用 通过API,可直接进行调用或发出请求
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(2) > div > form > div > div > div > div:nth-of-type(2)
+      > div:nth-of-type(1) > div:nth-of-type(2)
+- key: clickable-API调用
+  object: agentRelease
+  states:
+  - page-agentRelease__root__001
+  role: clickable
+  name: API调用
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: API调用
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: form > div > div > div > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(2)
+      > div:nth-of-type(1) > span
+- key: clickable-接口密钥
+  object: agentRelease
+  states:
+  - page-agentRelease__root__001
+  role: clickable
+  name: 接口密钥
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(2) > div:nth-of-type(2) > div > span
+- key: clickable-网页 用户可以在网页直接与您的智能体聊天 生成链接
+  object: agentRelease
+  states:
+  - page-agentRelease__root__001
+  role: clickable
+  name: 网页 用户可以在网页直接与您的智能体聊天 生成链接
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(2) > div > form > div > div > div > div:nth-of-type(3)
+- key: clickable-网页 用户可以在网页直接与您的智能体聊天
+  object: agentRelease
+  states:
+  - page-agentRelease__root__001
+  role: clickable
+  name: 网页 用户可以在网页直接与您的智能体聊天
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(2)
+- key: clickable-网页
+  object: agentRelease
+  states:
+  - page-agentRelease__root__001
+  role: clickable
+  name: 网页
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 网页
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1)
+      > span
+- key: clickable-生成链接
+  object: agentRelease
+  states:
+  - page-agentRelease__root__001
+  role: clickable
+  name: 生成链接
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 生成链接
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(3) > div:nth-of-type(2) > div > span
+- key: clickable-哈哈 完成 已成功发布 发布成功后，可进入发布管理查看! 发布平台 操作 API调用 通过API,可直接进行调用或发出请求 接口密钥
+    网页 用户可以在网页直接与您的智能体聊天 生成链接
+  object: agentRelease
+  states:
+  - page-agentRelease__root__001
+  role: clickable
+  name: 哈哈 完成 已成功发布 发布成功后，可进入发布管理查看! 发布平台 操作 API调用 通过API,可直接进行调用或发出请求 接口密钥 网页 用户可以在网页直接与您的智能体聊天
+    生成链接
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: '#agent-release-page'
+- key: clickable-已成功发布 发布成功后，可进入发布管理查看! 发布平台 操作 API调用 通过API,可直接进行调用或发出请求 接口密钥 网页 用户可以在网页直接与您的智能体聊天
+    生成链接
+  object: agentRelease
+  states:
+  - page-agentRelease__root__001
+  role: clickable
+  name: 已成功发布 发布成功后，可进入发布管理查看! 发布平台 操作 API调用 通过API,可直接进行调用或发出请求 接口密钥 网页 用户可以在网页直接与您的智能体聊天
+    生成链接
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: body > div:nth-of-type(1) > div > div:nth-of-type(2) > div
+- key: clickable-已成功发布
+  object: agentRelease
+  states:
+  - page-agentRelease__root__001
+  role: clickable
+  name: 已成功发布
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 已成功发布
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: body > div:nth-of-type(1) > div > div:nth-of-type(2) > div > div > div:nth-of-type(2)
+      > div:nth-of-type(1)
+- key: clickable-发布成功后，可进入发布管理查看!
+  object: agentRelease
+  states:
+  - page-agentRelease__root__001
+  role: clickable
+  name: 发布成功后，可进入发布管理查看!
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 发布成功后，可进入发布管理查看!
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: body > div:nth-of-type(1) > div > div:nth-of-type(2) > div > div > div:nth-of-type(2)
+      > div:nth-of-type(2)
+- key: clickable-发布成功后，可进入
+  object: agentRelease
+  states:
+  - page-agentRelease__root__001
+  role: clickable
+  name: 发布成功后，可进入
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 发布成功后，可进入
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: body > div:nth-of-type(1) > div > div:nth-of-type(2) > div > div > div:nth-of-type(2)
+      > div:nth-of-type(2) > span:nth-of-type(1)
+- key: clickable-查看!
+  object: agentRelease
+  states:
+  - page-agentRelease__root__001
+  role: clickable
+  name: 查看!
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 查看!
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(2) > span:nth-of-type(2)
+- key: clickable-发布平台
+  object: agentRelease
+  states:
+  - page-agentRelease__root__001
+  role: clickable
+  name: 发布平台
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 发布平台
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(2) > div > form > div > div > div > div:nth-of-type(1)
+      > span:nth-of-type(1)
+- key: clickable-操作
+  object: agentRelease
+  states:
+  - page-agentRelease__root__001
+  role: clickable
+  name: 操作
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(1) > span:nth-of-type(2)
+- key: clickable-通过API,可直接进行调用或发出请求
+  object: agentRelease
+  states:
+  - page-agentRelease__root__001
+  role: clickable
+  name: 通过API,可直接进行调用或发出请求
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 通过API,可直接进行调用或发出请求
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: form > div > div > div > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(2)
+      > div:nth-of-type(2)
+- key: clickable-用户可以在网页直接与您的智能体聊天
+  object: agentRelease
+  states:
+  - page-agentRelease__root__001
+  role: clickable
+  name: 用户可以在网页直接与您的智能体聊天
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 用户可以在网页直接与您的智能体聊天
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(2)
+quality:
+  status: complete

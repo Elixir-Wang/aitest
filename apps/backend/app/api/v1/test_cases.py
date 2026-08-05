@@ -8,6 +8,7 @@ from app.schemas.test_case import (
     ManualTestCaseAiGenerateResponse,
     ManualTestCaseCreateIn,
     ManualTestCaseOut,
+    ManualTestCaseUpdateIn,
     TestCaseReviewIn,
     TestCaseReviewOut,
     TestCaseSetCreateIn,
@@ -38,6 +39,16 @@ def create_project_manual_test_case(
     actor=Depends(require_admin),
 ) -> dict:
     return test_case_service.create_manual_test_case(project_id, payload, actor)
+
+
+@manual_router.patch("/{case_id}", response_model=ManualTestCaseOut)
+def update_project_manual_test_case(
+    project_id: str,
+    case_id: str,
+    payload: ManualTestCaseUpdateIn,
+    actor=Depends(require_admin),
+) -> dict:
+    return test_case_service.update_manual_test_case(project_id, case_id, payload, actor)
 
 
 @manual_router.post("/ai-generate", response_model=ManualTestCaseAiGenerateResponse)

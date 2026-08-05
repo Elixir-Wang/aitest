@@ -110,6 +110,29 @@ def create_manual_case(
     )
 
 
+def update_manual_case(
+    db: Connection,
+    *,
+    case_id: str,
+    title: str,
+    preconditions: str,
+    steps_json: str,
+    notes: str,
+) -> None:
+    db.execute(
+        """
+        UPDATE manual_test_cases
+        SET title = ?,
+            preconditions = ?,
+            steps_json = ?,
+            notes = ?,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+        """,
+        (title, preconditions, steps_json, notes, case_id),
+    )
+
+
 def delete_manual_case(db: Connection, case_id: str) -> None:
     db.execute("DELETE FROM manual_test_cases WHERE id = ?", (case_id,))
 

@@ -2183,11 +2183,7 @@ export default function Page() {
                         </button>
                       </TableCell>
                       <TableCell>{item.execution_snapshot.environment?.name ?? "已删除环境"}</TableCell>
-                      <TableCell className="tabular-nums">
-                        {item.target_type === "scenario"
-                          ? (item.execution_snapshot.scenario?.name ?? "场景")
-                          : `${item.execution_snapshot.endpoint_count ?? 0} 个`}
-                      </TableCell>
+                      <TableCell className="tabular-nums">{item.execution_snapshot.endpoint_count ?? 0} 个</TableCell>
                       <TableCell>
                         <Badge className={runStatusTone(item.status)} variant="outline">
                           {API_RUN_ACTIVE_STATUSES.has(item.status) ? (

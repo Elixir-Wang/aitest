@@ -11,6 +11,7 @@ import {
   ChevronRight,
   FileCode2,
   LoaderCircle,
+  PanelRightOpen,
   Play,
   RefreshCw,
   Save,
@@ -19,11 +20,13 @@ import { codeToTokens } from "shiki";
 
 import { Button } from "@/components/ui/button";
 import { OneClipboard } from "@/components/ui/one-clipboard";
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Textarea } from "@/components/ui/textarea";
 import {
   ApiRequestError,
   createPerformanceRun,
   getPerformanceScript,
+  type PerformanceScenarioStep,
   type PerformanceScript,
   updatePerformanceScriptConfiguration,
 } from "@/lib/api-client";
@@ -37,6 +40,7 @@ export function ScriptReview({ projectId, testId, scriptId }: { projectId: strin
   const [successRules, setSuccessRules] = useState("[]");
   const [saving, setSaving] = useState(false);
   const [loadError, setLoadError] = useState(false);
+  const [selectedStep, setSelectedStep] = useState<PerformanceScenarioStep | null>(null);
 
   const loadScript = useCallback(() => {
     setLoadError(false);
@@ -159,7 +163,6 @@ export function ScriptReview({ projectId, testId, scriptId }: { projectId: strin
                 {script.validation_result.valid ? "校验通过" : "校验失败"}
               </span>
             </div>
-            <p className="mt-1 truncate text-muted-foreground text-xs">生成来源：{script.generation_source}</p>
           </div>
         </div>
         <div className="flex items-center gap-3 sm:justify-end">
@@ -174,65 +177,91 @@ export function ScriptReview({ projectId, testId, scriptId }: { projectId: strin
         </div>
       </section>
 
-      <div className="grid gap-4 xl:h-[calc(100dvh-12rem)] xl:max-h-[54rem] xl:min-h-[36rem] xl:grid-cols-[minmax(19rem,0.78fr)_minmax(0,1.22fr)]">
-        <section className="flex min-h-0 flex-col overflow-hidden rounded-lg border bg-card">
-          <div className="flex items-start justify-between gap-4 border-b px-4 py-3.5">
-            <div>
-              <div className="flex items-center gap-2">
-                <Braces className="size-4 text-muted-foreground" />
-                <h2 className="font-semibold text-sm">
-                  {script.plan.target_type === "scenario" ? "接口场景配置" : "结构化请求配置"}
-                </h2>
+      <div className="grid items-start gap-4 xl:grid-cols-[24rem_minmax(0,1fr)]">
+        <section
+          className={
+            script.plan.target_type === "scenario"
+              ? "overflow-hidden rounded-lg border bg-card"
+              : "flex min-h-[36rem] flex-col overflow-hidden rounded-lg border bg-card xl:h-[calc(100dvh-12rem)] xl:max-h-[54rem]"
+          }
+        >
+          {script.plan.target_type === "endpoint" ? (
+            <div className="flex items-start justify-between gap-4 border-b px-4 py-3.5">
+              <div>
+                <div className="flex items-center gap-2">
+                  <Braces className="size-4 text-muted-foreground" />
+                  <h2 className="font-semibold text-sm">结构化请求配置</h2>
+                </div>
+                <p className="mt-1 text-muted-foreground text-xs leading-5">
+                  调整请求参数后保存，系统会重新生成脚本并执行校验。
+                </p>
               </div>
-              <p className="mt-1 text-muted-foreground text-xs leading-5">
-                {script.plan.target_type === "scenario"
-                  ? "脚本使用生成时的场景当前保存版本；场景修改后请手动重新生成脚本。"
-                  : "调整请求参数后保存，系统会重新生成脚本并执行校验。"}
-              </p>
-            </div>
-            {script.plan.target_type === "endpoint" ? (
               <Button disabled={saving} onClick={saveConfiguration} size="sm" variant="outline">
                 {saving ? <LoaderCircle className="size-3.5 animate-spin" /> : <Save className="size-3.5" />}
                 保存并校验
               </Button>
-            ) : null}
-          </div>
+            </div>
+          ) : null}
           {script.plan.target_type === "scenario" ? (
-            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4 text-sm">
-              <div className="border bg-muted/30 p-4">
-                <p className="font-medium">{script.plan.scenario_name}</p>
-                <p className="mt-1 text-muted-foreground text-xs">
-                  当前版本 v{script.plan.scenario_revision ?? "-"} · {script.plan.steps?.length ?? 0} 个步骤
-                </p>
+            <div className="text-sm">
+              <div className="border-b px-4 py-4">
+                <p className="font-semibold text-base leading-6">{script.plan.scenario_name}</p>
+                <div className="mt-2 flex items-center gap-2 text-muted-foreground text-xs">
+                  <span className="font-mono text-foreground tabular-nums">
+                    v{script.plan.scenario_revision ?? "-"}
+                  </span>
+                  <span className="h-3 w-px bg-border" />
+                  <span className="tabular-nums">{script.plan.steps?.length ?? 0} 个步骤</span>
+                </div>
               </div>
-              <div className="space-y-2">
+              <div className="border-b bg-muted/20 px-4 py-2.5 font-medium text-muted-foreground text-xs">执行顺序</div>
+              <div className="px-4 py-3">
                 {(script.plan.steps ?? []).map((step, index) => (
-                  <details className="group border" key={String(step.id ?? index)}>
-                    <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-2.5 [&::-webkit-details-marker]:hidden">
-                      <div className="min-w-0">
-                        <p className="truncate font-medium">{String(step.name ?? `步骤 ${index + 1}`)}</p>
-                        {step.request ? (
-                          <p className="mt-1 truncate font-mono text-muted-foreground text-xs">
-                            <span className="mr-2 font-semibold text-foreground">{String(step.request.method ?? "")}</span>
-                            {String(step.request.path ?? "")}
-                          </p>
-                        ) : null}
+                  <div className="grid grid-cols-[1.5rem_minmax(0,1fr)] gap-3" key={String(step.id ?? index)}>
+                    <div className="flex flex-col items-center">
+                      <span className="mt-3 font-mono text-[11px] text-muted-foreground tabular-nums">
+                        {String(index + 1).padStart(2, "0")}
+                      </span>
+                      {index < (script.plan.steps?.length ?? 0) - 1 ? (
+                        <span className="mt-2 w-px flex-1 bg-border" />
+                      ) : null}
+                    </div>
+                    <article className="min-w-0 border-b py-3 last:border-b-0">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="truncate font-medium">{String(step.name ?? `步骤 ${index + 1}`)}</p>
+                          {step.request ? (
+                            <p className="mt-1.5 flex min-w-0 items-center gap-2 font-mono text-xs">
+                              <span className="shrink-0 font-semibold text-foreground">
+                                {String(step.request.method ?? "")}
+                              </span>
+                              <span className="truncate text-muted-foreground">{String(step.request.path ?? "")}</span>
+                            </p>
+                          ) : null}
+                        </div>
+                        <Button
+                          className="-mt-1 -mr-1 h-7 shrink-0 px-2 text-xs"
+                          onClick={() => setSelectedStep(step)}
+                          size="sm"
+                          variant="ghost"
+                        >
+                          <PanelRightOpen className="size-4" />
+                          详情
+                        </Button>
                       </div>
-                      <span className="shrink-0 text-muted-foreground text-xs">{String(step.step_type ?? "")}</span>
-                    </summary>
-                    {step.request ? (
-                      <div className="space-y-3 border-t bg-muted/20 px-3 py-3 text-xs">
-                        <RequestDetail label="查询参数" value={step.request.query_parameters} />
-                        <RequestDetail label="请求头" value={step.request.headers} />
-                        <RequestDetail
-                          label={step.request.multipart_form ? "请求体（multipart/form-data）" : "请求体"}
-                          value={step.request.body ?? step.request.form ?? step.request.multipart_form}
+                      <div className="mt-3 flex flex-wrap gap-x-3 gap-y-1 border-t pt-2.5 text-[11px] text-muted-foreground">
+                        <StepMetric label="请求头" value={configCount(step.request?.headers)} />
+                        <StepMetric
+                          label="请求体"
+                          value={
+                            hasConfig(step.request?.body ?? step.request?.form ?? step.request?.multipart_form) ? 1 : 0
+                          }
                         />
-                        <RequestDetail label="断言" value={step.assertions} />
-                        <RequestDetail label="提取器" value={step.extractors} />
+                        <StepMetric label="断言" value={configCount(step.assertions)} />
+                        <StepMetric label="提取" value={configCount(step.extractors)} />
                       </div>
-                    ) : null}
-                  </details>
+                    </article>
+                  </div>
                 ))}
               </div>
             </div>
@@ -255,7 +284,7 @@ export function ScriptReview({ projectId, testId, scriptId }: { projectId: strin
           ) : null}
         </section>
 
-        <section className="flex min-h-[36rem] min-w-0 flex-col overflow-hidden rounded-lg border bg-card xl:min-h-0">
+        <section className="flex min-h-[36rem] min-w-0 flex-col overflow-hidden rounded-lg border bg-card xl:h-[calc(100dvh-12rem)] xl:max-h-[54rem]">
           <div className="flex items-center justify-between gap-3 border-b px-4 py-3.5">
             <div className="flex min-w-0 items-center gap-2">
               <FileCode2 className="size-4 shrink-0 text-muted-foreground" />
@@ -274,8 +303,55 @@ export function ScriptReview({ projectId, testId, scriptId }: { projectId: strin
           <PythonCodeBlock code={script.code} />
         </section>
       </div>
+
+      <Sheet onOpenChange={(open) => !open && setSelectedStep(null)} open={selectedStep !== null}>
+        <SheetContent className="w-full gap-0 overflow-y-auto sm:max-w-2xl" side="right">
+          <SheetHeader className="border-b px-5 py-4 pr-14">
+            <SheetTitle>{selectedStep?.name ?? "步骤详情"}</SheetTitle>
+            <SheetDescription className="font-mono text-xs">
+              {selectedStep?.request?.method ?? selectedStep?.step_type ?? ""} {selectedStep?.request?.path ?? ""}
+            </SheetDescription>
+          </SheetHeader>
+          {selectedStep ? <ScenarioStepDetail step={selectedStep} /> : null}
+        </SheetContent>
+      </Sheet>
     </div>
   );
+}
+
+function StepMetric({ label, value }: { label: string; value: number }) {
+  return (
+    <span className={value > 0 ? "text-foreground" : undefined}>
+      {label} <span className="font-mono tabular-nums">{value}</span>
+    </span>
+  );
+}
+
+function ScenarioStepDetail({ step }: { step: PerformanceScenarioStep }) {
+  return (
+    <div className="space-y-6 px-5 py-5 text-xs">
+      <RequestDetail label="路径参数" value={step.request?.path_parameters} />
+      <RequestDetail label="查询参数" value={step.request?.query_parameters} />
+      <RequestDetail label="请求头" value={step.request?.headers} />
+      <RequestDetail
+        label={step.request?.multipart_form ? "请求体（multipart/form-data）" : "请求体"}
+        value={step.request?.body ?? step.request?.form ?? step.request?.multipart_form}
+      />
+      <RequestDetail label="变量绑定" value={step.bindings} />
+      <RequestDetail label="断言" value={step.assertions} />
+      <RequestDetail label="提取器" value={step.extractors} />
+    </div>
+  );
+}
+
+function configCount(value: unknown) {
+  if (Array.isArray(value)) return value.length;
+  if (value && typeof value === "object") return Object.keys(value).length;
+  return value === undefined || value === null || value === "" ? 0 : 1;
+}
+
+function hasConfig(value: unknown) {
+  return configCount(value) > 0;
 }
 
 function PythonCodeBlock({ code }: { code: string }) {

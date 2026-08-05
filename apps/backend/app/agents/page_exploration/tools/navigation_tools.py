@@ -82,6 +82,11 @@ def playwright_click_tool(element_id: str) -> dict:
         "next_step_hint": result.next_step_hint,
         "risk": result.risk,
         "element_key": result.element_key,
+        "before_url": result.before_url,
+        "after_url": result.after_url,
+        "url_changed": result.url_changed,
+        "source_region_type": result.source_region_type,
+        "navigation_group": result.navigation_group,
     }
     if result.failure is not None:
         payload["failure"] = result.failure.model_dump()

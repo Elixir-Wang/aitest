@@ -1,0 +1,689 @@
+schema_version: '4.0'
+page:
+  id: page-botSetting
+  title: 百融百工
+  normalized_path: /botSetting
+objects:
+- key: botSetting
+  type: page
+  name: 百融百工
+states:
+- id: page-botSetting__root__001
+  type: root
+  object: botSetting
+elements:
+- key: clickable-哈哈 草稿自动保存中... 历史版本 发布
+  object: botSetting
+  states:
+  - page-botSetting__root__001
+  role: clickable
+  name: 哈哈 草稿自动保存中... 历史版本 发布
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: body > div:nth-of-type(1) > div > div:nth-of-type(1) > div
+- key: clickable-哈哈
+  object: botSetting
+  states:
+  - page-botSetting__root__001
+  role: clickable
+  name: 哈哈
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: body > div:nth-of-type(1) > div > div:nth-of-type(1) > div > div > div:nth-of-type(1)
+      > div:nth-of-type(2) > div
+- key: clickable-草稿自动保存中... 历史版本 发布
+  object: botSetting
+  states:
+  - page-botSetting__root__001
+  role: clickable
+  name: 草稿自动保存中... 历史版本 发布
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: body > div:nth-of-type(1) > div > div:nth-of-type(1) > div > div > div:nth-of-type(2)
+- key: clickable-草稿自动保存中...
+  object: botSetting
+  states:
+  - page-botSetting__root__001
+  role: clickable
+  name: 草稿自动保存中...
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(2) > p > span:nth-of-type(2)
+- key: button-历史版本
+  object: botSetting
+  states:
+  - page-botSetting__root__001
+  role: button
+  name: 历史版本
+  actions:
+  - click
+  locator:
+    strategy: role
+    role: button
+    name: 历史版本
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: body > div:nth-of-type(1) > div > div:nth-of-type(1) > div > div > div:nth-of-type(2)
+      > button:nth-of-type(1)
+- key: button-发布
+  object: botSetting
+  states:
+  - page-botSetting__root__001
+  role: button
+  name: 发布
+  actions:
+  - click
+  locator:
+    strategy: role
+    role: button
+    name: 发布
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: body > div:nth-of-type(1) > div > div:nth-of-type(1) > div > div > div:nth-of-type(2)
+      > button:nth-of-type(2)
+- key: clickable-基础配置 资源配置 高级配置 实时互动配置
+  object: botSetting
+  states:
+  - page-botSetting__root__001
+  role: clickable
+  name: 基础配置 资源配置 高级配置 实时互动配置
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: body > div:nth-of-type(1) > div > div:nth-of-type(2) > div > div:nth-of-type(1)
+      > div > div > div > div:nth-of-type(1) > div:nth-of-type(2) > div > div
+- key: clickable-基础配置
+  object: botSetting
+  states:
+  - page-botSetting__root__001
+  role: clickable
+  name: 基础配置
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 基础配置
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(1) > div:nth-of-type(2) > div > div > div:nth-of-type(2)
+      > span > span
+- key: clickable-资源配置
+  object: botSetting
+  states:
+  - page-botSetting__root__001
+  role: clickable
+  name: 资源配置
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 资源配置
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(3) > span > span
+- key: clickable-高级配置
+  object: botSetting
+  states:
+  - page-botSetting__root__001
+  role: clickable
+  name: 高级配置
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(4) > span > span
+- key: clickable-实时互动配置
+  object: botSetting
+  states:
+  - page-botSetting__root__001
+  role: clickable
+  name: 实时互动配置
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 实时互动配置
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div > div > div:nth-of-type(5) > span > span
+- key: clickable-* 欢迎语 您好，请问有什么可以帮您？ 13 / 300
+  object: botSetting
+  states:
+  - page-botSetting__root__001
+  role: clickable
+  name: '* 欢迎语 您好，请问有什么可以帮您？ 13 / 300'
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div > div > div:nth-of-type(2) > div:nth-of-type(1) > div > div > div >
+      div > form > div:nth-of-type(1) > div
+- key: clickable-* 欢迎语
+  object: botSetting
+  states:
+  - page-botSetting__root__001
+  role: clickable
+  name: '* 欢迎语'
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: form > div:nth-of-type(1) > div > div:nth-of-type(1) > span > div
+- key: clickable-请输入欢迎语
+  object: botSetting
+  states:
+  - page-botSetting__root__001
+  role: clickable
+  name: 请输入欢迎语
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(2) > div:nth-of-type(1) > div > div > div > div > form
+      > div:nth-of-type(1) > div > div:nth-of-type(2) > div > div:nth-of-type(1) >
+      div
+- key: textbox-您好，请问有什么可以帮您？
+  object: botSetting
+  states:
+  - page-botSetting__root__001
+  role: textbox
+  name: 您好，请问有什么可以帮您？
+  actions:
+  - fill
+  locator:
+    strategy: css
+    value: form > div:nth-of-type(1) > div > div:nth-of-type(2) > div > div:nth-of-type(1)
+      > div > div:nth-of-type(1) > div:nth-of-type(1) > div > div
+- key: clickable-13-300
+  object: botSetting
+  states:
+  - page-botSetting__root__001
+  role: clickable
+  name: 13 / 300
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 13 / 300
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: form > div:nth-of-type(1) > div > div:nth-of-type(2) > div > div:nth-of-type(1)
+      > div > div:nth-of-type(1) > div:nth-of-type(2)
+- key: clickable-对话模型
+  object: botSetting
+  states:
+  - page-botSetting__root__001
+  role: clickable
+  name: 对话模型
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 对话模型
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div > div > div:nth-of-type(2) > div:nth-of-type(1) > div > div > div >
+      div > form > div:nth-of-type(2) > div:nth-of-type(1)
+- key: clickable-Prompt 查看示例 AI 生成
+  object: botSetting
+  states:
+  - page-botSetting__root__001
+  role: clickable
+  name: Prompt 查看示例 AI 生成
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div > div > div:nth-of-type(2) > div:nth-of-type(1) > div > div > div >
+      div > form > div:nth-of-type(3)
+- key: clickable-prompt
+  object: botSetting
+  states:
+  - page-botSetting__root__001
+  role: clickable
+  name: Prompt
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: Prompt
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div > div > div:nth-of-type(2) > div:nth-of-type(1) > div > div > div >
+      div > form > div:nth-of-type(3) > div:nth-of-type(1)
+- key: clickable-查看示例 AI 生成
+  object: botSetting
+  states:
+  - page-botSetting__root__001
+  role: clickable
+  name: 查看示例 AI 生成
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div > div > div:nth-of-type(2) > div:nth-of-type(1) > div > div > div >
+      div > form > div:nth-of-type(3) > div:nth-of-type(2)
+- key: clickable-AI 生成
+  object: botSetting
+  states:
+  - page-botSetting__root__001
+  role: clickable
+  name: AI 生成
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: AI 生成
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(3) > div:nth-of-type(2) > div:nth-of-type(2) > div:nth-of-type(2)
+- key: clickable-变量
+  object: botSetting
+  states:
+  - page-botSetting__root__001
+  role: clickable
+  name: 变量
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div > div > div:nth-of-type(2) > div:nth-of-type(1) > div > div > div >
+      div > form > div:nth-of-type(4) > div > div > div:nth-of-type(1) > div:nth-of-type(1)
+- key: clickable-开场热门问题
+  object: botSetting
+  states:
+  - page-botSetting__root__001
+  role: clickable
+  name: 开场热门问题
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 开场热门问题
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(5) > div > div > span > div:nth-of-type(1)
+- key: clickable-其他设置
+  object: botSetting
+  states:
+  - page-botSetting__root__001
+  role: clickable
+  name: 其他设置
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 其他设置
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div > div > div:nth-of-type(2) > div:nth-of-type(1) > div > div > div >
+      div > form > div:nth-of-type(7) > div
+- key: clickable-短期记忆 保留最近 轮对话
+  object: botSetting
+  states:
+  - page-botSetting__root__001
+  role: clickable
+  name: 短期记忆 保留最近 轮对话
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(2) > div:nth-of-type(1) > div > div > div > div > form
+      > div:nth-of-type(8)
+- key: clickable-短期记忆
+  object: botSetting
+  states:
+  - page-botSetting__root__001
+  role: clickable
+  name: 短期记忆
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 短期记忆
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(2) > div:nth-of-type(1) > div > div > div > div > form
+      > div:nth-of-type(8) > div:nth-of-type(1)
+- key: clickable-保留最近 轮对话
+  object: botSetting
+  states:
+  - page-botSetting__root__001
+  role: clickable
+  name: 保留最近 轮对话
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: form > div:nth-of-type(8) > div:nth-of-type(2)
+- key: textbox-5
+  object: botSetting
+  states:
+  - page-botSetting__root__001
+  role: textbox
+  name: '5'
+  actions:
+  - fill
+  locator:
+    strategy: css
+    value: div:nth-of-type(8) > div:nth-of-type(2) > div > div > div > input
+- key: clickable-长期记忆
+  object: botSetting
+  states:
+  - page-botSetting__root__001
+  role: clickable
+  name: 长期记忆
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(2) > div:nth-of-type(1) > div > div > div > div > form
+      > div:nth-of-type(9) > div:nth-of-type(1)
+- key: clickable-联网搜索能力
+  object: botSetting
+  states:
+  - page-botSetting__root__001
+  role: clickable
+  name: 联网搜索能力
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 联网搜索能力
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(2) > div:nth-of-type(1) > div > div > div > div > form
+      > div:nth-of-type(10) > div:nth-of-type(1)
+- key: clickable-智能追问推荐
+  object: botSetting
+  states:
+  - page-botSetting__root__001
+  role: clickable
+  name: 智能追问推荐
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(2) > div:nth-of-type(1) > div > div > div > div > form
+      > div:nth-of-type(11) > div:nth-of-type(1)
+- key: clickable-兜底话术
+  object: botSetting
+  states:
+  - page-botSetting__root__001
+  role: clickable
+  name: 兜底话术
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div:nth-of-type(2) > div:nth-of-type(1) > div > div > div > div > form
+      > div:nth-of-type(12) > div:nth-of-type(1)
+- key: textbox-请输入问题，按Shift+Enter换行
+  object: botSetting
+  states:
+  - page-botSetting__root__001
+  role: textbox
+  name: 请输入问题，按Shift+Enter换行
+  actions:
+  - fill
+  locator:
+    strategy: role
+    role: textbox
+    name: 请输入问题，按Shift+Enter换行
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(2) > div > div:nth-of-type(1) > div > textarea
+- key: clickable-哈哈 草稿自动保存中... 历史版本 发布 基础配置 资源配置 高级配置 实时互动配置 * 欢迎语 您好，请问有什么可以帮您？ 13
+    / 300 对话模型 Prompt 查看示例 AI 生成 变量 开场热门问题 其他设置 短期记忆 保留最近 轮对话 长期记忆 联网搜索能力 智能追问推荐 兜底话术
+    内容由AI生成 调试预
+  object: botSetting
+  states:
+  - page-botSetting__root__001
+  role: clickable
+  name: 哈哈 草稿自动保存中... 历史版本 发布 基础配置 资源配置 高级配置 实时互动配置 * 欢迎语 您好，请问有什么可以帮您？ 13 / 300 对话模型
+    Prompt 查看示例 AI 生成 变量 开场热门问题 其他设置 短期记忆 保留最近 轮对话 长期记忆 联网搜索能力 智能追问推荐 兜底话术 内容由AI生成
+    调试预
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: '#agent-page'
+- key: clickable-历史版本
+  object: botSetting
+  states:
+  - page-botSetting__root__001
+  role: clickable
+  name: 历史版本
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 历史版本
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(2) > button:nth-of-type(1) > span > span
+- key: clickable-发布
+  object: botSetting
+  states:
+  - page-botSetting__root__001
+  role: clickable
+  name: 发布
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: button:nth-of-type(2) > span > span
+- key: clickable-基础配置 资源配置 高级配置 实时互动配置 * 欢迎语 您好，请问有什么可以帮您？ 13 / 300 对话模型 Prompt 查看示例
+    AI 生成 变量 开场热门问题 其他设置 短期记忆 保留最近 轮对话 长期记忆 联网搜索能力 智能追问推荐 兜底话术 内容由AI生成 调试预览
+  object: botSetting
+  states:
+  - page-botSetting__root__001
+  role: clickable
+  name: 基础配置 资源配置 高级配置 实时互动配置 * 欢迎语 您好，请问有什么可以帮您？ 13 / 300 对话模型 Prompt 查看示例 AI 生成
+    变量 开场热门问题 其他设置 短期记忆 保留最近 轮对话 长期记忆 联网搜索能力 智能追问推荐 兜底话术 内容由AI生成 调试预览
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: body > div:nth-of-type(1) > div > div:nth-of-type(2) > div
+- key: clickable-基础配置 资源配置 高级配置 实时互动配置 * 欢迎语 您好，请问有什么可以帮您？ 13 / 300 对话模型 Prompt 查看示例
+    AI 生成 变量 开场热门问题 其他设置 短期记忆 保留最近 轮对话 长期记忆 联网搜索能力 智能追问推荐 兜底话术
+  object: botSetting
+  states:
+  - page-botSetting__root__001
+  role: clickable
+  name: 基础配置 资源配置 高级配置 实时互动配置 * 欢迎语 您好，请问有什么可以帮您？ 13 / 300 对话模型 Prompt 查看示例 AI 生成
+    变量 开场热门问题 其他设置 短期记忆 保留最近 轮对话 长期记忆 联网搜索能力 智能追问推荐 兜底话术
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: body > div:nth-of-type(1) > div > div:nth-of-type(2) > div > div:nth-of-type(1)
+      > div > div > div
+- key: clickable-* 欢迎语 您好，请问有什么可以帮您？ 13 / 300 对话模型 Prompt 查看示例 AI 生成 变量 开场热门问题 其他设置
+    短期记忆 保留最近 轮对话 长期记忆 联网搜索能力 智能追问推荐 兜底话术
+  object: botSetting
+  states:
+  - page-botSetting__root__001
+  role: clickable
+  name: '* 欢迎语 您好，请问有什么可以帮您？ 13 / 300 对话模型 Prompt 查看示例 AI 生成 变量 开场热门问题 其他设置 短期记忆 保留最近
+    轮对话 长期记忆 联网搜索能力 智能追问推荐 兜底话术'
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: body > div:nth-of-type(1) > div > div:nth-of-type(2) > div > div:nth-of-type(1)
+      > div > div > div > div:nth-of-type(2) > div:nth-of-type(1) > div > div
+- key: tabpanel-* 欢迎语 您好，请问有什么可以帮您？ 13 / 300 对话模型 Prompt 查看示例 AI 生成 变量 开场热门问题 其他设置
+    短期记忆 保留最近 轮对话 长期记忆 联网搜索能力 智能追问推荐 兜底话术
+  object: botSetting
+  states:
+  - page-botSetting__root__001
+  role: tabpanel
+  name: '* 欢迎语 您好，请问有什么可以帮您？ 13 / 300 对话模型 Prompt 查看示例 AI 生成 变量 开场热门问题 其他设置 短期记忆 保留最近
+    轮对话 长期记忆 联网搜索能力 智能追问推荐 兜底话术'
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: body > div:nth-of-type(1) > div > div:nth-of-type(2) > div > div:nth-of-type(1)
+      > div > div > div > div:nth-of-type(2) > div:nth-of-type(1)
+- key: clickable-哈哈 草稿自动保存于 21:10 历史版本 发布
+  object: botSetting
+  states:
+  - page-botSetting__root__001
+  role: clickable
+  name: 哈哈 草稿自动保存于 21:10 历史版本 发布
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: body > div:nth-of-type(1) > div > div:nth-of-type(1) > div
+- key: clickable-草稿自动保存于 21:10 历史版本 发布
+  object: botSetting
+  states:
+  - page-botSetting__root__001
+  role: clickable
+  name: 草稿自动保存于 21:10 历史版本 发布
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: body > div:nth-of-type(1) > div > div:nth-of-type(1) > div > div > div:nth-of-type(2)
+- key: clickable-草稿自动保存于 21:10
+  object: botSetting
+  states:
+  - page-botSetting__root__001
+  role: clickable
+  name: 草稿自动保存于 21:10
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: 草稿自动保存于 21:10
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div:nth-of-type(2) > p > span:nth-of-type(2)
+- key: clickable-对话模型 LLM_Fix_Medium_ChEn_Chat
+  object: botSetting
+  states:
+  - page-botSetting__root__001
+  role: clickable
+  name: 对话模型 LLM_Fix_Medium_ChEn_Chat
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div > div > div:nth-of-type(2) > div:nth-of-type(1) > div > div > div >
+      div > form > div:nth-of-type(2)
+- key: clickable-llm-fix-medium-chen-chat
+  object: botSetting
+  states:
+  - page-botSetting__root__001
+  role: clickable
+  name: LLM_Fix_Medium_ChEn_Chat
+  actions:
+  - click
+  locator:
+    strategy: text
+    value: LLM_Fix_Medium_ChEn_Chat
+    exact: true
+  fallback_locator:
+    strategy: css
+    value: div > div > div:nth-of-type(2) > div:nth-of-type(1) > div > div > div >
+      div > form > div:nth-of-type(2) > div:nth-of-type(2) > div > div:nth-of-type(1)
+      > div
+- key: clickable-Prompt 你是一个友好的助手 查看示例 AI 生成
+  object: botSetting
+  states:
+  - page-botSetting__root__001
+  role: clickable
+  name: Prompt 你是一个友好的助手 查看示例 AI 生成
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div > div > div:nth-of-type(2) > div:nth-of-type(1) > div > div > div >
+      div > form > div:nth-of-type(3)
+- key: clickable-你是一个友好的助手 查看示例 AI 生成
+  object: botSetting
+  states:
+  - page-botSetting__root__001
+  role: clickable
+  name: 你是一个友好的助手 查看示例 AI 生成
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: div > div > div:nth-of-type(2) > div:nth-of-type(1) > div > div > div >
+      div > form > div:nth-of-type(3) > div:nth-of-type(2)
+- key: clickable-哈哈 草稿自动保存于 21:10 历史版本 发布 基础配置 资源配置 高级配置 实时互动配置 * 欢迎语 您好，请问有什么可以帮您？
+    13 / 300 对话模型 LLM_Fix_Medium_ChEn_Chat Prompt 你是一个友好的助手 查看示例 AI 生成 变量 开场热门问题 其他设置
+    短期记忆 保留最近 轮
+  object: botSetting
+  states:
+  - page-botSetting__root__001
+  role: clickable
+  name: 哈哈 草稿自动保存于 21:10 历史版本 发布 基础配置 资源配置 高级配置 实时互动配置 * 欢迎语 您好，请问有什么可以帮您？ 13 / 300
+    对话模型 LLM_Fix_Medium_ChEn_Chat Prompt 你是一个友好的助手 查看示例 AI 生成 变量 开场热门问题 其他设置 短期记忆
+    保留最近 轮
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: '#agent-page'
+- key: clickable-基础配置 资源配置 高级配置 实时互动配置 * 欢迎语 您好，请问有什么可以帮您？ 13 / 300 对话模型 LLM_Fix_Medium_ChEn_Chat
+    Prompt 你是一个友好的助手 查看示例 AI 生成 变量 开场热门问题 其他设置 短期记忆 保留最近 轮对话 长期记忆 联网搜索能力 智能追问推荐 兜底话
+  object: botSetting
+  states:
+  - page-botSetting__root__001
+  role: clickable
+  name: 基础配置 资源配置 高级配置 实时互动配置 * 欢迎语 您好，请问有什么可以帮您？ 13 / 300 对话模型 LLM_Fix_Medium_ChEn_Chat
+    Prompt 你是一个友好的助手 查看示例 AI 生成 变量 开场热门问题 其他设置 短期记忆 保留最近 轮对话 长期记忆 联网搜索能力 智能追问推荐 兜底话
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: body > div:nth-of-type(1) > div > div:nth-of-type(2) > div > div:nth-of-type(1)
+      > div > div > div
+- key: clickable-* 欢迎语 您好，请问有什么可以帮您？ 13 / 300 对话模型 LLM_Fix_Medium_ChEn_Chat Prompt
+    你是一个友好的助手 查看示例 AI 生成 变量 开场热门问题 其他设置 短期记忆 保留最近 轮对话 长期记忆 联网搜索能力 智能追问推荐 兜底话术
+  object: botSetting
+  states:
+  - page-botSetting__root__001
+  role: clickable
+  name: '* 欢迎语 您好，请问有什么可以帮您？ 13 / 300 对话模型 LLM_Fix_Medium_ChEn_Chat Prompt 你是一个友好的助手
+    查看示例 AI 生成 变量 开场热门问题 其他设置 短期记忆 保留最近 轮对话 长期记忆 联网搜索能力 智能追问推荐 兜底话术'
+  actions:
+  - click
+  locator:
+    strategy: css
+    value: body > div:nth-of-type(1) > div > div:nth-of-type(2) > div > div:nth-of-type(1)
+      > div > div > div > div:nth-of-type(2)
+quality:
+  status: complete

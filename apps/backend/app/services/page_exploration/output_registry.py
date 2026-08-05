@@ -161,6 +161,9 @@ def _append_project_page_edge(
     locator: str = "",
     from_url: str = "",
     to_url: str = "",
+    edge_type: str = "business_drilldown",
+    navigation_group: str = "",
+    source_region_type: str = "content",
 ) -> dict | None:
     if not project_id or not run_id or not from_page_id or not to_page_id or from_page_id == to_page_id:
         return None
@@ -185,6 +188,9 @@ def _append_project_page_edge(
         "locator": locator,
         "from_url": _normalize_snapshot_url_path(from_url) if from_url else "",
         "to_url": _normalize_snapshot_url_path(to_url) if to_url else "",
+        "edge_type": edge_type or "unknown",
+        "source_region_type": source_region_type or "content",
+        "navigation_group": navigation_group,
         "observed_at": datetime.now(timezone.utc).isoformat(),
     }
     edge = {key: value for key, value in edge.items() if value not in ("", None)}
@@ -314,6 +320,60 @@ def _checkpoint_snapshot_artifact_from_event(event: dict, *, project_id: str, ru
             run_id,
             page_id,
             saved_path,
+            exc,
+        )
+    return saved_path
+
+
+def _checkpoint_page_identity(
+    *,
+    project_id: str,
+    run_id: str,
+    url: str,
+    title: str = "",
+) -> Path | None:
+    """Ensure a page node exists as soon as navigation identifies a URL."""
+    normalized_path = _normalize_snapshot_url_path(url)
+    page_id = make_page_id(normalized_path)
+    existing_path = _project_file_storage_root() / project_id / "page_exploration" / "pages" / f"{page_id}.yaml"
+    artifact = _read_yaml_file(existing_path)
+    if not artifact.get("page"):
+        artifact = normalize_snapshot_artifact(
+            {
+                "url": url,
+                "title": title or normalized_path,
+                "interaction_scope": "page",
+                "elements": [],
+            }
+        )
+    run_dir = _project_file_storage_root() / project_id / "page_exploration" / "runs" / run_id
+    saved_path = Path(
+        _save_project_page_artifact(
+            project_id=project_id,
+            run_id=run_id,
+            artifact=artifact,
+            source_path=Path(f"pages/{page_id}.yaml"),
+            scope="主探索模块",
+        )
+    )
+    try:
+        with _connect() as db:
+            _register_page_artifact_file(
+                db,
+                project_id=project_id,
+                run_dir=run_dir,
+                run_id=run_id,
+                path=Path(f"pages/{page_id}.yaml"),
+                artifact=artifact,
+                scope="主探索模块",
+                project_page_path=saved_path,
+            )
+    except Exception as exc:
+        logger.warning(
+            "failed to register page identity checkpoint: project_id=%s run_id=%s page_id=%s error=%s",
+            project_id,
+            run_id,
+            page_id,
             exc,
         )
     return saved_path

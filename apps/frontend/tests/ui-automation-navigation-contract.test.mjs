@@ -115,11 +115,19 @@ test("UI automation asset detail has overview and execution tabs", () => {
   assert.doesNotMatch(detailSource, /listUiAutomationAssetFiles/);
 });
 
-test("UI automation asset revision collects an optional instruction before submitting", () => {
-  assert.match(detailSource, /<DialogTitle>修订 UI 自动化<\/DialogTitle>/);
-  assert.match(detailSource, /检测问题：当前资产缺少业务步骤映射/);
-  assert.match(detailSource, /补充修改要求（可选）/);
-  assert.match(detailSource, /reason_code: "missing_business_step_mapping"/);
+test("UI automation asset AI edit collects an instruction before submitting", () => {
+  assert.match(detailSource, /AI 修改/);
+  assert.match(detailSource, /<DialogTitle[^>]*>AI 修改自动化脚本<\/DialogTitle>/);
+  assert.match(
+    detailSource,
+    /<FieldLabel[^>]*htmlFor="ui-automation-revision-instruction"[^>]*>[\s\S]*?修改要求[\s\S]*?<\/FieldLabel>/,
+  );
+  assert.match(detailSource, /placeholder="告诉 AI 需要怎样修改脚本"/);
+  assert.match(detailSource, /修改完成后运行测试/);
+  assert.match(detailSource, /开始修改/);
+  assert.doesNotMatch(detailSource, /检测问题：/);
+  assert.doesNotMatch(detailSource, /当前资产逻辑保持不变/);
+  assert.match(detailSource, /reason_code: "user_requested_change"/);
   assert.match(detailSource, /instruction: revisionInstruction\.trim\(\)/);
   assert.match(detailSource, /run_after_revision: runAfterRevision/);
   assert.match(detailSource, /createUiAutomationRevisionRun/);
@@ -133,7 +141,7 @@ test("UI automation asset detail keeps a compact header", () => {
   assert.doesNotMatch(detailSource, /title="刷新"/);
   assert.match(detailSource, /grid grid-cols-3 gap-2 lg:flex lg:flex-nowrap lg:justify-end/);
   assert.match(detailSource, /返回列表/);
-  assert.match(detailSource, /重新生成/);
+  assert.match(detailSource, /AI 修改/);
   assert.match(detailSource, /执行测试/);
   assert.match(detailSource, /text-lg tracking-tight sm:text-xl/);
   assert.doesNotMatch(detailSource, /资产可执行/);

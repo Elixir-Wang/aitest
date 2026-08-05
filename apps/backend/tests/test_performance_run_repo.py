@@ -61,6 +61,9 @@ def test_runtime_locustfile_captures_redacted_response_evidence() -> None:
 def test_runtime_locustfile_uses_current_environment_headers() -> None:
     source = runtime_locustfile_source()
 
+    assert "import scenario_runtime" in source
+    assert "scenario_runtime.set_sse_measurement_sink(_append_sse_measurement)" in source
+    assert "generated.SSE_MEASUREMENT_SINK" not in source
     assert 'scenario_variables[str(key).lower().replace("-", "_")] = value' not in source
     assert 'scenario_variables.update(dict(RUNTIME["environment"].get("variables") or {}))' in source
     assert 'scenario_variables.update(dict(RUNTIME["environment"].get("headers") or {}))' in source

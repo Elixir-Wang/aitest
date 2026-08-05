@@ -1,7 +1,9 @@
 import json
 import shutil
 
+import pytest
 import yaml
+from fastapi import HTTPException
 
 from app.core import db as core_db
 from app.repositories import ui_automation_repo
@@ -147,6 +149,19 @@ def test_repair_business_step_mapping_returns_none_for_unmapped_or_ambiguous_ope
     assert repair_business_step_mapping(plan, case_data) is None
 
 
+def test_user_requested_change_requires_an_instruction():
+    with pytest.raises(HTTPException) as exc_info:
+        service.create_revision_run(
+            "project-1",
+            "uiasset-1",
+            {"reason_code": "user_requested_change", "instruction": "  "},
+            ACTOR,
+        )
+
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.detail["code"] == "UI_AUTOMATION_REVISION_INSTRUCTION_REQUIRED"
+
+
 def test_execute_revision_repairs_plan_and_updates_same_asset(monkeypatch, tmp_path):
     suite_path, plan_path = _seed_revision_asset(monkeypatch, tmp_path)
 
@@ -255,6 +270,39 @@ def test_execute_mapping_revision_with_instruction_still_uses_deterministic_repa
     revised_plan = json.loads(plan_path.read_text(encoding="utf-8"))
     assert revised_plan["steps"][0]["business_step_id"] == "step-1"
     assert revised_plan["steps"][0]["title"] == "进入登录页"
+
+
+def test_execute_user_requested_change_uses_ai_and_forwards_instruction(monkeypatch, tmp_path):
+    _, plan_path = _seed_revision_asset(monkeypatch, tmp_path)
+    instruction = "把登录按钮定位改为 role"
+    created = service.create_revision_run(
+        "project-1",
+        "uiasset-1",
+        {"reason_code": "user_requested_change", "instruction": instruction},
+        ACTOR,
+    )
+    captured = {}
+
+    async def fake_ai_revision(**kwargs):
+        captured["revision_context"] = kwargs["revision_context"]
+        staged_plan_path = kwargs["suite_path"] / kwargs["artifacts"]["plan_file"]
+        plan = json.loads(staged_plan_path.read_text(encoding="utf-8"))
+        plan["steps"][0]["business_step_id"] = "step-1"
+        plan["steps"][0]["title"] = "进入登录页"
+        staged_plan_path.write_text(json.dumps(plan, ensure_ascii=False), encoding="utf-8")
+
+    monkeypatch.setattr(service, "resolve_model_selection", lambda capability_id: "selection")
+    monkeypatch.setattr(service, "build_agent_model", lambda selection: "model")
+    monkeypatch.setattr(service, "generate_pytest_playwright_case", fake_ai_revision)
+    monkeypatch.setattr(service, "collect_suite", lambda *args, **kwargs: {"ok": True, "stderr": ""})
+
+    completed = service.execute_generation_run(created["id"])
+
+    assert completed["status"] == "completed"
+    assert completed["revision_strategy"] == "ai"
+    assert captured["revision_context"]["reason_code"] == "user_requested_change"
+    assert captured["revision_context"]["instruction"] == instruction
+    assert json.loads(plan_path.read_text(encoding="utf-8"))["steps"][0]["title"] == "进入登录页"
 
 
 def test_execute_mapping_revision_uses_asset_step_ids_when_current_case_was_reordered(

@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 
 import { ArrowLeft, CircleHelp, FileText, Gauge, Loader2, Play, Save, Sparkles } from "lucide-react";
 
+import { explorationModeLabels } from "@/components/ai-testing/exploration-environment-utils";
 import { PageShell, ShellSection } from "@/components/ai-testing/page-shell";
 import { Select, SelectOption } from "@/components/ui/animated-select-1";
 import { Button } from "@/components/ui/button";
@@ -85,12 +86,6 @@ const explorationPlaceholders = {
   goal: "填写本次探索想发现或验证的目标。",
   autonomousGoal: "可选填写本次自主探索想重点关注的内容。",
   loopGoal: "可选填写 Loop 探索的重点模块或业务风险。",
-};
-
-const explorationModeLabels: Record<ExplorationMode, string> = {
-  goal: "目标探索",
-  autonomous: "自主探索",
-  loop: "Loop 全站探索",
 };
 
 function isExplorationLinkableRequirement(requirement: RequirementDocument) {

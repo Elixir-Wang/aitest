@@ -174,7 +174,7 @@ def test_running_tasks_include_ui_automation_revision_and_execution(monkeypatch:
     tasks_by_source = {task["source_type"]: task for task in tasks}
     assert set(tasks_by_source) == {"ui_automation_run", "ui_automation_generation_run"}
     assert tasks_by_source["ui_automation_run"]["title"] == "执行 UI 自动化：登录流程"
-    assert tasks_by_source["ui_automation_generation_run"]["title"] == "修订 UI 自动化：登录流程"
+    assert tasks_by_source["ui_automation_generation_run"]["title"] == "AI 修改自动化脚本：登录流程"
     assert (
         tasks_by_source["ui_automation_generation_run"]["detail_url"]
         == "/projects/project-1/automation/ui/assets/uiasset-1?tab=generation"
@@ -600,5 +600,4 @@ def test_ai_scenario_plan_is_registered_as_running_task(monkeypatch: pytest.Monk
 
 def test_interrupted_exploration_run_is_restartable_for_admin() -> None:
     assert True
-
 

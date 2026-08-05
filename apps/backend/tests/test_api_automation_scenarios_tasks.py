@@ -30,6 +30,19 @@ def test_api_scenario_backend_does_not_expose_publish_route() -> None:
     assert "/projects/{project_id}/api-scenarios/{scenario_id}/publish" not in paths
 
 
+def test_scenario_endpoint_count_uses_unique_enabled_api_request_endpoints() -> None:
+    snapshot = {
+        "steps": [
+            {"step_type": "api_request", "endpoint_id": "apiend-1", "enabled": True},
+            {"step_type": "api_request", "endpoint_id": "apiend-1", "enabled": True},
+            {"step_type": "api_request", "endpoint_id": "apiend-2", "enabled": False},
+            {"step_type": "wait", "endpoint_id": "apiend-3", "enabled": True},
+        ]
+    }
+
+    assert service._scenario_endpoint_count(snapshot) == 1
+
+
 def _use_temp_db(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     data_dir = tmp_path / "data"
     project_root = data_dir / "projects"
@@ -668,12 +681,14 @@ def test_latest_saved_scenario_creates_collectable_run_artifact(monkeypatch: pyt
     test_file = storage.resolve_stored_path(run["execution_snapshot"]["test_file_path"])
     assert run["target_type"] == "scenario"
     assert run["target_ids"] == [scenario["id"]]
+    assert run["execution_snapshot"]["endpoint_count"] == 1
     assert test_file and test_file.exists()
     assert test_file.relative_to(suite_path).as_posix() == "testcases/scenarios/test_scenario.py"
     assert suite_path and (suite_path / "support" / "scenario.py").exists()
     assert collection_calls[0]["test_paths"] == [str(test_file.relative_to(suite_path))]
 
     legacy_snapshot = dict(run["execution_snapshot"])
+    legacy_snapshot.pop("endpoint_count")
     legacy_snapshot["test_file_path"] = storage.store_path(
         suite_path / "scenarios" / "legacy" / "test_scenario.py"
     )
@@ -701,6 +716,7 @@ def test_latest_saved_scenario_creates_collectable_run_artifact(monkeypatch: pyt
 
     assert completed["status"] == "passed"
     assert completed["summary"]["passed"] == 1
+    assert completed["execution_snapshot"]["endpoint_count"] == 1
     assert [path.replace("\\", "/") for path in execution_calls[0]["test_paths"]] == [
         "testcases/scenarios/test_scenario.py"
     ]

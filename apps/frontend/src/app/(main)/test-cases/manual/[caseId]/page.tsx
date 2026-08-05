@@ -5,7 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
 
-import { ArrowLeft, ClipboardCheck, Loader2 } from "lucide-react";
+import { ArrowLeft, ClipboardCheck, Loader2, Pencil } from "lucide-react";
 
 import { PageShell, ShellSection } from "@/components/ai-testing/page-shell";
 import { Button } from "@/components/ui/button";
@@ -83,12 +83,20 @@ export default function ManualTestCaseDetailPage() {
                   <h1 className="font-semibold text-xl tracking-tight">{testCase.title}</h1>
                 </div>
               </div>
-              <Button asChild variant="outline">
-                <Link href="/test-cases">
-                  <ArrowLeft className="size-4" />
-                  返回测试用例
-                </Link>
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button asChild>
+                  <Link href={`/test-cases/manual/${testCase.id}/edit?project=${testCase.project_id}`}>
+                    <Pencil className="size-4" />
+                    编辑
+                  </Link>
+                </Button>
+                <Button asChild variant="outline">
+                  <Link href="/test-cases">
+                    <ArrowLeft className="size-4" />
+                    返回测试用例
+                  </Link>
+                </Button>
+              </div>
             </div>
 
             <div className="grid gap-3 text-sm sm:grid-cols-3">

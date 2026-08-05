@@ -94,6 +94,10 @@ class ManualTestCaseCreateIn(BaseModel):
         return value
 
 
+class ManualTestCaseUpdateIn(ManualTestCaseCreateIn):
+    pass
+
+
 ManualTestCaseAiGenerateRequest = ManualTestCaseAiGenerateIn
 ManualTestCaseAiGenerateResponse = ManualTestCaseAiGenerateOut
 

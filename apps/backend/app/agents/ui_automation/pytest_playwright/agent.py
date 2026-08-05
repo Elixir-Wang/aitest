@@ -85,7 +85,7 @@ async def generate_pytest_playwright_case(
         )
     elif revision_context:
         instruction = (
-            "这是对已有 UI 自动化资产的修订任务。必须先读取当前 test、data、plan 和关联 POM，"
+            "这是使用 AI 修改已有 UI 自动化脚本的任务。必须先读取当前 test、data、plan 和关联 POM，"
             "在当前实现基础上做最小必要修改；保留现有 locator、断言、参数化和执行顺序，"
             "除非用户要求或校验证明无法满足目标，否则不要重写测试逻辑。"
         )

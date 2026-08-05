@@ -175,18 +175,6 @@ def test_request_stats_returns_only_configured_sse_metrics(
                     "sse": {
                         "metrics": [
                             {
-                                "id": "first_output",
-                                "name": "首次有效内容时间",
-                                "category": "first_output",
-                                "timing": {
-                                    "scope": "request",
-                                    "start": "request_started",
-                                    "source_request_id": "step_sse_chat",
-                                    "source_request_name": "02 POST /chat/sse",
-                                },
-                                "match": {"source": "data_json", "path": "$.data.index", "operator": "equals", "expected": 0},
-                            },
-                            {
                                 "id": "llm_started",
                                 "name": "LLM 开始时间",
                                 "category": "milestone_start",
@@ -202,6 +190,18 @@ def test_request_stats_returns_only_configured_sse_metrics(
                                     "operator": "equals",
                                     "expected": "call_llm_start",
                                 },
+                            },
+                            {
+                                "id": "first_output",
+                                "name": "首次有效内容时间",
+                                "category": "first_output",
+                                "timing": {
+                                    "scope": "request",
+                                    "start": "request_started",
+                                    "source_request_id": "step_sse_chat",
+                                    "source_request_name": "02 POST /chat/sse",
+                                },
+                                "match": {"source": "data_json", "path": "$.data.index", "operator": "equals", "expected": 0},
                             },
                         ]
                     },
@@ -230,13 +230,13 @@ def test_request_stats_returns_only_configured_sse_metrics(
     assert [(row["method"], row["name"]) for row in rows] == [
         ("POST", "01 POST /segment-code"),
         ("POST", "02 POST /chat/sse"),
-        ("SSE", "首次有效内容时间"),
         ("SSE", "LLM 开始时间"),
+        ("SSE", "首次有效内容时间"),
     ]
     assert rows[0]["request_count"] == 12
     assert rows[1]["request_count"] == 2
     assert rows[1]["timing_semantics"] == "connection"
     assert rows[2]["request_count"] == 2
-    assert rows[2]["source_request_name"] == "02 POST /chat/sse"
-    assert rows[2]["timing_formula"] == "首次有效内容时间 - 02 POST /chat/sse 请求发起时间"
+    assert rows[3]["source_request_name"] == "02 POST /chat/sse"
+    assert rows[3]["timing_formula"] == "首次有效内容时间 - 02 POST /chat/sse 请求发起时间"
     assert all(row["method"] != "SCENARIO" for row in rows)

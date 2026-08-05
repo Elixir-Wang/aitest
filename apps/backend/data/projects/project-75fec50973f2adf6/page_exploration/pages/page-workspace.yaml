@@ -294,3 +294,4 @@ transitions:
   url_changed: false
 quality:
   status: complete
+collections: []

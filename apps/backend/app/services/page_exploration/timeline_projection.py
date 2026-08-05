@@ -3,9 +3,11 @@
 import hashlib
 import json
 import logging
+import re
 from pathlib import Path
 from urllib.parse import urlparse
 
+from app.core import settings
 from app.services.page_exploration.event_payload import _clean_compact_payload, _compact_event_payload
 
 logger = logging.getLogger(__name__)
@@ -31,12 +33,32 @@ def _coerce_tool_output_dict(output) -> dict:
                 return parsed
         return {}
     if isinstance(output, str):
+        resolved = _read_large_tool_result(output)
+        if resolved is not None:
+            return _coerce_tool_output_dict(resolved)
         try:
             parsed = json.loads(output)
         except json.JSONDecodeError:
             return {"raw": output}
         return parsed if isinstance(parsed, dict) else {"raw": parsed}
     return {}
+
+
+def _read_large_tool_result(value: str) -> str | None:
+    match = re.search(r"(?:^|\s)/large_tool_results/([A-Za-z0-9_.-]+)", value)
+    if not match:
+        return None
+    result_root = (settings.BACKEND_ROOT / "large_tool_results").resolve()
+    result_path = (result_root / match.group(1)).resolve()
+    try:
+        result_path.relative_to(result_root)
+    except ValueError:
+        return None
+    try:
+        return result_path.read_text(encoding="utf-8")
+    except OSError as exc:
+        logger.warning("failed to read large tool result: path=%s error=%s", result_path, exc)
+        return None
 
 
 def _projection_chunk_to_timeline_events(
@@ -233,6 +255,18 @@ def _projection_tool_event_to_timeline_event(
         payload["element_id"] = _compact_event_payload(input_data.get("element_id"))
     if output_data.get("element_key"):
         payload["element_key"] = _compact_event_payload(output_data.get("element_key"))
+    for field in (
+        "after_url",
+        "before_url",
+        "navigation_group",
+        "source_region_type",
+    ):
+        if output_data.get(field):
+            payload[field] = _compact_event_payload(output_data.get(field))
+    if "url_changed" in output_data:
+        payload["url_changed"] = bool(output_data.get("url_changed"))
+    if tool_name == "playwright_navigate_tool" and output_data.get("url"):
+        payload["after_url"] = _compact_event_payload(output_data.get("url"))
     failure = output_data.get("failure")
     if isinstance(failure, dict):
         payload["failure"] = {

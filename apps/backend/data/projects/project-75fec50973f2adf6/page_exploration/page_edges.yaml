@@ -6,4 +6,29 @@ edges:
   action: click
   from_url: /agentStore
   to_url: /workspace
+  edge_type: navigation_switch
+  source_region_type: navigation
+  navigation_group: primary-navigation
   observed_at: '2026-08-02T16:13:07.660750+00:00'
+- id: hierarchy-workspace-botSetting
+  run_id: exp_AEF5tx0X9WHsIXTDDzdQuA
+  from_page_id: page-workspace
+  to_page_id: page-botSetting
+  action: contains
+  edge_type: hierarchy
+  source_region_type: content
+  relation_source: confirmed
+  from_url: /workspace
+  to_url: /botSetting
+  observed_at: '2026-08-05T13:10:13.755048+00:00'
+- id: hierarchy-botSetting-agentRelease
+  run_id: exp_AEF5tx0X9WHsIXTDDzdQuA
+  from_page_id: page-botSetting
+  to_page_id: page-agentRelease
+  action: contains
+  edge_type: hierarchy
+  source_region_type: content
+  relation_source: confirmed
+  from_url: /botSetting
+  to_url: /agentRelease
+  observed_at: '2026-08-05T13:11:45.719496+00:00'

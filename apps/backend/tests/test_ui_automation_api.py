@@ -21,6 +21,16 @@ def test_revision_input_accepts_structured_reason_and_optional_instruction():
     assert payload.run_after_revision is True
 
 
+def test_revision_input_accepts_user_requested_ai_change():
+    payload = UiAutomationRevisionIn(
+        reason_code="user_requested_change",
+        instruction="  把登录按钮定位改为 role。  ",
+    )
+
+    assert payload.reason_code == "user_requested_change"
+    assert payload.instruction == "把登录按钮定位改为 role。"
+
+
 def test_ui_automation_routes_are_registered():
     paths = {route.path for route in v1_router.routes}
     assert "/projects/{project_id}/ui-automation/generation-runs" in paths
@@ -118,14 +128,14 @@ def test_revision_route_schedules_managed_execution(monkeypatch):
         "project-1",
         "uiasset-1",
         UiAutomationRevisionIn(
-            reason_code="missing_business_step_mapping",
-            instruction="只补全步骤映射",
+            reason_code="user_requested_change",
+            instruction="修改登录按钮定位",
         ),
         actor={"id": "user-1"},
     )
 
     assert result["target_asset_id"] == "uiasset-1"
-    assert result["reason_code"] == "missing_business_step_mapping"
+    assert result["reason_code"] == "user_requested_change"
     assert captured == {"run_id": "uigen-revision-1"}
 
 

@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import Link from "next/link";
 
-import { ClipboardCheck, Loader2, Plus, RefreshCw, Sparkles, Trash2 } from "lucide-react";
+import { ClipboardCheck, Loader2, Pencil, Plus, RefreshCw, Sparkles, Trash2 } from "lucide-react";
 
 import { ListToolbar, PageShell, RowActions, ShellSection } from "@/components/ai-testing/page-shell";
 import { ProcessingState, TableLoadingRow } from "@/components/ai-testing/table-loading-row";
@@ -441,13 +441,13 @@ export default function Page() {
         steps,
         notes: manualForm.notes.trim(),
       };
-      const created = await apiRequest<ApiManualTestCase>(`/projects/${selectedManualProjectId}/test-cases`, {
+      const saved = await apiRequest<ApiManualTestCase>(`/projects/${selectedManualProjectId}/test-cases`, {
         method: "POST",
         body: JSON.stringify(payload),
       });
       itemSelection.setRows((current) => [
-        { ...created, itemType: "case" },
-        ...current.filter((item) => item.id !== created.id),
+        { ...saved, itemType: "case" },
+        ...current.filter((item) => item.id !== saved.id),
       ]);
       setDialogOpen(false);
       toast.success("测试用例已创建");
@@ -594,6 +594,11 @@ export default function Page() {
                                     label: "查看",
                                     icon: ClipboardCheck,
                                     href: `/test-cases/manual/${item.id}?project=${item.project_id}`,
+                                  },
+                                  {
+                                    label: "编辑",
+                                    icon: Pencil,
+                                    href: `/test-cases/manual/${item.id}/edit?project=${item.project_id}`,
                                   },
                                   {
                                     label: "删除",

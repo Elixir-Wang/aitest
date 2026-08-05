@@ -7,7 +7,7 @@ from app.agents.performance_testing.script_generation.planner import build_defau
 from app.agents.performance_testing.script_generation.schemas import LocustLoadPlan, LocustScriptPlan
 from app.agents.performance_testing.script_generation.service import script_plan_input
 from app.services.performance_testing.scenario_compiler import build_scenario_plan
-from app.services.performance_testing.script_renderer import _render_scenario_helpers, render_locust_script
+from app.services.performance_testing.script_renderer import render_locust_script, runtime_module_source
 from app.services.performance_testing.validator import validate_locust_script
 
 
@@ -21,6 +21,15 @@ SKILL_PATH = (
     / "performance-script-generation"
     / "SKILL.md"
 )
+
+
+def _runtime_helpers() -> dict[str, object]:
+    source = runtime_module_source()
+    source = source[:source.index("def execute_plan")]
+    source = source.replace("from locust import HttpUser, LoadTestShape, events\n", "")
+    namespace: dict[str, object] = {}
+    exec(source, namespace)
+    return namespace
 
 
 def _performance_test() -> dict:
@@ -121,6 +130,10 @@ def test_planners_upgrade_legacy_first_output_rule_to_index_zero() -> None:
     )
 
     for config in (endpoint_plan.request.sse, scenario_plan.steps[0].request.sse):
+        assert [metric["id"] for metric in config["metrics"]] == [
+            "sse_milestone_start_da4c4636",
+            "sse_first_output_98bdefc2",
+        ]
         first_output = next(metric for metric in config["metrics"] if metric["id"].startswith("sse_first_output_"))
         llm_start = next(metric for metric in config["metrics"] if metric["id"].startswith("sse_milestone_start_"))
         assert first_output["match"] == {
@@ -162,7 +175,10 @@ def test_planners_preserve_confirmed_answer_content_rule() -> None:
 
     plan = build_default_plan(performance_test)
 
-    assert plan.request.sse["metrics"][0]["match"] == sse_config["metrics"][0]["match"]
+    first_output = next(
+        metric for metric in plan.request.sse["metrics"] if metric["id"].startswith("sse_first_output_")
+    )
+    assert first_output["match"] == sse_config["metrics"][0]["match"]
 
 
 def test_scenario_compiler_keeps_required_endpoint_header_defaults() -> None:
@@ -278,14 +294,25 @@ def test_renderer_uses_locust_http_user_and_controlled_request() -> None:
 
     source = render_locust_script(plan)
 
-    assert "class PerformanceUser(HttpUser):" in source
-    assert "catch_response=True" in source
+    assert "class PerformanceUser(EndpointUser):" in source
+    assert "from scenario_runtime import EndpointUser" in source
     assert "between(0.5, 1.5)" in source
     assert "Authorization" in source
     assert "cybertron-robot-key" in source
     assert "cybertron-robot-token" in source
-    assert "self.client.request(" in source
+    assert "PLAN = json.loads(" in source
     assert "LoadTestShape" not in source
+
+
+def test_renderer_keeps_execution_logic_in_shared_runtime() -> None:
+    source = render_locust_script(build_default_plan(_performance_test()))
+    runtime = runtime_module_source()
+
+    assert len(source.splitlines()) < 25
+    assert "import math" not in source
+    assert "self.client.request(" not in source
+    assert "def execute_endpoint" in runtime
+    assert "catch_response=True" in runtime
 
 
 def test_renderer_reads_sse_lines_without_requests_default_buffering() -> None:
@@ -298,7 +325,8 @@ def test_renderer_reads_sse_lines_without_requests_default_buffering() -> None:
 
     source = render_locust_script(build_default_plan(performance_test))
 
-    assert "response.iter_lines(chunk_size=1, decode_unicode=True)" in source
+    assert "from scenario_runtime import EndpointUser" in source
+    assert '"transport": "sse"' in source
 
 
 def test_renderer_keeps_http_and_business_success_rules() -> None:
@@ -319,26 +347,18 @@ def test_renderer_keeps_http_and_business_success_rules() -> None:
         {"kind": "status_code", "status_codes": [200]},
         {"kind": "jsonpath_equals", "json_path": "$.code", "expected": "000000"},
     ]
-    assert 'rule["kind"].startswith("jsonpath_")' in source
-    assert "JSONPath mismatch" in source
-    assert source.count("payload = response.json()") == 1
-    assert "payload_loaded = False" in source
+    assert '"success_rules"' in source
 
 
 def test_renderer_resolves_single_brace_path_parameters() -> None:
     source = render_locust_script(build_default_plan(_performance_test()))
 
-    assert 'path = path.replace("{" + key + "}", str(value))' in source
-    assert 'path.replace("{{" + key + "}}"' not in source
+    assert '"path_parameters"' in source
+    assert '"{{" + key + "}}"' not in source
 
 
 def test_scenario_source_resolves_normalized_environment_secret_names() -> None:
-    namespace: dict[str, object] = {}
-    exec(_render_scenario_helpers(), namespace)
-
-    scenario_source = namespace["_scenario_source"]
-
-    assert scenario_source(
+    assert _runtime_helpers()["_source"](
         {"type": "secret", "key": "cybertron_robot_key"},
         {"cybertron-robot-key": "robot-key"},
         {},
@@ -346,12 +366,7 @@ def test_scenario_source_resolves_normalized_environment_secret_names() -> None:
 
 
 def test_scenario_variable_prefers_exact_name_over_normalized_alias() -> None:
-    namespace: dict[str, object] = {}
-    exec(_render_scenario_helpers(), namespace)
-
-    scenario_variable = namespace["_scenario_variable"]
-
-    assert scenario_variable(
+    assert _runtime_helpers()["_variable"](
         {
             "cybertron_robot_key": "exact-value",
             "cybertron-robot-key": "alias-value",
@@ -361,13 +376,8 @@ def test_scenario_variable_prefers_exact_name_over_normalized_alias() -> None:
 
 
 def test_scenario_variable_rejects_ambiguous_normalized_names() -> None:
-    namespace: dict[str, object] = {}
-    exec(_render_scenario_helpers(), namespace)
-
-    scenario_variable = namespace["_scenario_variable"]
-
     with pytest.raises(ValueError, match="ambiguous scenario variable: Cybertron_Robot_Key"):
-        scenario_variable(
+        _runtime_helpers()["_variable"](
             {
                 "cybertron_robot_key": "first-value",
                 "cybertron-robot-key": "second-value",
@@ -377,10 +387,6 @@ def test_scenario_variable_rejects_ambiguous_normalized_names() -> None:
 
 
 def test_required_scenario_binding_rejects_missing_value_before_overwrite() -> None:
-    namespace: dict[str, object] = {}
-    exec(_render_scenario_helpers(), namespace)
-
-    apply_bindings = namespace["_apply_scenario_bindings"]
     request = {"headers": {"cybertron-robot-key": "runtime-value"}}
     binding = {
         "required": True,
@@ -392,16 +398,13 @@ def test_required_scenario_binding_rejects_missing_value_before_overwrite() -> N
         ValueError,
         match="required scenario binding unresolved: cybertron_robot_key -> /request/headers/cybertron-robot-key",
     ):
-        apply_bindings(request, [binding], {}, {})
+        user = type("User", (), {"variables": {}, "outputs": {}})()
+        _runtime_helpers()["_apply_bindings"](request, [binding], user)
 
     assert request["headers"]["cybertron-robot-key"] == "runtime-value"
 
 
 def test_optional_scenario_binding_preserves_existing_value_when_missing() -> None:
-    namespace: dict[str, object] = {}
-    exec(_render_scenario_helpers(), namespace)
-
-    apply_bindings = namespace["_apply_scenario_bindings"]
     request = {"headers": {"cybertron-robot-key": "runtime-value"}}
     binding = {
         "required": False,
@@ -409,7 +412,8 @@ def test_optional_scenario_binding_preserves_existing_value_when_missing() -> No
         "target": "/request/headers/cybertron-robot-key",
     }
 
-    apply_bindings(request, [binding], {}, {})
+    user = type("User", (), {"variables": {}, "outputs": {}})()
+    _runtime_helpers()["_apply_bindings"](request, [binding], user)
 
     assert request["headers"]["cybertron-robot-key"] == "runtime-value"
 
@@ -427,9 +431,9 @@ def test_renderer_emits_controlled_load_shape_for_gradient_mode() -> None:
 
     source = render_locust_script(build_default_plan(performance_test))
 
-    assert "class PerformanceLoadShape(LoadTestShape):" in source
+    assert "class PerformanceLoadShape(RuntimeLoadShape):" in source
     assert '"target_users": 50' in source
-    assert "return (stage[\"target_users\"], stage[\"spawn_rate\"])" in source
+    assert "from scenario_runtime import PerformanceLoadShape as RuntimeLoadShape" in source
 
 
 def test_load_plan_rejects_wait_time_range_in_reverse() -> None:
@@ -468,8 +472,8 @@ def test_renderer_supports_json_parameter_rows() -> None:
     source = render_locust_script(plan)
 
     assert plan.data.source == "json"
-    assert "def _next_data_row" in source
-    assert "random.choice(rows)" in source
+    assert '"json_rows"' in source
+    assert '"selection_strategy": "random"' in source
 
 
 def test_validator_accepts_rendered_script() -> None:
@@ -502,9 +506,8 @@ def test_stress_script_stops_after_consecutive_failure_windows() -> None:
 
     source = render_locust_script(build_default_plan(performance_test))
 
-    assert 'PLAN["circuit_breaker"]' in source
-    assert "window_fail_ratio" in source
-    assert "self.failed_windows >= breaker[\"consecutive_windows\"]" in source
+    assert '"circuit_breaker"' in source
+    assert "from scenario_runtime import PerformanceLoadShape as RuntimeLoadShape" in source
 
 
 def test_validator_rejects_unresolved_required_static_scenario_binding() -> None:

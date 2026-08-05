@@ -318,6 +318,8 @@ test("project api automation run records use a persistent paged history list", (
   assert.match(projectPageSource, /<TableHead>运行 ID<\/TableHead>/);
   assert.match(projectPageSource, /<TableHead>执行环境<\/TableHead>/);
   assert.match(projectPageSource, /<TableHead>测试接口数量<\/TableHead>/);
+  assert.match(projectPageSource, /\{item\.execution_snapshot\.endpoint_count \?\? 0\} 个/);
+  assert.doesNotMatch(projectPageSource, /item\.execution_snapshot\.scenario\?\.name \?\? "场景"/);
   assert.match(projectPageSource, /<TableHead>执行结果<\/TableHead>/);
   assert.match(projectPageSource, /<TableHead>执行时间<\/TableHead>/);
   assert.doesNotMatch(projectPageSource, /<TableHead>执行范围<\/TableHead>/);

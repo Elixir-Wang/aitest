@@ -20,7 +20,7 @@ from app.core import storage
 from app.core import settings
 from app.seed.init_db import init_db
 from app.seed.seeds import _ensure_test_case_display_order
-from app.schemas.test_case import ManualTestCaseCreateIn, TestCaseReviewIn, TestCaseSetCreateIn
+from app.schemas.test_case import ManualTestCaseCreateIn, ManualTestCaseUpdateIn, TestCaseReviewIn, TestCaseSetCreateIn
 from app.services import task_service, test_case_service
 from app.services.knowledge import global_service as global_knowledge_service
 
@@ -123,6 +123,23 @@ def test_manual_test_case_create_list_and_delete(monkeypatch: pytest.MonkeyPatch
 
     detail = test_case_service.get_manual_test_case("project-1", created["id"], ACTOR)
     assert detail == created
+
+    updated = test_case_service.update_manual_test_case(
+        "project-1",
+        created["id"],
+        ManualTestCaseUpdateIn(
+            title="登录成功并进入工作台",
+            preconditions="用户账号已注册且状态正常",
+            steps=[{"action": "输入账号密码并登录", "expected_result": "进入工作台"}],
+            notes="已补充工作台校验",
+        ),
+        ACTOR,
+    )
+    assert updated["id"] == created["id"]
+    assert updated["title"] == "登录成功并进入工作台"
+    assert updated["preconditions"] == "用户账号已注册且状态正常"
+    assert updated["steps"] == [{"action": "输入账号密码并登录", "expected_result": "进入工作台"}]
+    assert updated["notes"] == "已补充工作台校验"
 
     with pytest.raises(HTTPException) as exc_info:
         test_case_service.get_manual_test_case("missing-project", created["id"], ACTOR)

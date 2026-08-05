@@ -1,6 +1,3 @@
-import json
-import re
-import time
 from pathlib import Path
 
 import pytest
@@ -10,7 +7,7 @@ from app.agents.performance_testing.script_generation.planner import build_defau
 from app.schemas.performance_test import PerformanceRequestConfig
 from app.schemas.performance_test import PerformanceGoal, PerformanceTestCreateIn
 from app.services.performance_testing.headless_worker import summarize_sse_measurements
-from app.services.performance_testing.script_renderer import _render_sse_helpers, render_locust_script
+from app.services.performance_testing.script_renderer import render_locust_script, runtime_module_source
 from app.services.performance_testing.sse import event_matches, parse_sse_events, validate_metric_rule
 
 
@@ -81,14 +78,26 @@ class _FakeSseUser:
 
 
 def _rendered_sse_runtime(measurements: list[dict]) -> dict[str, object]:
-    namespace: dict[str, object] = {
-        "json": json,
-        "re": re,
-        "time": time,
-        "_request_payload_kwargs": lambda _request, headers=None: {"headers": headers or {}},
-    }
-    exec(_render_sse_helpers(), namespace)
+    source = runtime_module_source()
+    source = source[:source.index("def execute_plan")]
+    source = source.replace("from locust import HttpUser, LoadTestShape, events\n", "")
+    namespace: dict[str, object] = {}
+    exec(source, namespace)
     namespace["SSE_MEASUREMENT_SINK"] = measurements.append
+
+    def execute_sse_request(user, request, path, measurement_context=None):
+        context = measurement_context or {}
+        step = {
+            "id": context.get("scenario_step_id") or "",
+            "name": context.get("scenario_step_name") or request.get("name") or "",
+        }
+        try:
+            namespace["_execute_sse"](user, request, path, step, measurement_context=context)
+        except AssertionError as exc:
+            return str(exc)
+        return ""
+
+    namespace["_execute_sse_request"] = execute_sse_request
     return namespace
 
 
@@ -236,19 +245,9 @@ def test_sse_renderer_streams_and_keeps_measurements_separate() -> None:
 
     source = render_locust_script(plan)
 
-    assert "stream=True" in source
-    assert "response.iter_lines" in source
-    assert "SSE_MEASUREMENT_SINK" in source
-    assert "events.request.fire" not in source
-    assert "sse_stream_too_large" in source
-    assert '"parse_error_count": 0' in source
-    assert "reported_missing" in source
-    assert 'metric["missing_policy"] != "ignore"' in source
-    assert '"missing_metric_ids": reported_missing' in source
-    assert 'metric["id"] in first_output_ids and llm_start_id and llm_start_id not in observed' in source
-    assert 'event_name, data_lines, frame_size, stream_size, ended = "message", [], 0, 0, False' in source
-    assert 'event_name, data_lines, frame_size = "message", [], 0' in source
-    assert 'event_name = value or "message"' in source
+    assert "from scenario_runtime import EndpointUser" in source
+    assert '"transport": "sse"' in source
+    assert '"metrics"' in source
 
 
 def test_rendered_sse_runtime_rejects_json_business_error_disguised_as_stream() -> None:
@@ -319,6 +318,27 @@ def test_rendered_sse_runtime_parses_raw_frames_and_flushes_final_frame() -> Non
     assert measurements[0]["frame_count"] == 4
     assert measurements[0]["data_frame_count"] == 4
     assert measurements[0]["parse_error_count"] == 0
+
+
+def test_rendered_sse_runtime_matches_llm_start_before_first_output_in_same_frame() -> None:
+    measurements: list[dict] = []
+    runtime = _rendered_sse_runtime(measurements)
+    response = _FakeSseResponse(
+        ['data: {"data":{"event_type":"call_llm_start","answer":"首字"}}', ""]
+    )
+    request = _runtime_sse_request()
+    request["sse"]["metrics"].reverse()
+
+    failure_reason = runtime["_execute_sse_request"](
+        _FakeSseUser(response),
+        request,
+        "/chat",
+    )
+
+    assert failure_reason == ""
+    assert set(measurements[0]["metrics"]) == {"llm_start", "first_output"}
+    assert measurements[0]["metrics"]["first_output"] == measurements[0]["metrics"]["llm_start"]
+    assert measurements[0]["derived_metrics"]["llm_start_to_first_content_ms"] == 0
 
 
 def test_sse_measurement_summary_keeps_missing_and_percentiles(tmp_path: Path) -> None:

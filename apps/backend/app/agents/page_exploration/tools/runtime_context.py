@@ -195,6 +195,9 @@ def _parse_action_result(
         parsed = {
             "success": True,
             "effective_locator": action.get("effective_locator") or raw_expr,
+            "before_url": str(action.get("before_url") or ""),
+            "after_url": str(action.get("after_url") or ""),
+            "url_changed": bool(action.get("url_changed", False)),
         }
         if failure_raw:
             parsed["failure"] = failure
@@ -232,6 +235,7 @@ def click_with_runtime_context(element_id: str) -> ClickResult | None:
     if session is None:
         raise BrowserSessionError("Page exploration browser session is not bound.")
     element_key = _current_element_key(element_id)
+    element_context = _current_element_context(element_id)
     try:
         result = session.click(element_id)
     except BrowserSessionError as exc:
@@ -265,6 +269,11 @@ def click_with_runtime_context(element_id: str) -> ClickResult | None:
             next_step_hint=ACTION_VERIFICATION_HINT,
             risk=_locator_risk(parsed["effective_locator"], parsed.get("failure")),
             element_key=element_key,
+            before_url=parsed["before_url"],
+            after_url=parsed["after_url"],
+            url_changed=parsed["url_changed"],
+            source_region_type=str(element_context.get("region_type") or "content"),
+            navigation_group=str(element_context.get("navigation_group") or ""),
         )
 
     failure: ActionFailure = parsed["failure"]
@@ -340,6 +349,41 @@ def _current_element_key(element_id: str) -> str:
         return ""
     state = tracker["stack"][-1]
     return str(state.get("element_keys", {}).get(element_id) or "")
+
+
+def _current_element_context(element_id: str) -> dict[str, str]:
+    tracker = _state_tracker.get()
+    if tracker is None or not tracker.get("stack"):
+        return {}
+    state = tracker["stack"][-1]
+    contexts = (
+        state.get("element_contexts")
+        if isinstance(state.get("element_contexts"), dict)
+        else {}
+    )
+    context = contexts.get(element_id)
+    return context if isinstance(context, dict) else {}
+
+
+def _element_region(element: Mapping[str, Any]) -> dict[str, str]:
+    ancestor_chain = element.get("ancestor_chain") if isinstance(element.get("ancestor_chain"), list) else []
+    ancestor_roles = {
+        str(item.get("role") or "").strip().lower()
+        for item in ancestor_chain
+        if isinstance(item, Mapping)
+    }
+    selector_parts = [str(element.get("action_locator") or "")]
+    for field in ("primary_selector", "fallback_selector"):
+        selector = element.get(field)
+        if isinstance(selector, Mapping):
+            selector_parts.append(str(selector.get("code") or selector.get("css") or ""))
+    selector_text = " ".join(selector_parts).lower()
+    is_navigation = bool(ancestor_roles & {"navigation", "complementary", "menu"}) or any(
+        marker in selector_text for marker in ("aside", "<nav", "[role=\"navigation\"]", "[role='navigation']")
+    )
+    if is_navigation:
+        return {"region_type": "navigation", "navigation_group": "primary-navigation"}
+    return {"region_type": "content", "navigation_group": ""}
 
 
 def press_with_runtime_context(locator: str = "", key: str = "") -> dict:
@@ -489,6 +533,7 @@ def _update_state_tracker(result: Mapping[str, Any]) -> dict[str, Any]:
         stack.append(state)
 
     element_keys: dict[str, str] = {}
+    element_contexts: dict[str, dict[str, str]] = {}
     for element in result.get("elements", []):
         if not isinstance(element, Mapping):
             continue
@@ -496,6 +541,12 @@ def _update_state_tracker(result: Mapping[str, Any]) -> dict[str, Any]:
         element_id = str(element.get("element_id") or element.get("id") or "")
         if element_id:
             element_keys[element_id] = key
+            element_contexts[element_id] = _element_region(element)
     state["element_keys"] = element_keys
+    state["element_contexts"] = element_contexts
     tracker["last_action"] = None
-    return {key: value for key, value in state.items() if key not in {"element_keys", "overlay_identity"}}
+    return {
+        key: value
+        for key, value in state.items()
+        if key not in {"element_contexts", "element_keys", "overlay_identity"}
+    }

@@ -228,6 +228,8 @@ export type ApiManualTestCaseCreate = {
   notes: string;
 };
 
+export type ApiManualTestCaseUpdate = ApiManualTestCaseCreate;
+
 export type ApiManualTestCaseAiGenerateRequest = {
   description: string;
   include_exploration_artifacts: boolean;
@@ -2446,20 +2448,17 @@ export function createUiAutomationRevisionRun(
   projectId: string,
   assetId: string,
   payload: {
-    reason_code: "missing_business_step_mapping";
+    reason_code: "missing_business_step_mapping" | "user_requested_change";
     instruction?: string;
     environment_id?: string;
     exploration_run_id?: string;
     run_after_revision?: boolean;
   },
 ) {
-  return apiRequest<UiAutomationGenerationRun>(
-    `/projects/${projectId}/ui-automation/assets/${assetId}/revision-runs`,
-    {
-      method: "POST",
-      body: JSON.stringify(payload),
-    },
-  );
+  return apiRequest<UiAutomationGenerationRun>(`/projects/${projectId}/ui-automation/assets/${assetId}/revision-runs`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
 }
 
 export function getUiAutomationGenerationRun(projectId: string, runId: string) {

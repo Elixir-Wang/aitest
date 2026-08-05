@@ -1,6 +1,10 @@
 import { Eye, Pencil, Play, Square, Trash2 } from "lucide-react";
 
-import { ExplorationStatusBadge, loginStrategyLabels } from "@/components/ai-testing/exploration-environment-utils";
+import {
+  ExplorationStatusBadge,
+  explorationModeLabels,
+  loginStrategyLabels,
+} from "@/components/ai-testing/exploration-environment-utils";
 import { RowActions } from "@/components/ai-testing/page-shell";
 import { TableLoadingRow } from "@/components/ai-testing/table-loading-row";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -53,7 +57,7 @@ export function ExplorationRunsTable({
               />
             </TableHead>
             <TableHead>任务名称</TableHead>
-            <TableHead>项目</TableHead>
+            <TableHead>探索方式</TableHead>
             <TableHead>关联环境</TableHead>
             <TableHead>关联需求</TableHead>
             <TableHead>任务状态</TableHead>
@@ -77,7 +81,7 @@ export function ExplorationRunsTable({
                   {item.title}
                 </button>
               </TableCell>
-              <TableCell>{item.project_name}</TableCell>
+              <TableCell>{explorationModeLabels[item.exploration_mode] ?? item.exploration_mode}</TableCell>
               <TableCell>{item.environment_name}</TableCell>
               <TableCell>{item.requirement_doc_title || "-"}</TableCell>
               <TableCell>

@@ -883,19 +883,35 @@ export function ExplorationWorkspace({
       activeTab={activeTab}
       breadcrumbs={breadcrumbs}
       description={description}
+      fillViewport={activeTab === "探索产物"}
       projectScope={projectScope}
       tabActions={
         activeTab === "探索产物" ? (
-          <Button
-            disabled={!canClearArtifacts}
-            onClick={() => setClearArtifactsDialogOpen(true)}
-            size="sm"
-            type="button"
-            variant="outline"
-          >
-            <Trash2 className="size-4" />
-            清空产物
-          </Button>
+          <>
+            <Select
+              className="h-8 w-auto min-w-28"
+              disabled={artifactProjectOptions.length === 0}
+              placeholder="选择项目"
+              setValue={setSelectedArtifactProjectId}
+              value={selectedArtifactProject?.project_id ?? ""}
+            >
+              {artifactProjectOptions.map((artifact) => (
+                <SelectOption key={artifact.project_id} value={artifact.project_id}>
+                  {artifact.project_name}
+                </SelectOption>
+              ))}
+            </Select>
+            <Button
+              disabled={!canClearArtifacts}
+              onClick={() => setClearArtifactsDialogOpen(true)}
+              size="sm"
+              type="button"
+              variant="outline"
+            >
+              <Trash2 className="size-4" />
+              清空产物
+            </Button>
+          </>
         ) : null
       }
       tabs={explorationTabs}
@@ -968,26 +984,7 @@ export function ExplorationWorkspace({
       ) : null}
 
       {activeTab === "探索产物" ? (
-        <ShellSection>
-          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-            <h2 className="font-medium text-sm">项目列表</h2>
-            <div className="flex items-center gap-3">
-              <span className="font-medium text-muted-foreground text-sm">项目</span>
-              <Select
-                className="w-auto min-w-28"
-                disabled={artifactProjectOptions.length === 0}
-                placeholder="选择项目"
-                setValue={setSelectedArtifactProjectId}
-                value={selectedArtifactProject?.project_id ?? ""}
-              >
-                {artifactProjectOptions.map((artifact) => (
-                  <SelectOption key={artifact.project_id} value={artifact.project_id}>
-                    {artifact.project_name}
-                  </SelectOption>
-                ))}
-              </Select>
-            </div>
-          </div>
+        <ShellSection className="min-h-0 border-0 bg-transparent p-0">
           {artifactProjectOptions.length === 0 ? (
             <IllustratedEmptyState
               className="rounded-lg border"
@@ -996,21 +993,19 @@ export function ExplorationWorkspace({
             />
           ) : null}
           {selectedArtifactProject ? (
-            <div>
-              <ExplorationProjectPagesTree
-                expandedNodeIds={expandedPageNodeIds}
-                loading={projectPagesLoading}
-                onPageSelect={setSelectedPageId}
-                onToggleNode={(nodeId) =>
-                  setExpandedPageNodeIds((ids) =>
-                    ids.includes(nodeId) ? ids.filter((id) => id !== nodeId) : [...ids, nodeId],
-                  )
-                }
-                pages={projectPages}
-                projectId={selectedArtifactProject.project_id}
-                selectedPageId={selectedPageId}
-              />
-            </div>
+            <ExplorationProjectPagesTree
+              expandedNodeIds={expandedPageNodeIds}
+              loading={projectPagesLoading}
+              onPageSelect={setSelectedPageId}
+              onToggleNode={(nodeId) =>
+                setExpandedPageNodeIds((ids) =>
+                  ids.includes(nodeId) ? ids.filter((id) => id !== nodeId) : [...ids, nodeId],
+                )
+              }
+              pages={projectPages}
+              projectId={selectedArtifactProject.project_id}
+              selectedPageId={selectedPageId}
+            />
           ) : null}
         </ShellSection>
       ) : null}

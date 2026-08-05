@@ -1,6 +1,3 @@
-from __future__ import annotations
-
-
 def runtime_locustfile_source() -> str:
     return '''import json
 import time
@@ -9,8 +6,8 @@ from pathlib import Path
 
 import gevent
 from locust import events
-import generated_locustfile as generated
 from generated_locustfile import *
+import scenario_runtime
 
 
 RUNTIME = json.loads(Path(__file__).with_name("runtime.json").read_text(encoding="utf-8"))
@@ -64,7 +61,7 @@ def _append_sse_measurement(payload):
         }, ensure_ascii=False, separators=(",", ":")) + "\\n")
 
 
-generated.SSE_MEASUREMENT_SINK = _append_sse_measurement
+scenario_runtime.set_sse_measurement_sink(_append_sse_measurement)
 
 
 @events.quitting.add_listener

@@ -3,6 +3,10 @@ import { readFileSync } from "node:fs";
 import { test } from "node:test";
 
 const pageSource = readFileSync(new URL("../src/app/(main)/test-cases/page.tsx", import.meta.url), "utf8");
+const editPageSource = readFileSync(
+  new URL("../src/app/(main)/test-cases/manual/[caseId]/edit/page.tsx", import.meta.url),
+  "utf8",
+);
 const apiClientSource = readFileSync(new URL("../src/lib/api-client.ts", import.meta.url), "utf8");
 const createContractSource = apiClientSource.match(/export type ApiTestCaseSetCreate = \{[\s\S]*?\};/)?.[0] ?? "";
 const manualCreateContractSource =
@@ -42,6 +46,22 @@ test("manual cases use standalone API contracts and appear as single list rows",
   assert.match(pageSource, /apiRequest<ApiManualTestCase>\(`\/projects\/\$\{selectedManualProjectId\}\/test-cases`/);
   assert.match(pageSource, /<TableHead>类型<\/TableHead>/);
   assert.match(pageSource, /item\.itemType === "case" \? "测试用例" : "测试用例集"/);
+});
+
+test("manual test case row actions open a dedicated long-form editing workspace", () => {
+  assert.match(apiClientSource, /export type ApiManualTestCaseUpdate = ApiManualTestCaseCreate/);
+  assert.match(
+    pageSource,
+    /label: "编辑",\s+icon: Pencil,\s+href: `\/test-cases\/manual\/\$\{item\.id\}\/edit\?project=\$\{item\.project_id\}`/,
+  );
+  assert.doesNotMatch(pageSource, /openEditDialog/);
+  assert.match(editPageSource, /fillViewport/);
+  assert.match(editPageSource, /存在未保存修改/);
+  assert.match(editPageSource, /测试步骤/);
+  assert.match(editPageSource, /String\(index \+ 1\)\.padStart\(2, "0"\)/);
+  assert.match(editPageSource, /method: "PATCH"/);
+  assert.match(editPageSource, /保存修改/);
+  assert.match(editPageSource, /放弃未保存修改/);
 });
 
 test("test case list supports mixed selection, batch delete, and task indicator registration", () => {

@@ -9,7 +9,7 @@ from pathlib import Path
 from app.agents.performance_testing.script_generation.schemas import LocustScriptPlan, ScriptValidationResult
 
 
-ALLOWED_IMPORTS = {"json", "math", "random", "re", "time", "uuid", "locust"}
+ALLOWED_IMPORTS = {"__future__", "json", "locust", "scenario_runtime"}
 FORBIDDEN_CALLS = {"eval", "exec", "compile", "open", "__import__", "input"}
 
 
@@ -33,7 +33,7 @@ def validate_locust_script(plan: LocustScriptPlan, source: str) -> ScriptValidat
             if node.module:
                 imported_modules.add(node.module.split(".")[0])
         elif isinstance(node, ast.ClassDef):
-            has_http_user = has_http_user or any(_name(base) == "HttpUser" for base in node.bases)
+            has_http_user = has_http_user or any(_name(base) in {"HttpUser", "ScenarioUser", "EndpointUser"} for base in node.bases)
         elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == "execute_target":
             has_task = any(_name(decorator) == "task" for decorator in node.decorator_list)
         elif isinstance(node, ast.Call):
@@ -50,14 +50,14 @@ def validate_locust_script(plan: LocustScriptPlan, source: str) -> ScriptValidat
         errors.append("脚本必须定义 HttpUser 子类")
     if not has_task:
         errors.append("脚本必须定义受 @task 管理的 execute_target")
-    if not has_controlled_request:
+    if not has_controlled_request and "scenario_runtime" not in imported_modules:
         errors.append("请求必须使用 catch_response=True")
     if plan.target_type == "endpoint":
         if not plan.request or plan.request.method not in source or plan.request.name not in source:
             errors.append("脚本与结构化 Plan 不一致")
     else:
         expected_names = [step.request.name for step in plan.steps if step.request is not None]
-        if "SCENARIO" not in source or plan.scenario_name not in source or any(name not in source for name in expected_names):
+        if plan.scenario_name not in source or any(name not in source for name in expected_names):
             errors.append("脚本与场景结构化 Plan 不一致")
         errors.extend(_required_static_binding_errors(plan))
 
@@ -124,14 +124,17 @@ def _scenario_variable_status(variables: dict[str, object], key: str) -> tuple[b
 
 
 def _isolated_import_error(source: str) -> str:
+    from app.services.performance_testing.script_renderer import runtime_module_source
+
     with tempfile.TemporaryDirectory(prefix="performance-script-") as directory:
         path = Path(directory) / "locustfile.py"
         path.write_text(source, encoding="utf-8")
+        (Path(directory) / "scenario_runtime.py").write_text(runtime_module_source(), encoding="utf-8")
         completed = subprocess.run(
             [
                 sys.executable,
                 "-c",
-                "import importlib.util,sys; p=sys.argv[1]; s=importlib.util.spec_from_file_location('validated_locustfile',p); m=importlib.util.module_from_spec(s); s.loader.exec_module(m)",
+                "import importlib.util,sys,os; p=sys.argv[1]; sys.path.insert(0, os.path.dirname(p)); s=importlib.util.spec_from_file_location('validated_locustfile',p); m=importlib.util.module_from_spec(s); s.loader.exec_module(m)",
                 str(path),
             ],
             text=True,
