@@ -118,6 +118,10 @@ class PerformanceLoadConfig(BaseModel):
     wait_time_min_seconds: float = Field(default=1, ge=0.1)
     wait_time_max_seconds: float = Field(default=3, ge=0.1)
     request_timeout_seconds: float = Field(default=30, gt=0, le=600)
+    stress_start_users: int = Field(default=10, ge=1)
+    stress_max_users: int = Field(default=100, ge=2)
+    stress_step_users: int = Field(default=10, ge=1)
+    stress_hold_seconds: int = Field(default=180, ge=1)
     stages: list[PerformanceLoadStage] = Field(default_factory=list)
 
     @model_validator(mode="after")
@@ -128,6 +132,22 @@ class PerformanceLoadConfig(BaseModel):
             if self.stages:
                 raise ValueError("固定负载不需要配置阶段")
             return self
+        if self.mode == "stress":
+            if self.stress_max_users <= self.stress_start_users:
+                raise ValueError("最大用户数必须大于初始用户数")
+            targets = list(range(self.stress_start_users, self.stress_max_users, self.stress_step_users))
+            if not targets or targets[-1] != self.stress_max_users:
+                targets.append(self.stress_max_users)
+            self.stages = [
+                PerformanceLoadStage(
+                    name=f"压力阶段 {order + 1}",
+                    target_users=target_users,
+                    spawn_rate=self.spawn_rate,
+                    hold_seconds=self.stress_hold_seconds,
+                    order=order,
+                )
+                for order, target_users in enumerate(targets)
+            ]
         if not self.stages:
             raise ValueError("非固定负载至少需要一个阶段")
         ordered = sorted(self.stages, key=lambda stage: stage.order)

@@ -483,6 +483,30 @@ def test_validator_accepts_rendered_script() -> None:
     assert result.code_hash
 
 
+def test_stress_script_stops_after_consecutive_failure_windows() -> None:
+    performance_test = _performance_test()
+    performance_test["load_config"] = {
+        **performance_test["load_config"],
+        "mode": "stress",
+        "stages": [
+            {"name": "压力阶段 1", "target_users": 10, "spawn_rate": 2, "hold_seconds": 60, "order": 0},
+            {"name": "压力阶段 2", "target_users": 20, "spawn_rate": 2, "hold_seconds": 60, "order": 1},
+        ],
+    }
+    performance_test["circuit_breaker"] = {
+        "enabled": True,
+        "window_seconds": 30,
+        "max_fail_ratio": 0.1,
+        "consecutive_windows": 3,
+    }
+
+    source = render_locust_script(build_default_plan(performance_test))
+
+    assert 'PLAN["circuit_breaker"]' in source
+    assert "window_fail_ratio" in source
+    assert "self.failed_windows >= breaker[\"consecutive_windows\"]" in source
+
+
 def test_validator_rejects_unresolved_required_static_scenario_binding() -> None:
     plan = _scenario_plan_with_binding({"type": "secret", "key": "cybertron_robot_key"})
     source = render_locust_script(plan)

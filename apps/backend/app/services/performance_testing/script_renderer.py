@@ -683,8 +683,29 @@ def _render_load_shape() -> str:
 
 
 class PerformanceLoadShape(LoadTestShape):
+    next_breaker_check = 0.0
+    previous_requests = 0
+    previous_failures = 0
+    failed_windows = 0
+
     def tick(self):
         run_time = self.get_run_time()
+        breaker = PLAN["circuit_breaker"]
+        if breaker.get("enabled") and run_time >= self.next_breaker_check:
+            total = self.runner.stats.total
+            window_requests = total.num_requests - self.previous_requests
+            window_failures = total.num_failures - self.previous_failures
+            if window_requests > 0:
+                window_fail_ratio = window_failures / window_requests
+                if window_fail_ratio > breaker["max_fail_ratio"]:
+                    self.failed_windows += 1
+                else:
+                    self.failed_windows = 0
+                self.previous_requests = total.num_requests
+                self.previous_failures = total.num_failures
+            self.next_breaker_check = run_time + breaker["window_seconds"]
+            if self.failed_windows >= breaker["consecutive_windows"]:
+                return None
         elapsed = 0
         previous_users = 0
         for stage in PLAN["load"]["stages"]:

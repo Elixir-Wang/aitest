@@ -176,6 +176,32 @@ def test_performance_test_target_requires_exactly_one_matching_asset() -> None:
             _payload(**values)
 
 
+def test_stress_load_config_generates_fixed_rate_stages_until_maximum() -> None:
+    config = PerformanceLoadConfig(
+        mode="stress",
+        spawn_rate=2,
+        stress_start_users=10,
+        stress_max_users=55,
+        stress_step_users=20,
+        stress_hold_seconds=180,
+    )
+
+    assert [stage.target_users for stage in config.stages] == [10, 30, 50, 55]
+    assert {stage.spawn_rate for stage in config.stages} == {2}
+    assert {stage.hold_seconds for stage in config.stages} == {180}
+    assert [stage.order for stage in config.stages] == [0, 1, 2, 3]
+
+
+def test_stress_load_config_rejects_maximum_not_above_start() -> None:
+    with pytest.raises(ValidationError, match="最大用户数必须大于初始用户数"):
+        PerformanceLoadConfig(
+            mode="stress",
+            stress_start_users=50,
+            stress_max_users=50,
+            stress_step_users=10,
+        )
+
+
 def test_create_scenario_performance_test_persists_scenario_target(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

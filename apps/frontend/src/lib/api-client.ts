@@ -1520,6 +1520,10 @@ export type PerformanceLoadConfig = {
   wait_time_min_seconds: number;
   wait_time_max_seconds: number;
   request_timeout_seconds: number;
+  stress_start_users: number;
+  stress_max_users: number;
+  stress_step_users: number;
+  stress_hold_seconds: number;
   stages: PerformanceLoadStage[];
 };
 

@@ -119,6 +119,7 @@ class LocustScriptPlan(BaseModel):
     scenario_variables: dict[str, Any] = Field(default_factory=dict)
     steps: list[LocustScenarioStepPlan] = Field(default_factory=list)
     load: LocustLoadPlan
+    circuit_breaker: dict[str, Any] = Field(default_factory=dict)
     data: LocustDataPlan = Field(default_factory=LocustDataPlan)
     success_rules: list[LocustSuccessRulePlan] = Field(default_factory=list)
 

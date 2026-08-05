@@ -99,6 +99,7 @@ def build_scenario_plan(
                 "wait_time_max_seconds": load_config.get("wait_time_max_seconds", 3),
                 "stages": load_config.get("stages") or [],
             },
+            "circuit_breaker": performance_test.get("circuit_breaker") or {},
             "data": {
                 "source": data_config.get("source", "fixed"),
                 "selection_strategy": data_config.get("selection_strategy", "sequential_loop"),

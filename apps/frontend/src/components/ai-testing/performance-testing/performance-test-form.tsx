@@ -59,6 +59,10 @@ type NumericDraft = {
   waitMin: string;
   waitMax: string;
   timeout: string;
+  stressStartUsers: string;
+  stressMaxUsers: string;
+  stressStepUsers: string;
+  stressHoldSeconds: string;
   maxFailPercent: string;
   maxAverageMs: string;
 };
@@ -70,6 +74,10 @@ const initialNumbers: NumericDraft = {
   waitMin: "1",
   waitMax: "3",
   timeout: "30",
+  stressStartUsers: "10",
+  stressMaxUsers: "100",
+  stressStepUsers: "10",
+  stressHoldSeconds: "180",
   maxFailPercent: "0",
   maxAverageMs: "3000",
 };
@@ -241,6 +249,10 @@ export function PerformanceTestForm({ editTestId, projectIdForEdit }: Performanc
           waitMin: String(l.wait_time_min_seconds),
           waitMax: String(l.wait_time_max_seconds),
           timeout: String(l.request_timeout_seconds),
+          stressStartUsers: String(l.stress_start_users ?? 10),
+          stressMaxUsers: String(l.stress_max_users ?? 100),
+          stressStepUsers: String(l.stress_step_users ?? 10),
+          stressHoldSeconds: String(l.stress_hold_seconds ?? 180),
           maxFailPercent: String((g.max_fail_ratio ?? 0) * 100),
           maxAverageMs: String(g.max_average_response_time_ms ?? 3000),
         });
@@ -288,6 +300,17 @@ export function PerformanceTestForm({ editTestId, projectIdForEdit }: Performanc
   function changeMode(nextMode: PerformanceLoadConfig["mode"]) {
     setMode(nextMode);
     setStages(defaultStages(nextMode));
+    if (nextMode === "stress") {
+      setNumbers((current) => ({
+        ...current,
+        spawnRate: "2",
+        stressStartUsers: "10",
+        stressMaxUsers: "100",
+        stressStepUsers: "10",
+        stressHoldSeconds: "180",
+      }));
+      setCircuitBreaker({ enabled: true, window_seconds: 30, max_fail_ratio: 0.1, consecutive_windows: 3 });
+    }
   }
 
   function changeEndpoint(nextEndpointId: string) {
@@ -405,7 +428,11 @@ export function PerformanceTestForm({ editTestId, projectIdForEdit }: Performanc
           wait_time_min_seconds: positiveNumber(numbers.waitMin, "最小等待时间"),
           wait_time_max_seconds: positiveNumber(numbers.waitMax, "最大等待时间"),
           request_timeout_seconds: positiveNumber(numbers.timeout, "请求超时"),
-          stages: mode === "fixed" ? [] : stages,
+          stress_start_users: positiveInteger(numbers.stressStartUsers, "初始用户数"),
+          stress_max_users: positiveInteger(numbers.stressMaxUsers, "最大用户数"),
+          stress_step_users: positiveInteger(numbers.stressStepUsers, "每级增加用户数"),
+          stress_hold_seconds: positiveInteger(numbers.stressHoldSeconds, "每级观察时间"),
+          stages: mode === "fixed" || mode === "stress" ? [] : stages,
         },
         data_config: dataConfig,
         circuit_breaker: circuitBreaker,
@@ -776,25 +803,43 @@ export function PerformanceTestForm({ editTestId, projectIdForEdit }: Performanc
             <h3 className="font-semibold text-base">负载配置</h3>
           </div>
 
-          <Field>
-            <LoadConfigFieldLabel
-              description="压测需要启动的虚拟用户总数。每个用户会循环执行测试任务。"
-              htmlFor="test-users"
-              label="用户数"
-            />
-            <Input
-              id="test-users"
-              min={1}
-              onChange={(event) => updateNumber("users", event.target.value)}
-              step={1}
-              type="number"
-              value={numbers.users}
-            />
-          </Field>
+          {mode !== "stress" ? (
+            <Field>
+              <LoadConfigFieldLabel
+                description="压测需要启动的虚拟用户总数。每个用户会循环执行测试任务。"
+                htmlFor="test-users"
+                label="用户数"
+              />
+              <Input
+                id="test-users"
+                min={1}
+                onChange={(event) => updateNumber("users", event.target.value)}
+                step={1}
+                type="number"
+                value={numbers.users}
+              />
+            </Field>
+          ) : (
+            <Field>
+              <LoadConfigFieldLabel
+                description="容量探测开始时的虚拟用户数，作为预热和首个观察级别。"
+                htmlFor="test-stress-start-users"
+                label="初始用户数"
+              />
+              <Input
+                id="test-stress-start-users"
+                min={1}
+                onChange={(event) => updateNumber("stressStartUsers", event.target.value)}
+                step={1}
+                type="number"
+                value={numbers.stressStartUsers}
+              />
+            </Field>
+          )}
 
           <Field>
             <LoadConfigFieldLabel
-              description="每秒启动的虚拟用户数量，必须大于 0。"
+              description="每秒启动的虚拟用户数量，必须大于 0。压力测试的所有阶梯使用同一速率。"
               htmlFor="test-spawn-rate"
               label="启动速率（用户/秒）"
             />
@@ -808,21 +853,74 @@ export function PerformanceTestForm({ editTestId, projectIdForEdit }: Performanc
             />
           </Field>
 
-          <Field>
-            <LoadConfigFieldLabel
-              description="从压测启动开始计算的总运行时间，包含用户逐步启动的爬升时间。"
-              htmlFor="test-duration"
-              label="运行时长（秒）"
-            />
-            <Input
-              id="test-duration"
-              min={1}
-              onChange={(event) => updateNumber("duration", event.target.value)}
-              step={1}
-              type="number"
-              value={numbers.duration}
-            />
-          </Field>
+          {mode !== "stress" ? (
+            <Field>
+              <LoadConfigFieldLabel
+                description="从压测启动开始计算的总运行时间，包含用户逐步启动的爬升时间。"
+                htmlFor="test-duration"
+                label="运行时长（秒）"
+              />
+              <Input
+                id="test-duration"
+                min={1}
+                onChange={(event) => updateNumber("duration", event.target.value)}
+                step={1}
+                type="number"
+                value={numbers.duration}
+              />
+            </Field>
+          ) : (
+            <>
+              <Field>
+                <LoadConfigFieldLabel
+                  description="容量探测允许达到的最高虚拟用户数；未触发熔断时运行到此上限。"
+                  htmlFor="test-stress-max-users"
+                  label="最大用户数"
+                />
+                <Input
+                  id="test-stress-max-users"
+                  min={2}
+                  onChange={(event) => updateNumber("stressMaxUsers", event.target.value)}
+                  step={1}
+                  type="number"
+                  value={numbers.stressMaxUsers}
+                />
+              </Field>
+              <Field>
+                <LoadConfigFieldLabel
+                  description="每完成一个稳定观察阶段后增加的虚拟用户数。"
+                  htmlFor="test-stress-step-users"
+                  label="每级增加用户数"
+                />
+                <Input
+                  id="test-stress-step-users"
+                  min={1}
+                  onChange={(event) => updateNumber("stressStepUsers", event.target.value)}
+                  step={1}
+                  type="number"
+                  value={numbers.stressStepUsers}
+                />
+              </Field>
+              <Field>
+                <LoadConfigFieldLabel
+                  description="到达每个目标用户数后保持负载并采集稳定指标的时间。"
+                  htmlFor="test-stress-hold-seconds"
+                  label="每级观察时间（秒）"
+                />
+                <Input
+                  id="test-stress-hold-seconds"
+                  min={1}
+                  onChange={(event) => updateNumber("stressHoldSeconds", event.target.value)}
+                  step={1}
+                  type="number"
+                  value={numbers.stressHoldSeconds}
+                />
+              </Field>
+              <div className="flex items-end text-muted-foreground text-sm">
+                系统将按固定启动速率自动生成压力阶梯，触发熔断或达到最大用户数后停止。
+              </div>
+            </>
+          )}
 
           <Field>
             <LoadConfigFieldLabel
@@ -872,9 +970,11 @@ export function PerformanceTestForm({ editTestId, projectIdForEdit }: Performanc
             />
           </Field>
 
-          <Field className="md:col-span-2">
-            <LoadStageEditor mode={mode} onChange={setStages} stages={stages} />
-          </Field>
+          {mode !== "stress" ? (
+            <Field className="md:col-span-2">
+              <LoadStageEditor mode={mode} onChange={setStages} stages={stages} />
+            </Field>
+          ) : null}
 
           {/* 性能目标区块 */}
           <div className="flex items-center gap-2 border-b pb-2 md:col-span-2">
@@ -1014,7 +1114,7 @@ export function PerformanceTestForm({ editTestId, projectIdForEdit }: Performanc
 }
 
 function defaultStages(mode: PerformanceLoadConfig["mode"]): PerformanceLoadStage[] {
-  if (mode === "fixed") return [];
+  if (mode === "fixed" || mode === "stress") return [];
   if (mode === "spike") {
     return [
       { name: "正常负载", target_users: 20, spawn_rate: 5, hold_seconds: 180, order: 0 },

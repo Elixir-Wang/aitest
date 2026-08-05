@@ -299,6 +299,18 @@ test("performance lists expose created parameters in a reusable read-only dialog
   assert.match(paramsDialogSource, /<OneClipboard/);
 });
 
+test("stress mode configures automatic capacity discovery instead of manual stages", () => {
+  assert.match(formSource, /stress_start_users/);
+  assert.match(formSource, /stress_max_users/);
+  assert.match(formSource, /stress_step_users/);
+  assert.match(formSource, /stress_hold_seconds/);
+  assert.match(formSource, /初始用户数/);
+  assert.match(formSource, /最大用户数/);
+  assert.match(formSource, /每级增加用户数/);
+  assert.match(formSource, /每级观察时间/);
+  assert.match(formSource, /mode === "stress"/);
+});
+
 test("deleting a performance test confirms all history will be removed", () => {
   assert.match(projectListSource, /将同时删除该条目下的全部压测历史/);
   assert.match(allListSource, /将同时删除该条目下的全部压测历史/);
