@@ -71,7 +71,8 @@ from app.schemas.api_automation import (
     ApiScenarioVersionSaveIn,
     ApiTestCaseSetIn,
 )
-from app.services.api_automation.openapi_parser import OpenAPIParseError, parse_openapi_document
+from app.services.api_automation.interface_document_parser import parse_interface_document
+from app.services.api_automation.openapi_parser import OpenAPIParseError
 from app.services.api_automation.runner import collect_script_suite, run_script_suite
 from app.services.api_automation.oracle import find_case_observation, infer_assertions, load_observations
 from app.agents.model_selection import build_agent_model, resolve_model_selection, thinking_disabled_extra_body
@@ -159,11 +160,17 @@ def import_openapi_text(
     with connect() as db:
         _require_visible_project(db, project_id, actor)
         try:
-            parsed = parse_openapi_document(raw_content, source_name=name or source_url)
+            parsed = parse_interface_document(raw_content, source_name=name or source_url)
         except OpenAPIParseError as exc:
             raise api_error(400, "OPENAPI_PARSE_FAILED", str(exc)) from exc
 
-        stored_path = _store_openapi_document(project_id, document_id, raw_content, source_type)
+        stored_path = _store_openapi_document(
+            project_id,
+            document_id,
+            raw_content,
+            source_type,
+            document_format=parsed["format"],
+        )
         api_automation_repo.create_document(
             db,
             document_id=document_id,
@@ -175,6 +182,7 @@ def import_openapi_text(
             version=parsed["version"],
             endpoint_count=parsed["endpoint_count"],
             created_by=actor["id"],
+            document_format=parsed["format"],
         )
         for endpoint in parsed["endpoints"]:
             api_automation_repo.upsert_endpoint(
@@ -194,6 +202,11 @@ def import_openapi_text(
                 auth=endpoint["auth"],
                 source=endpoint["source"],
                 created_by=actor["id"],
+                protocol=endpoint.get("protocol", "http"),
+                operation_action=endpoint.get("operation_action", "request"),
+                connection_url=endpoint.get("connection_url", ""),
+                message_schemas=endpoint.get("message_schemas", {}),
+                source_channel_id=endpoint.get("source_channel_id", ""),
             )
         document = api_automation_repo.find_document(db, document_id)
         if document is None:
@@ -1085,12 +1098,17 @@ def _persist_generation_item_cases(
     endpoint = api_automation_repo.find_endpoint(db, item["endpoint_id"]) if item else None
     if not item or not endpoint:
         raise ValueError("接口自动化生成子任务关联接口不存在。")
-    # Models occasionally serialize a missing request body as ``body: {}`` (or
-    # another empty value).  The canonical request contract represents an
-    # omitted body by omitting the key entirely.  Normalize only this exact,
-    # unambiguous test point before strict validation; all other malformed
-    # requests must still fail the item atomically.
+    # Models occasionally confuse omitted and empty request bodies. Normalize
+    # only these unambiguous test points before strict validation; all other
+    # malformed requests must still fail the item atomically.
     normalized_cases = [
+        generated_case.model_copy(
+            update={
+                "request": generated_case.request.model_copy(update={"body": {}})
+            }
+        )
+        if generated_case.test_point_key == "request_body.empty_object"
+        else
         generated_case.model_copy(
             update={
                 "request": generated_case.request.model_validate(
@@ -3498,11 +3516,18 @@ def _ai_plan_timeout_message() -> str:
     return f"AI 编排任务超过 {int(AI_SCENARIO_GENERATION_TIMEOUT.total_seconds() // 60)} 分钟未完成，已自动标记为失败，请重新生成。"
 
 
-def _store_openapi_document(project_id: str, document_id: str, raw_content: str, source_type: str) -> str:
+def _store_openapi_document(
+    project_id: str,
+    document_id: str,
+    raw_content: str,
+    source_type: str,
+    *,
+    document_format: str = "openapi",
+) -> str:
     suffix = "json" if source_type == "url" or raw_content.lstrip().startswith("{") else "yaml"
     document_dir = storage.PROJECT_FILE_STORAGE_ROOT / project_id / "api_automation" / "documents" / document_id
     document_dir.mkdir(parents=True, exist_ok=True)
-    path = document_dir / f"openapi.{suffix}"
+    path = document_dir / f"{document_format}.{suffix}"
     path.write_text(raw_content, encoding="utf-8")
     return storage.store_path(path) or str(path)
 
@@ -3515,6 +3540,7 @@ def _serialize_document(row: Row) -> dict:
         "source_type": row["source_type"],
         "source_url": row["source_url"],
         "file_path": row["file_path"],
+        "document_format": row["document_format"],
         "version": row["version"],
         "status": row["status"],
         "endpoint_count": row["endpoint_count"],
@@ -3531,6 +3557,9 @@ def _serialize_endpoint(row: Row) -> dict:
         "method": row["method"],
         "path": row["path"],
         "normalized_path": row["normalized_path"],
+        "protocol": row["protocol"],
+        "operation_action": row["operation_action"],
+        "connection_url": row["connection_url"],
         "summary": row["summary"],
         "description": row["description"],
         "tags": api_automation_repo.loads_json(row["tags_json"], []),
@@ -3539,6 +3568,8 @@ def _serialize_endpoint(row: Row) -> dict:
         "responses": api_automation_repo.loads_json(row["responses_json"], {}),
         "auth": api_automation_repo.loads_json(row["auth_json"], {}),
         "source": api_automation_repo.loads_json(row["source_json"], {}),
+        "message_schemas": api_automation_repo.loads_json(row["message_schemas_json"], {}),
+        "source_channel_id": row["source_channel_id"],
         "created_at": row["created_at"],
         "updated_at": row["updated_at"],
     }

@@ -628,3 +628,25 @@ Invoke Windows PowerShell by absolute path, use `rtk proxy` for PowerShell-nativ
 ### Metadata
 - Source: error
 - Tags: windows, powershell, rtk, python, quoting
+
+---
+
+## [ERR-20260806-001] node-repl-top-level-binding-redeclaration
+
+**Logged**: 2026-08-06T15:55:00+08:00
+**Priority**: low
+**Status**: resolved
+**Area**: tooling
+
+### Summary
+The persistent Node REPL rejected a verification script because a top-level constant name had already been declared by an earlier repository-inspection call.
+
+### Error
+`Identifier 'tables' has already been declared`
+
+### Resolution
+Use unique top-level binding names for each persistent REPL call, reassign an existing `let`, or wrap temporary verification variables in a short block scope.
+
+### Metadata
+- Source: error
+- Tags: node-repl, javascript, verification, persistent-state

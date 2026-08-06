@@ -76,11 +76,14 @@ def _generated_plan(script_code: str) -> dict[str, Any]:
             isinstance(target, ast.Name) and target.id == "PLAN" for target in node.targets
         ):
             continue
-        if not isinstance(node.value, ast.Call) or not node.value.args:
-            return {}
         try:
-            payload = ast.literal_eval(node.value.args[0])
-            plan = json.loads(payload)
+            if isinstance(node.value, ast.Dict):
+                plan = ast.literal_eval(node.value)
+            elif isinstance(node.value, ast.Call) and node.value.args:
+                payload = ast.literal_eval(node.value.args[0])
+                plan = json.loads(payload)
+            else:
+                return {}
         except (ValueError, TypeError, json.JSONDecodeError):
             return {}
         return plan if isinstance(plan, dict) else {}

@@ -255,6 +255,10 @@ test("global performance create route owns project selection and structured edit
   assert.match(dataEditorSource, /CSV 文件/);
 });
 
+test("stage user count can be cleared without locking the input to zero", () => {
+  assert.match(stageEditorSource, /value=\{stage\.target_users === 0 \? "" : stage\.target_users\}/);
+});
+
 test("performance list route renders the project-scoped list component", () => {
   assert.match(listPageSource, /<PerformanceTestList projectId=\{params\.projectId\} \/>/);
 });

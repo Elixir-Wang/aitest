@@ -61,6 +61,17 @@ PLAN = json.loads('{"target_type":"endpoint","request":{"transport":"sse","timeo
     assert headless_worker.graceful_stop_timeout_seconds(script) == 65
 
 
+def test_graceful_stop_timeout_accepts_native_python_plan() -> None:
+    script = """
+PLAN = {
+    'target_type': 'endpoint',
+    'request': {'transport': 'http', 'timeout_seconds': 12},
+}
+"""
+
+    assert headless_worker.graceful_stop_timeout_seconds(script) == 17
+
+
 def test_force_kill_only_after_grace_timeout() -> None:
     calls = []
 

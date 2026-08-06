@@ -293,6 +293,52 @@ def test_generation_normalizes_body_for_missing_request_body_point(
     assert "body" not in api_automation_repo.loads_json(missing_body_rows[0]["request_json"], {})
 
 
+def test_generation_normalizes_body_for_empty_object_request_body_point(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _use_temp_db(monkeypatch, tmp_path)
+    _seed_project_endpoint()
+
+    created = service.create_generation_run(
+        "project-1",
+        ApiAutomationGenerateIn(endpoint_ids=["apiend-1"], generate_code=False),
+        ACTOR,
+    )
+
+    with connect() as db:
+        item = api_automation_repo.list_generation_items(db, created["id"])[0]
+        attempt_id = "attempt-normalize-empty-object"
+        api_automation_repo.start_generation_item_attempt(db, item["id"], attempt_id)
+        count = service._persist_generation_item_cases(
+            db,
+            created["id"],
+            item["id"],
+            attempt_id,
+            ApiAutomationGenerationResult(
+                summary="生成 1 条",
+                cases=[
+                    ApiGeneratedCase(
+                        title="请求体为空对象",
+                        endpoint_id="apiend-1",
+                        test_point_key="request_body.empty_object",
+                        oracle_status="needs_confirmation",
+                        coverage="negative",
+                        request={"method": "POST", "path": "/login", "body": ""},
+                        assertions=[],
+                    ),
+                ],
+            ),
+            planned_test_points=[
+                {"key": "request_body.empty_object", "oracle_status": "needs_confirmation"},
+            ],
+        )
+        rows = api_automation_repo.list_api_test_cases(db, "project-1")
+
+    assert count == 1
+    assert api_automation_repo.loads_json(rows[0]["request_json"], {})["body"] == {}
+
+
 def test_execute_generation_run_saves_generated_cases(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     _use_temp_db(monkeypatch, tmp_path)
     _seed_project_endpoint()

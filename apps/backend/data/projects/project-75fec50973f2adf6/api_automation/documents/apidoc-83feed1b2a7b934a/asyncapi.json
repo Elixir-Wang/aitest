@@ -1,0 +1,323 @@
+{
+  "asyncapi": "3.0.0",
+  "info": {
+    "title": "Cybotstar Realtime API",
+    "version": "1.0.0",
+    "description": "Generated from http://192.168.160.65:30000/api-reference/introduction"
+  },
+  "servers": {
+    "production": {
+      "host": "www.cybotstar.cn",
+      "pathname": "/openapi/v2/ws/dialog/",
+      "protocol": "wss"
+    },
+    "production2": {
+      "host": "www.cybotstar.cn",
+      "pathname": "/openapi/v2/ws/dialog/",
+      "protocol": "wss"
+    }
+  },
+  "channels": {
+    "agentDialog": {
+      "address": "/openapi/v2/ws/dialog/",
+      "title": "Agent dialog",
+      "description": "聊天消息通道",
+      "servers": [
+        {
+          "$ref": "#/servers/production"
+        }
+      ],
+      "messages": {
+        "sendMessage": {
+          "$ref": "#/components/messages/agentDialogSendMessage"
+        },
+        "receiveMessage": {
+          "$ref": "#/components/messages/agentDialogReceiveMessage"
+        }
+      },
+      "x-source-doc-url": "http://192.168.160.65:30000/api-reference/conversation/ws/dialog_exec"
+    },
+    "dialog": {
+      "address": "/openapi/v2/ws/dialog/",
+      "title": "Dialog",
+      "description": "聊天消息通道",
+      "servers": [
+        {
+          "$ref": "#/servers/production2"
+        }
+      ],
+      "messages": {
+        "sendMessage": {
+          "$ref": "#/components/messages/dialogSendMessage"
+        },
+        "receiveMessage": {
+          "$ref": "#/components/messages/dialogReceiveMessage"
+        }
+      },
+      "x-source-doc-url": "http://192.168.160.65:30000/api-reference/chatflow/ws/dialog_exec"
+    }
+  },
+  "operations": {
+    "sendAgentDialogMessage": {
+      "action": "send",
+      "channel": {
+        "$ref": "#/channels/agentDialog"
+      },
+      "messages": [
+        {
+          "$ref": "#/channels/agentDialog/messages/sendMessage"
+        }
+      ]
+    },
+    "receiveAgentDialogMessage": {
+      "action": "receive",
+      "channel": {
+        "$ref": "#/channels/agentDialog"
+      },
+      "messages": [
+        {
+          "$ref": "#/channels/agentDialog/messages/receiveMessage"
+        }
+      ]
+    },
+    "sendDialogMessage": {
+      "action": "send",
+      "channel": {
+        "$ref": "#/channels/dialog"
+      },
+      "messages": [
+        {
+          "$ref": "#/channels/dialog/messages/sendMessage"
+        }
+      ]
+    },
+    "receiveDialogMessage": {
+      "action": "receive",
+      "channel": {
+        "$ref": "#/channels/dialog"
+      },
+      "messages": [
+        {
+          "$ref": "#/channels/dialog/messages/receiveMessage"
+        }
+      ]
+    }
+  },
+  "components": {
+    "messages": {
+      "agentDialogSendMessage": {
+        "name": "agentDialogSendMessage",
+        "payload": {
+          "type": "object",
+          "properties": {
+            "code": {
+              "type": "string",
+              "description": "响应状态码（6位数字），000000为正常，400开头为错误"
+            },
+            "message": {
+              "type": "string",
+              "description": "状态描述文本，说明当前响应结果"
+            },
+            "index": {
+              "type": "integer",
+              "description": "-4为引用图片；-3为联网搜索结果；-2为线程信息，可忽略；为-1时表示提问已确认收到；为0开始递增并且finish为n时，data为流式输出的回复片段，后续还有其他片段等待接收"
+            },
+            "finish": {
+              "type": "string",
+              "description": "为y时，表示回复已结束；此时data中为所有的完整回复，用户根据需求决定取舍"
+            },
+            "type": {
+              "type": "string",
+              "description": "heartbeat心跳请求；string时data为可以直接拼接的文本；json时data内为一json序列化后的字符串；flow时data特殊解析规则下述"
+            },
+            "data": {
+              "type": "string",
+              "description": "消息体，格式由type字段决定"
+            }
+          }
+        },
+        "examples": [
+          {
+            "payload": {}
+          }
+        ]
+      },
+      "agentDialogReceiveMessage": {
+        "name": "agentDialogReceiveMessage",
+        "payload": {
+          "type": "object",
+          "properties": {
+            "cybertron-robot-key": {
+              "type": "string",
+              "description": "智能体key"
+            },
+            "cybertron-robot-token": {
+              "type": "string",
+              "description": "智能体token"
+            },
+            "username": {
+              "type": "string",
+              "description": "赛博坦用户账号"
+            },
+            "extra-header": {
+              "type": "string",
+              "description": "同http接口"
+            },
+            "extra-body": {
+              "type": "string",
+              "description": "同http接口"
+            },
+            "question": {
+              "type": "string",
+              "description": "输入问题"
+            },
+            "segment_code": {
+              "type": "string",
+              "description": "会话编码，用于切分对话历史"
+            },
+            "message_params": {
+              "type": "array",
+              "description": "传入模型的message字段，同openai的接口message。"
+            },
+            "chat_history": {
+              "type": "array",
+              "description": "对话历史， 拼到message中"
+            },
+            "tip_message_extra": {
+              "type": "string",
+              "description": "cybotstar机器人配置角色设定字段，接口调用时如果有该字段，本轮对话则覆盖 cybotstar内机器人配置角色设定"
+            },
+            "tip_message_params": {
+              "type": "object",
+              "description": "传入cybotstar机器人agent变量，支持配置为角色设定中的参数，也支持在绑定的对话流中应用。注意：同一个segment_code仅生效第一次传入值，且对话流中如对agent变量做赋值，则变量值会更新"
+            },
+            "model_params": {
+              "type": "object",
+              "description": "模型参数，目前支持4个参数配置"
+            },
+            "welcome": {
+              "type": "string",
+              "description": "当需要获取欢迎语的时候才传这个字段，其他情况不能传，内容可以随便传， 非空就行，后面返回的时候是读agent配置的欢迎语. 返回的answer有个前缀 __wellcome__ 需要获取后用户处理下下"
+            },
+            "files": {
+              "type": "array",
+              "description": "随本轮 question 一并传递的已上传文件元信息"
+            }
+          },
+          "required": [
+            "cybertron-robot-key",
+            "cybertron-robot-token",
+            "username",
+            "question"
+          ]
+        },
+        "examples": [
+          {
+            "payload": {}
+          }
+        ]
+      },
+      "dialogSendMessage": {
+        "name": "dialogSendMessage",
+        "payload": {
+          "type": "object",
+          "properties": {
+            "code": {
+              "type": "string",
+              "description": "响应状态码（6位数字），000000为正常，400开头为错误"
+            },
+            "message": {
+              "type": "string",
+              "description": "状态描述文本，说明当前响应结果"
+            },
+            "index": {
+              "type": "integer",
+              "description": "-4为引用图片；-3为联网搜索结果；-2为线程信息，可忽略；为-1时表示提问已确认收到；为0开始递增并且finish为n时，data为流式输出的回复片段，后续还有其他片段等待接收"
+            },
+            "finish": {
+              "type": "string",
+              "description": "为y时，表示回复已结束；此时data中为所有的完整回复，用户根据需求决定取舍"
+            },
+            "type": {
+              "type": "string",
+              "description": "heartbeat心跳请求；string时data为可以直接拼接的文本；json时data内为一json序列化后的字符串；flow时data特殊解析规则下述"
+            },
+            "data": {
+              "type": "string",
+              "description": "消息体，格式由type字段决定"
+            }
+          }
+        },
+        "examples": [
+          {
+            "payload": {}
+          }
+        ]
+      },
+      "dialogReceiveMessage": {
+        "name": "dialogReceiveMessage",
+        "payload": {
+          "type": "object",
+          "properties": {
+            "cybertron-robot-key": {
+              "type": "string",
+              "description": "智能体key"
+            },
+            "cybertron-robot-token": {
+              "type": "string",
+              "description": "智能体token"
+            },
+            "username": {
+              "type": "string",
+              "description": "赛博坦用户账号"
+            },
+            "question": {
+              "type": "string",
+              "description": "输入问题"
+            },
+            "segment_code": {
+              "type": "string",
+              "description": "会话编码，用于切分对话历史"
+            },
+            "open_flow_trigger": {
+              "type": "string",
+              "description": "触发模式，auto兼容正常对话和意图识别；direct需指定具体flow_uuid"
+            },
+            "open_flow_uuid": {
+              "type": "string",
+              "description": "指定运行的具体flow流，open_flow_trigger为direct时必填"
+            },
+            "open_flow_node_uuid": {
+              "type": "string",
+              "description": "指定flow中的某个具体node运行"
+            },
+            "open_flow_node_inputs": {
+              "type": "object",
+              "description": "指定flow中某个具体node的入参"
+            },
+            "open_flow_debug": {
+              "type": "integer",
+              "description": "是否开启debug模式，1是，0否；默认0"
+            },
+            "files": {
+              "type": "array",
+              "description": "随本轮 question 一并传递的已上传文件元信息（与对话流上传节点 submit 报文不同，见文档说明）"
+            }
+          },
+          "required": [
+            "cybertron-robot-key",
+            "cybertron-robot-token",
+            "username"
+          ]
+        },
+        "examples": [
+          {
+            "payload": {}
+          }
+        ]
+      }
+    }
+  },
+  "x-generated-from": "http://192.168.160.65:30000/api-reference/introduction",
+  "x-imported-channel-count": 2
+}

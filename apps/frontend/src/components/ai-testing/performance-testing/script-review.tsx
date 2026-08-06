@@ -305,7 +305,10 @@ export function ScriptReview({ projectId, testId, scriptId }: { projectId: strin
       </div>
 
       <Sheet onOpenChange={(open) => !open && setSelectedStep(null)} open={selectedStep !== null}>
-        <SheetContent className="w-full gap-0 overflow-y-auto sm:max-w-2xl" side="right">
+        <SheetContent
+          className="w-full gap-0 overflow-y-auto data-[side=right]:sm:max-w-3xl"
+          side="right"
+        >
           <SheetHeader className="border-b px-5 py-4 pr-14">
             <SheetTitle>{selectedStep?.name ?? "步骤详情"}</SheetTitle>
             <SheetDescription className="font-mono text-xs">

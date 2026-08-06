@@ -924,6 +924,21 @@ export function PerformanceTestForm({ editTestId, projectIdForEdit }: Performanc
 
           <Field>
             <LoadConfigFieldLabel
+              description="单个请求超过该时间仍未完成时，将被记录为超时失败。"
+              htmlFor="test-timeout"
+              label="请求超时（秒）"
+            />
+            <Input
+              id="test-timeout"
+              min={0.1}
+              onChange={(event) => updateNumber("timeout", event.target.value)}
+              step={1}
+              type="number"
+              value={numbers.timeout}
+            />
+          </Field>
+          <Field>
+            <LoadConfigFieldLabel
               description="用户完成一次任务后，再次执行前的最短等待时间，不能小于 0.1 秒。"
               htmlFor="test-wait-min"
               label="最小等待时间（秒）"
@@ -951,22 +966,6 @@ export function PerformanceTestForm({ editTestId, projectIdForEdit }: Performanc
               step={1}
               type="number"
               value={numbers.waitMax}
-            />
-          </Field>
-
-          <Field>
-            <LoadConfigFieldLabel
-              description="单个请求超过该时间仍未完成时，将被记录为超时失败。"
-              htmlFor="test-timeout"
-              label="请求超时（秒）"
-            />
-            <Input
-              id="test-timeout"
-              min={0.1}
-              onChange={(event) => updateNumber("timeout", event.target.value)}
-              step={1}
-              type="number"
-              value={numbers.timeout}
             />
           </Field>
 

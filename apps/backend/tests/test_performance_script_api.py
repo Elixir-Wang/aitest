@@ -266,7 +266,8 @@ def test_scenario_script_generation_applies_sse_to_selected_step(
     assert request["multipart_form"] == {"message": "hello"}
     assert "from scenario_runtime import ScenarioUser" in generated["code"]
     assert '"transport": "sse"' in generated["code"]
-    assert '"multipart_form": {"message": "hello"}' in generated["code"]
+    assert '"multipart_form": {\\n' in generated["code"]
+    assert '"message": "hello"\\n' in generated["code"]
     assert '"id": "step-request"' in generated["code"]
     compile(generated["code"], "generated_scenario_locustfile.py", "exec")
 

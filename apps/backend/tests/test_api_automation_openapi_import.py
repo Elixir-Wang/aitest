@@ -60,10 +60,34 @@ def test_parse_openapi_document_extracts_endpoint() -> None:
     assert result["endpoint_count"] == 1
     endpoint = result["endpoints"][0]
     assert endpoint["method"] == "GET"
+    assert endpoint["protocol"] == "http"
     assert endpoint["path"] == "/pets/{petId}"
     assert endpoint["tags"] == ["pet"]
     assert endpoint["parameters"][0]["name"] == "petId"
     assert endpoint["responses"]["200"]["description"] == "ok"
+
+
+def test_parse_openapi_document_marks_event_stream_as_sse() -> None:
+    result = openapi_parser.parse_openapi_document(
+        """{
+          "openapi": "3.0.3",
+          "info": {"title": "Events", "version": "1.0.0"},
+          "paths": {
+            "/events": {
+              "get": {
+                "responses": {
+                  "200": {
+                    "description": "stream",
+                    "content": {"text/event-stream": {"schema": {"type": "string"}}}
+                  }
+                }
+              }
+            }
+          }
+        }"""
+    )
+
+    assert result["endpoints"][0]["protocol"] == "sse"
 
 
 def test_parse_cybotstar_assets_normalizes_structured_and_html_fallback_tags() -> None:

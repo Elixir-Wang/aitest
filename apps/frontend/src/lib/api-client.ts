@@ -866,6 +866,9 @@ export type ApiAutomationEndpoint = {
   project_id: string;
   document_id: string | null;
   method: string;
+  protocol: "http" | "sse" | "websocket";
+  operation_action: string;
+  connection_url: string;
   path: string;
   normalized_path: string;
   summary: string;
@@ -876,6 +879,7 @@ export type ApiAutomationEndpoint = {
   responses: Record<string, unknown>;
   auth: Record<string, unknown>;
   source: Record<string, unknown>;
+  message_schemas: Record<string, unknown>;
   created_at: string;
   updated_at: string;
 };
@@ -887,6 +891,7 @@ export type ApiAutomationDocument = {
   source_type: string;
   source_url: string;
   file_path: string;
+  document_format: "openapi" | "asyncapi";
   version: string;
   status: string;
   endpoint_count: number;

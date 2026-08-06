@@ -1,0 +1,31 @@
+{
+  "version": "2",
+  "source": "http://192.168.160.65:30000/api-reference/introduction",
+  "documents": [
+    {
+      "file": "cybotstar-openapi.generated.json",
+      "format": "openapi",
+      "protocols": [
+        "http",
+        "sse"
+      ],
+      "operation_count": 87
+    },
+    {
+      "file": "cybotstar-asyncapi.generated.json",
+      "format": "asyncapi",
+      "protocols": [
+        "websocket"
+      ],
+      "operation_count": 4
+    }
+  ],
+  "counts": {
+    "source_pages": 96,
+    "http_operations": 86,
+    "sse_operations": 1,
+    "websocket_channels": 2,
+    "websocket_operations": 4,
+    "skipped_pages": 6
+  }
+}

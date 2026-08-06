@@ -1,4 +1,4 @@
-import json
+from pprint import pformat
 from typing import Any
 
 from app.agents.performance_testing.script_generation.schemas import LocustScriptPlan
@@ -32,19 +32,18 @@ def _runtime_plan(plan: LocustScriptPlan) -> dict[str, Any]:
 
 
 def render_locust_script(plan: LocustScriptPlan) -> str:
-    payload = json.dumps(_runtime_plan(plan), ensure_ascii=False, sort_keys=True)
+    plan_source = pformat(_runtime_plan(plan), sort_dicts=True, width=100)
     wait_min = plan.load.wait_time_min_seconds
     wait_max = plan.load.wait_time_max_seconds
     base = "ScenarioUser" if plan.target_type == "scenario" else "EndpointUser"
     shape = "\nfrom scenario_runtime import PerformanceLoadShape as RuntimeLoadShape\n" if plan.load.mode != "fixed" else ""
     shape_class = "\n\nclass PerformanceLoadShape(RuntimeLoadShape):\n    plan = PLAN\n" if plan.load.mode != "fixed" else ""
-    return f'''import json
+    return f'''from locust import between, task
 
-from locust import between, task
 from scenario_runtime import {base}
 {shape}
 
-PLAN = json.loads({payload!r})
+PLAN = {plan_source}
 
 
 class PerformanceUser({base}):

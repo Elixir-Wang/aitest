@@ -62,7 +62,7 @@ export function LoadStageEditor({
               min={1}
               onChange={(event) => update(index, { target_users: Number(event.target.value) })}
               type="number"
-              value={stage.target_users}
+              value={stage.target_users === 0 ? "" : stage.target_users}
             />
           </Field>
           <Field label="启动速率/秒">

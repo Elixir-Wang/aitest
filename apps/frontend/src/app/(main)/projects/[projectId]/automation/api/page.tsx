@@ -257,7 +257,16 @@ export default function Page() {
     const keyword = searchText.trim().toLowerCase();
     const rows = keyword
       ? endpoints.filter((endpoint) =>
-          [endpoint.method, endpoint.path, endpoint.summary, endpoint.description, ...endpoint.tags]
+          [
+            endpoint.method,
+            endpoint.protocol,
+            endpoint.operation_action,
+            endpoint.connection_url,
+            endpoint.path,
+            endpoint.summary,
+            endpoint.description,
+            ...endpoint.tags,
+          ]
             .join(" ")
             .toLowerCase()
             .includes(keyword),
@@ -275,6 +284,7 @@ export default function Page() {
     () => endpoints.find((endpoint) => endpoint.id === activeEndpointId) ?? endpoints[0] ?? null,
     [activeEndpointId, endpoints],
   );
+  const isWebSocketEndpoint = activeEndpoint ? endpointProtocol(activeEndpoint) === "websocket" : false;
 
   const apiCaseCountByEndpointId = useMemo(() => {
     return apiTestCases.reduce<Record<string, number>>((counts, testCase) => {
@@ -1305,7 +1315,7 @@ export default function Page() {
                               title={endpoint.path}
                               type="button"
                             >
-                              <MethodBadge method={endpoint.method} />
+                              <MethodBadge method={endpoint.method} protocol={endpointProtocol(endpoint)} />
                               <span className="min-w-0 flex-1 truncate text-xs">
                                 {endpoint.summary || endpoint.path}
                               </span>
@@ -1365,14 +1375,18 @@ export default function Page() {
                     </div>
                     <div className="flex flex-col gap-2 rounded-lg border bg-muted/20 p-2 lg:flex-row lg:items-center">
                       <div className="flex min-w-0 flex-1 items-center gap-2 rounded-md bg-background px-3 py-2 shadow-xs">
-                        <MethodBadge method={activeEndpoint.method} />
+                        <MethodBadge method={activeEndpoint.method} protocol={endpointProtocol(activeEndpoint)} />
                         <span className="min-w-0 truncate font-mono text-muted-foreground text-sm">
                           {formatEndpointUrl(activeBaseUrl, activeEndpoint.path)}
                         </span>
                       </div>
-                      <Button onClick={() => openEndpointDebugDialog(activeEndpoint)}>
+                      <Button
+                        disabled={isWebSocketEndpoint}
+                        onClick={() => openEndpointDebugDialog(activeEndpoint)}
+                        title={isWebSocketEndpoint ? "WebSocket 调试暂未支持" : "打开接口调试"}
+                      >
                         <Play className="size-4" />
-                        测试一下
+                        {isWebSocketEndpoint ? "暂不支持调试" : "测试一下"}
                       </Button>
                     </div>
                   </div>
@@ -1632,7 +1646,7 @@ export default function Page() {
                               title={endpoint.path}
                               type="button"
                             >
-                              <MethodBadge method={endpoint.method} />
+                              <MethodBadge method={endpoint.method} protocol={endpointProtocol(endpoint)} />
                               <span className="min-w-0 flex-1 truncate text-xs">
                                 {endpoint.summary || endpoint.path}
                               </span>
@@ -2376,7 +2390,7 @@ export default function Page() {
             {activeEndpoint ? (
               <div className="flex flex-col gap-2 rounded-lg border bg-muted/20 p-2 lg:flex-row lg:items-center">
                 <div className="flex min-w-0 flex-1 items-center gap-2 rounded-md bg-background px-3 py-2 shadow-xs">
-                  <MethodBadge method={activeEndpoint.method} />
+                  <MethodBadge method={activeEndpoint.method} protocol={endpointProtocol(activeEndpoint)} />
                   <span className="min-w-0 truncate font-mono text-muted-foreground text-sm">
                     {formatEndpointUrl(
                       environments.find((environment) => environment.id === debugForm.environmentId)?.api_base_url ??
@@ -3184,6 +3198,23 @@ function endpointGroupName(endpoint: ApiAutomationEndpoint) {
   return "未分组";
 }
 
+function endpointProtocol(endpoint: ApiAutomationEndpoint): ApiAutomationEndpoint["protocol"] {
+  if (endpoint.protocol) {
+    return endpoint.protocol;
+  }
+  if (!endpoint.method && endpoint.path) {
+    return "websocket";
+  }
+  const hasEventStreamResponse = Object.values(endpoint.responses ?? {}).some((response) => {
+    if (!response || typeof response !== "object" || Array.isArray(response)) {
+      return false;
+    }
+    const content = (response as { content?: unknown }).content;
+    return Boolean(content && typeof content === "object" && !Array.isArray(content) && "text/event-stream" in content);
+  });
+  return hasEventStreamResponse ? "sse" : "http";
+}
+
 function parseJsonObject(value: string, label: string): Record<string, unknown> {
   const trimmed = value.trim();
   if (!trimmed) {
@@ -3196,8 +3227,8 @@ function parseJsonObject(value: string, label: string): Record<string, unknown> 
   return parsed as Record<string, unknown>;
 }
 
-function MethodBadge({ method }: { method: string }) {
-  const upper = method.toUpperCase();
+function MethodBadge({ method, protocol = "http" }: { method: string; protocol?: ApiAutomationEndpoint["protocol"] }) {
+  const upper = protocol === "websocket" ? "WSS" : protocol === "sse" ? "SSE" : method.toUpperCase();
   const tone =
     {
       GET: "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-200",
@@ -3205,6 +3236,8 @@ function MethodBadge({ method }: { method: string }) {
       PUT: "bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-200",
       PATCH: "bg-violet-100 text-violet-700 dark:bg-violet-500/20 dark:text-violet-200",
       DELETE: "bg-rose-100 text-rose-700 dark:bg-rose-500/20 dark:text-rose-200",
+      SSE: "bg-cyan-100 text-cyan-700 dark:bg-cyan-500/20 dark:text-cyan-200",
+      WSS: "bg-orange-100 text-orange-700 dark:bg-orange-500/20 dark:text-orange-200",
     }[upper] ?? "bg-slate-100 text-slate-700 dark:bg-slate-500/20 dark:text-slate-200";
 
   return (

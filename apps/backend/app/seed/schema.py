@@ -447,6 +447,7 @@ CREATE TABLE IF NOT EXISTS api_documents (
   source_type TEXT NOT NULL CHECK(source_type IN ('url', 'file')),
   source_url TEXT NOT NULL DEFAULT '',
   file_path TEXT NOT NULL DEFAULT '',
+  document_format TEXT NOT NULL DEFAULT 'openapi' CHECK(document_format IN ('openapi', 'asyncapi')),
   version TEXT NOT NULL DEFAULT '',
   status TEXT NOT NULL CHECK(status IN ('parsed', 'failed')),
   endpoint_count INTEGER NOT NULL DEFAULT 0,
@@ -467,6 +468,10 @@ CREATE TABLE IF NOT EXISTS api_endpoints (
   method TEXT NOT NULL,
   path TEXT NOT NULL,
   normalized_path TEXT NOT NULL,
+  protocol TEXT NOT NULL DEFAULT 'http' CHECK(protocol IN ('http', 'sse', 'websocket')),
+  operation_action TEXT NOT NULL DEFAULT 'request',
+  connection_url TEXT NOT NULL DEFAULT '',
+  source_channel_id TEXT NOT NULL DEFAULT '',
   summary TEXT NOT NULL DEFAULT '',
   description TEXT NOT NULL DEFAULT '',
   tags_json TEXT NOT NULL DEFAULT '[]',
@@ -475,12 +480,13 @@ CREATE TABLE IF NOT EXISTS api_endpoints (
   responses_json TEXT NOT NULL DEFAULT '{}',
   auth_json TEXT NOT NULL DEFAULT '{}',
   source_json TEXT NOT NULL DEFAULT '{}',
+  message_schemas_json TEXT NOT NULL DEFAULT '{}',
   created_by TEXT NOT NULL,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE,
   FOREIGN KEY(document_id) REFERENCES api_documents(id) ON DELETE SET NULL,
-  UNIQUE(project_id, method, normalized_path)
+  UNIQUE(project_id, protocol, method, normalized_path, source_channel_id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_api_endpoints_project_method

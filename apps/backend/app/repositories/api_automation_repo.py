@@ -29,16 +29,17 @@ def create_document(
     version: str,
     endpoint_count: int,
     created_by: str,
+    document_format: str = "openapi",
     status: str = "parsed",
     error_message: str = "",
 ) -> str:
     db.execute(
         """
         INSERT INTO api_documents (
-          id, project_id, name, source_type, source_url, file_path, version,
+          id, project_id, name, source_type, source_url, file_path, document_format, version,
           status, endpoint_count, error_message, created_by
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             document_id,
@@ -47,6 +48,7 @@ def create_document(
             source_type,
             source_url,
             file_path,
+            document_format,
             version,
             status,
             endpoint_count,
@@ -100,14 +102,19 @@ def upsert_endpoint(
     auth: dict[str, Any],
     source: dict[str, Any],
     created_by: str,
+    protocol: str = "http",
+    operation_action: str = "request",
+    connection_url: str = "",
+    message_schemas: dict[str, Any] | None = None,
+    source_channel_id: str = "",
 ) -> str:
     existing = db.execute(
         """
         SELECT id
         FROM api_endpoints
-        WHERE project_id = ? AND method = ? AND normalized_path = ?
+        WHERE project_id = ? AND protocol = ? AND method = ? AND normalized_path = ? AND source_channel_id = ?
         """,
-        (project_id, method.upper(), normalized_path),
+        (project_id, protocol, method.upper(), normalized_path, source_channel_id),
     ).fetchone()
     if existing:
         db.execute(
@@ -123,6 +130,11 @@ def upsert_endpoint(
                 responses_json = ?,
                 auth_json = ?,
                 source_json = ?,
+                protocol = ?,
+                operation_action = ?,
+                connection_url = ?,
+                message_schemas_json = ?,
+                source_channel_id = ?,
                 updated_at = CURRENT_TIMESTAMP
             WHERE id = ?
             """,
@@ -137,6 +149,11 @@ def upsert_endpoint(
                 dumps_json(responses),
                 dumps_json(auth),
                 dumps_json(source),
+                protocol,
+                operation_action,
+                connection_url,
+                dumps_json(message_schemas or {}),
+                source_channel_id,
                 existing["id"],
             ),
         )
@@ -147,9 +164,10 @@ def upsert_endpoint(
         INSERT INTO api_endpoints (
           id, project_id, document_id, method, path, normalized_path, summary,
           description, tags_json, parameters_json, request_body_json,
-          responses_json, auth_json, source_json, created_by
+          responses_json, auth_json, source_json, created_by,
+          protocol, operation_action, connection_url, message_schemas_json, source_channel_id
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             endpoint_id,
@@ -167,6 +185,11 @@ def upsert_endpoint(
             dumps_json(auth),
             dumps_json(source),
             created_by,
+            protocol,
+            operation_action,
+            connection_url,
+            dumps_json(message_schemas or {}),
+            source_channel_id,
         ),
     )
     return endpoint_id

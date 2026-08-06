@@ -1,4 +1,5 @@
 import hashlib
+import json
 import re
 import sqlite3
 
@@ -17,6 +18,7 @@ def seed_system_defaults(db: sqlite3.Connection) -> None:
     _migrate_performance_scripts_to_single_record(db)
     _ensure_performance_analysis_columns(db)
     _ensure_api_test_script_columns(db)
+    _ensure_api_asset_protocol_columns(db)
     _ensure_api_scenario_suite_tables(db)
     _ensure_api_batch_run_table(db)
     _ensure_api_automation_run_columns(db)
@@ -36,6 +38,114 @@ def seed_system_defaults(db: sqlite3.Connection) -> None:
     _seed_operation_log_retention_policy(db)
     _ensure_all_projects_conversation_scope(db)
     _assert_foreign_key_integrity(db)
+
+
+def _ensure_api_asset_protocol_columns(db: sqlite3.Connection) -> None:
+    document_table = db.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'api_documents'").fetchone()
+    if document_table:
+        document_columns = {str(column["name"]) for column in db.execute("PRAGMA table_info(api_documents)").fetchall()}
+        if "document_format" not in document_columns:
+            db.execute("ALTER TABLE api_documents ADD COLUMN document_format TEXT NOT NULL DEFAULT 'openapi'")
+
+    endpoint_table = db.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'api_endpoints'").fetchone()
+    if not endpoint_table:
+        return
+    endpoint_columns = {str(column["name"]) for column in db.execute("PRAGMA table_info(api_endpoints)").fetchall()}
+    additions = {
+        "protocol": "ALTER TABLE api_endpoints ADD COLUMN protocol TEXT NOT NULL DEFAULT 'http'",
+        "operation_action": "ALTER TABLE api_endpoints ADD COLUMN operation_action TEXT NOT NULL DEFAULT 'request'",
+        "connection_url": "ALTER TABLE api_endpoints ADD COLUMN connection_url TEXT NOT NULL DEFAULT ''",
+        "message_schemas_json": "ALTER TABLE api_endpoints ADD COLUMN message_schemas_json TEXT NOT NULL DEFAULT '{}'",
+    }
+    for column, statement in additions.items():
+        if column not in endpoint_columns:
+            db.execute(statement)
+
+    endpoint_columns = {str(column["name"]) for column in db.execute("PRAGMA table_info(api_endpoints)").fetchall()}
+    unique_indexes = [
+        {
+            "name": str(index["name"]),
+            "columns": [str(column["name"]) for column in db.execute(f'PRAGMA index_info("{index["name"]}")').fetchall()],
+        }
+        for index in db.execute("PRAGMA index_list(api_endpoints)").fetchall()
+        if int(index["unique"] or 0) == 1
+    ]
+    desired_columns = ["project_id", "protocol", "method", "normalized_path", "source_channel_id"]
+    if "source_channel_id" not in endpoint_columns or not any(index["columns"] == desired_columns for index in unique_indexes):
+        _migrate_api_endpoint_identity(db)
+
+
+def _migrate_api_endpoint_identity(db: sqlite3.Connection) -> None:
+    db.commit()
+    db.execute("PRAGMA foreign_keys = OFF")
+    db.execute("PRAGMA legacy_alter_table = ON")
+    db.execute("ALTER TABLE api_endpoints RENAME TO api_endpoints_legacy")
+    db.execute("DROP INDEX IF EXISTS idx_api_endpoints_project_method")
+    db.executescript(
+        """
+        CREATE TABLE api_endpoints (
+          id TEXT PRIMARY KEY,
+          project_id TEXT NOT NULL,
+          document_id TEXT,
+          method TEXT NOT NULL,
+          path TEXT NOT NULL,
+          normalized_path TEXT NOT NULL,
+          protocol TEXT NOT NULL DEFAULT 'http' CHECK(protocol IN ('http', 'sse', 'websocket')),
+          operation_action TEXT NOT NULL DEFAULT 'request',
+          connection_url TEXT NOT NULL DEFAULT '',
+          source_channel_id TEXT NOT NULL DEFAULT '',
+          summary TEXT NOT NULL DEFAULT '',
+          description TEXT NOT NULL DEFAULT '',
+          tags_json TEXT NOT NULL DEFAULT '[]',
+          parameters_json TEXT NOT NULL DEFAULT '[]',
+          request_body_json TEXT NOT NULL DEFAULT '{}',
+          responses_json TEXT NOT NULL DEFAULT '{}',
+          auth_json TEXT NOT NULL DEFAULT '{}',
+          source_json TEXT NOT NULL DEFAULT '{}',
+          message_schemas_json TEXT NOT NULL DEFAULT '{}',
+          created_by TEXT NOT NULL,
+          created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE,
+          FOREIGN KEY(document_id) REFERENCES api_documents(id) ON DELETE SET NULL,
+          UNIQUE(project_id, protocol, method, normalized_path, source_channel_id)
+        );
+        CREATE INDEX idx_api_endpoints_project_method
+          ON api_endpoints(project_id, method);
+        """
+    )
+    old_columns = {str(column["name"]) for column in db.execute("PRAGMA table_info(api_endpoints_legacy)").fetchall()}
+    source_channel_expression = "source_channel_id" if "source_channel_id" in old_columns else "''"
+    db.execute(
+        f"""
+        INSERT INTO api_endpoints (
+          id, project_id, document_id, method, path, normalized_path, protocol,
+          operation_action, connection_url, source_channel_id, summary, description,
+          tags_json, parameters_json, request_body_json, responses_json, auth_json,
+          source_json, message_schemas_json, created_by, created_at, updated_at
+        )
+        SELECT id, project_id, document_id, method, path, normalized_path,
+          {"protocol" if "protocol" in old_columns else "'http'"},
+          {"operation_action" if "operation_action" in old_columns else "'request'"},
+          {"connection_url" if "connection_url" in old_columns else "''"},
+          {source_channel_expression}, summary, description, tags_json, parameters_json,
+          request_body_json, responses_json, auth_json, source_json,
+          {"message_schemas_json" if "message_schemas_json" in old_columns else "'{}'"},
+          created_by, created_at, updated_at
+        FROM api_endpoints_legacy
+        """
+    )
+    for row in db.execute("SELECT id, source_json FROM api_endpoints").fetchall():
+        try:
+            source = json.loads(row["source_json"] or "{}")
+        except (TypeError, json.JSONDecodeError):
+            source = {}
+        channel_id = str(source.get("channel_id") or "")
+        if channel_id:
+            db.execute("UPDATE api_endpoints SET source_channel_id = ? WHERE id = ?", (channel_id, row["id"]))
+    db.execute("DROP TABLE api_endpoints_legacy")
+    db.execute("PRAGMA legacy_alter_table = OFF")
+    db.execute("PRAGMA foreign_keys = ON")
 
 
 def _ensure_project_version_structure(db: sqlite3.Connection) -> None:

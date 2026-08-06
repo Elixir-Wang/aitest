@@ -300,7 +300,8 @@ def test_renderer_uses_locust_http_user_and_controlled_request() -> None:
     assert "Authorization" in source
     assert "cybertron-robot-key" in source
     assert "cybertron-robot-token" in source
-    assert "PLAN = json.loads(" in source
+    assert "PLAN = {\n" in source
+    assert "PLAN = json.loads(" not in source
     assert "LoadTestShape" not in source
 
 
@@ -308,7 +309,6 @@ def test_renderer_keeps_execution_logic_in_shared_runtime() -> None:
     source = render_locust_script(build_default_plan(_performance_test()))
     runtime = runtime_module_source()
 
-    assert len(source.splitlines()) < 25
     assert "import math" not in source
     assert "self.client.request(" not in source
     assert "def execute_endpoint" in runtime
@@ -474,6 +474,8 @@ def test_renderer_supports_json_parameter_rows() -> None:
     assert plan.data.source == "json"
     assert '"json_rows"' in source
     assert '"selection_strategy": "random"' in source
+    assert "PLAN = {\n" in source
+    assert "    'data': {\n" in source
 
 
 def test_validator_accepts_rendered_script() -> None:

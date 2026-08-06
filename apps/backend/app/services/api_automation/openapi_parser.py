@@ -46,6 +46,7 @@ def parse_openapi_document(raw: str, *, source_name: str = "") -> dict[str, Any]
     if not endpoints:
         raise OpenAPIParseError("OpenAPI 文档未解析到可用接口。")
     return {
+        "format": "openapi",
         "title": title,
         "version": version,
         "endpoint_count": len(endpoints),
@@ -83,6 +84,7 @@ def extract_endpoints(openapi_spec: dict[str, Any]) -> list[dict[str, Any]]:
             operation_id = _string(method_spec.get("operationId"))
             endpoints.append(
                 {
+                    "protocol": "sse" if _is_sse_operation(method_spec) else "http",
                     "method": method_lower.upper(),
                     "path": _string(path),
                     "normalized_path": normalize_path(_string(path)),
@@ -101,6 +103,9 @@ def extract_endpoints(openapi_spec: dict[str, Any]) -> list[dict[str, Any]]:
                     "auth": {
                         "security": method_spec.get("security", global_security),
                     },
+                    "operation_action": "request",
+                    "connection_url": "",
+                    "message_schemas": {},
                     "source": {
                         "operation_id": operation_id,
                         "deprecated": bool(method_spec.get("deprecated", False)),
@@ -110,6 +115,19 @@ def extract_endpoints(openapi_spec: dict[str, Any]) -> list[dict[str, Any]]:
             )
     endpoints.sort(key=lambda item: (item["path"], item["method"]))
     return endpoints
+
+
+def _is_sse_operation(method_spec: dict[str, Any]) -> bool:
+    responses = method_spec.get("responses")
+    if not isinstance(responses, dict):
+        return False
+    for response in responses.values():
+        if not isinstance(response, dict):
+            continue
+        content = response.get("content")
+        if isinstance(content, dict) and "text/event-stream" in content:
+            return True
+    return False
 
 
 def normalize_operation_tags(
