@@ -7,6 +7,10 @@ LOGS_DIR = Path(os.getenv("AI_TESTING_LOGS_DIR", BACKEND_ROOT / "logs")).resolve
 DB_PATH = Path(os.getenv("AI_TESTING_DB_PATH", DATA_DIR / "ai_testing.db")).resolve()
 REJECTED_CASE_KNOWLEDGE_BASE_ID = os.getenv("AI_TESTING_REJECTED_CASE_KNOWLEDGE_BASE_ID", "").strip()
 
+# 内置模型的解锁密码，同时用于解密内置密钥密文，默认 aitest，无需配置环境变量。
+# 注意：内置密文由该密码加密，改动此密码后需用新密码重新生成密文，否则无法解密。
+BUILTIN_MODEL_PASSWORD = os.getenv("AI_TESTING_BUILTIN_MODEL_PASSWORD", "aitest").strip()
+
 PROJECT_FILE_STORAGE_ROOT = Path(
     os.getenv("AI_TESTING_PROJECT_FILE_STORAGE_DIR", DATA_DIR / "projects")
 ).resolve()

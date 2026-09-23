@@ -35,6 +35,7 @@ from app.schemas.knowledge import (
 )
 from app.services import operation_log_service
 from app.agents.knowledge import service as knowledge_agent_service
+from app.agents.knowledge.service import KnowledgeAgentStreamError
 
 logger = logging.getLogger(__name__)
 
@@ -240,6 +241,34 @@ async def stream_project_knowledge_query(
                         yield event
                     elif event_type == "metadata":
                         final_output = event["output"]
+    except KnowledgeAgentStreamError as exc:
+        logger.warning(
+            "[knowledge-query] interrupted project_id=%s conversation_id=%s reason=%s partial_length=%s",
+            project_id,
+            conversation["id"],
+            str(exc),
+            len(exc.partial_answer),
+        )
+        user_message, assistant_message = _append_query_messages(
+            conversation["id"],
+            question,
+            KnowledgeQueryOutput(
+                answer=_interrupted_answer(str(exc), exc.partial_answer),
+                knowledge_queried=exc.knowledge_queried,
+            ),
+            [],
+        )
+        yield {
+            "type": "error",
+            "code": "KNOWLEDGE_AGENT_INTERRUPTED",
+            "message": str(exc),
+            "result": _query_result_payload(
+                conversation,
+                user_message,
+                assistant_message,
+            ),
+        }
+        return
     except TimeoutError:
         user_message, assistant_message = _append_query_messages(
             conversation["id"],
@@ -345,6 +374,33 @@ async def stream_all_project_knowledge_query(
                         yield event
                     elif event_type == "metadata":
                         final_output = event["output"]
+    except KnowledgeAgentStreamError as exc:
+        logger.warning(
+            "[knowledge-query] interrupted scope=all conversation_id=%s reason=%s partial_length=%s",
+            conversation["id"],
+            str(exc),
+            len(exc.partial_answer),
+        )
+        user_message, assistant_message = _append_query_messages(
+            conversation["id"],
+            question,
+            KnowledgeQueryOutput(
+                answer=_interrupted_answer(str(exc), exc.partial_answer),
+                knowledge_queried=exc.knowledge_queried,
+            ),
+            [],
+        )
+        yield {
+            "type": "error",
+            "code": "KNOWLEDGE_AGENT_INTERRUPTED",
+            "message": str(exc),
+            "result": _query_result_payload(
+                conversation,
+                user_message,
+                assistant_message,
+            ),
+        }
+        return
     except TimeoutError:
         user_message, assistant_message = _append_query_messages(
             conversation["id"],
@@ -860,6 +916,14 @@ def _get_or_create_conversation_in_db(db, project_id: str, actor_id: str, conver
         title=_conversation_title(question),
         created_by=actor_id,
     )
+
+
+def _interrupted_answer(reason: str, partial_answer: str) -> str:
+    """保留已流出的部分回答，并附上中断原因，避免用户看到“答一半没有下文”。"""
+    partial = (partial_answer or "").strip()
+    if not partial:
+        return f"回答未完成：{reason}"
+    return f"{partial}\n\n> ⚠️ 回答未完成：{reason}"
 
 
 def _append_query_messages(

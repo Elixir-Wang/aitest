@@ -29,6 +29,16 @@ class ModelProviderIn(BaseModel):
     status: Status = "enabled"
 
 
+class BuiltinModelLoadIn(BaseModel):
+    password: str = Field(min_length=1, max_length=256)
+
+
+class BuiltinModelLoadOut(BaseModel):
+    created: int
+    updated: int
+    unchanged: int
+
+
 class AiCapabilityOut(BaseModel):
     id: str
     name: str

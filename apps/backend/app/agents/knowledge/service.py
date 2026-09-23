@@ -16,6 +16,15 @@ logger = logging.getLogger(__name__)
 CAPABILITY_ID = "knowledge_query"
 
 
+class KnowledgeAgentStreamError(RuntimeError):
+    """知识库 agent 流式过程中断，可能只产生了部分回答。"""
+
+    def __init__(self, message: str, partial_answer: str = "", knowledge_queried: bool = False) -> None:
+        super().__init__(message)
+        self.partial_answer = partial_answer
+        self.knowledge_queried = knowledge_queried
+
+
 def _selection_log_value(selection: Any, name: str) -> str:
     return str(getattr(selection, name, ""))
 
@@ -97,10 +106,20 @@ async def stream_knowledge_agent(
                 candidate = _output_from_result_if_available(data)
                 if candidate is not None:
                     output = candidate
-    except Exception:
-        if not streamed_answer:
-            raise
-        output = KnowledgeQueryOutput(answer=streamed_answer.strip(), knowledge_queried=used_tools)
+    except Exception as exc:
+        logger.warning(
+            "[knowledge-query] stream-interrupted provider=%s model=%s conversation_id=%s error=%s",
+            _selection_log_value(selection, "provider"),
+            _selection_log_value(selection, "model"),
+            thread_id or "",
+            exc.__class__.__name__,
+            exc_info=exc,
+        )
+        raise KnowledgeAgentStreamError(
+            _describe_stream_failure(exc),
+            streamed_answer.strip(),
+            used_tools,
+        ) from exc
 
     if output is None:
         if used_tools:
@@ -118,6 +137,28 @@ async def stream_knowledge_agent(
         yield {"type": "message_delta", "delta": output.answer}
     yield {"type": "metadata", "output": output}
     yield {"type": "done"}
+
+
+def _describe_stream_failure(exc: BaseException) -> str:
+    """把模型服务返回的原始异常翻译成用户可见的中文原因。"""
+    name = exc.__class__.__name__
+    status_code = getattr(exc, "status_code", None)
+    if status_code == 429 or name == "RateLimitError":
+        return "模型服务限流（429），请稍后重试。"
+    if name in {"APITimeoutError", "TimeoutException", "ReadTimeout", "ConnectTimeout", "ReadError", "PoolTimeout"}:
+        return "模型服务响应超时，请稍后重试。"
+    if name in {"APIConnectionError", "ConnectError", "RemoteProtocolError", "NetworkError"}:
+        return "无法连接模型服务，请检查网络或模型配置。"
+    if status_code in {401, 403} or name in {"AuthenticationError", "PermissionDeniedError"}:
+        return "模型服务鉴权失败，请检查模型配置。"
+    if status_code == 404 or name == "NotFoundError":
+        return "模型服务未找到可用模型，请检查模型配置。"
+    if isinstance(status_code, int) and status_code >= 500:
+        return f"模型服务异常（HTTP {status_code}），请稍后重试。"
+    detail = str(exc).strip().replace("\n", " ")
+    if detail:
+        return f"模型服务调用失败：{detail[:160]}"
+    return "模型服务调用失败，请稍后重试。"
 
 
 def _agent_payload(input_data: KnowledgeQueryInput) -> dict[str, Any]:

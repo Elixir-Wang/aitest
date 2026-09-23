@@ -5,7 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Check, Settings2 } from "lucide-react";
 import { toast } from "sonner";
 
-import { PageShell, ShellSection } from "@/components/ai-testing/page-shell";
+import { PageShell } from "@/components/ai-testing/page-shell";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -136,9 +136,7 @@ export default function Page() {
       ]}
       title="模型管理"
     >
-      <ShellSection>
-        <div className="space-y-5">
-          <div className="overflow-hidden rounded-lg border">
+      <div className="overflow-hidden rounded-lg border bg-card px-4 py-2">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -178,7 +176,6 @@ export default function Page() {
                 })}
               </TableBody>
             </Table>
-          </div>
         </div>
 
         <AlertDialog onOpenChange={setBulkDialogOpen} open={bulkDialogOpen}>
@@ -224,7 +221,6 @@ export default function Page() {
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
-      </ShellSection>
     </PageShell>
   );
 }

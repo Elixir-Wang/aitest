@@ -179,7 +179,7 @@ export function KnowledgeSearchSettings({
   }
 
   if (scope === "project" && !projectId) {
-    return <div className="rounded-lg border p-6 text-muted-foreground text-sm">请选择具体项目后配置检索来源。</div>;
+    return <div className="rounded-xl border p-6 text-muted-foreground text-sm">请选择具体项目后配置检索来源。</div>;
   }
 
   const hasChanges = settings
@@ -199,15 +199,17 @@ export function KnowledgeSearchSettings({
     <section
       aria-busy={loading || saving}
       aria-labelledby="knowledge-search-settings-title"
-      className="w-full overflow-hidden rounded-md border bg-card shadow-xs"
+      className="w-full overflow-hidden rounded-xl border bg-card shadow-xs"
     >
-      <header className="border-b px-5 py-4 sm:px-6">
-        <div className="mb-2 text-muted-foreground text-xs">
-          {scope === "all" ? "全局设置 · 应用于全部项目" : `项目设置 · ${projectName ?? "当前项目"}`}
-        </div>
-        <h2 className="font-semibold text-lg leading-7" id="knowledge-search-settings-title">
+      <header className="border-b px-5 py-5 sm:px-6">
+        <h2 className="font-semibold text-base leading-6 tracking-tight" id="knowledge-search-settings-title">
           检索内容范围
         </h2>
+        <p className="mt-1 text-muted-foreground text-sm leading-5">
+          {scope === "all"
+            ? "全局设置，应用于全部项目。开启后，知识库问答将检索以下来源。"
+            : `应用于「${projectName ?? "当前项目"}」。开启后，该项目的知识库问答将检索以下来源。`}
+        </p>
       </header>
 
       <fieldset disabled={loading || saving}>
@@ -226,16 +228,16 @@ export function KnowledgeSearchSettings({
               htmlFor={switchId}
               key={sourceType}
             >
-              <span className="flex w-6 shrink-0 justify-center">
-                <Icon
-                  className={cn("size-[18px] transition-colors", enabled ? "text-primary" : "text-muted-foreground")}
-                />
+              <span className="flex size-9 shrink-0 items-center justify-center rounded-lg border bg-muted/50">
+                <Icon className="size-4 text-muted-foreground" />
               </span>
               <span className="min-w-0 flex-1">
                 <span className="flex flex-wrap items-center gap-2 font-medium text-sm">
                   {label}
                   {source?.inherited ? (
-                    <span className="font-normal text-muted-foreground text-xs">沿用全局</span>
+                    <span className="rounded-full bg-muted px-2 py-0.5 font-normal text-muted-foreground text-xs">
+                      沿用全局
+                    </span>
                   ) : null}
                 </span>
                 <span className="mt-1 block text-muted-foreground text-sm leading-5">{description}</span>
@@ -251,7 +253,7 @@ export function KnowledgeSearchSettings({
         })}
       </fieldset>
 
-      <footer className="flex flex-col gap-3 border-t bg-muted/20 px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+      <footer className="flex flex-col gap-3 border-t px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
         <div aria-live="polite" className="min-h-5 text-sm" role="status">
           {error ? (
             <span className="flex items-center gap-1.5 text-destructive">

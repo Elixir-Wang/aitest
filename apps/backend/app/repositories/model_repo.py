@@ -9,6 +9,13 @@ def find_provider_by_id(db: Connection, provider_id: str) -> Row | None:
     return db.execute("SELECT * FROM model_providers WHERE id = ?", (provider_id,)).fetchone()
 
 
+def find_provider_by_identity(db: Connection, *, provider: str, model: str, base_url: str) -> Row | None:
+    return db.execute(
+        "SELECT * FROM model_providers WHERE provider = ? AND model = ? AND base_url = ?",
+        (provider, model, base_url),
+    ).fetchone()
+
+
 def create_provider(
     db: Connection,
     *,

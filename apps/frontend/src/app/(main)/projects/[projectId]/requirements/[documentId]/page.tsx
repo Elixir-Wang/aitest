@@ -2586,19 +2586,21 @@ export default function DocumentDetailPage() {
                       <div className={isDeferredAnswer ? "bg-slate-400 dark:bg-slate-500" : "bg-emerald-500"} />
                       <div className="p-4">
                         <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start">
-                          <div className="relative min-w-0">
-                            <div className="absolute flex h-7 w-[10.5rem] items-center gap-2">
-                              <span className="inline-flex h-7 min-w-8 items-center justify-center rounded-sm border border-border bg-muted/40 px-2 font-medium text-[11px] text-muted-foreground tabular-nums">
+                          <div className="min-w-0">
+                            <div className="flex items-start gap-2">
+                              <span className="inline-flex h-7 shrink-0 items-center justify-center rounded-sm border border-border bg-muted/40 px-2 font-medium text-[11px] text-muted-foreground tabular-nums">
                                 {itemNumber}
                               </span>
-                              <Badge variant={isDeferredAnswer ? "secondary" : "outline"}>
+                              <Badge className="shrink-0" variant={isDeferredAnswer ? "secondary" : "outline"}>
                                 {handledPendingItemLabel(item)}
                               </Badge>
-                              <Badge variant={pendingItemSeverityVariant(item)}>{pendingItemSeverityLabel(item)}</Badge>
+                              <Badge className="shrink-0" variant={pendingItemSeverityVariant(item)}>
+                                {pendingItemSeverityLabel(item)}
+                              </Badge>
+                              <span className="block min-w-0 flex-1 break-words text-foreground text-sm leading-6">
+                                {itemHeading}
+                              </span>
                             </div>
-                            <span className="block min-w-0 break-words indent-[10.5rem] text-foreground text-sm leading-6">
-                              {itemHeading}
-                            </span>
                           </div>
                           <Button
                             className="h-8 shrink-0 justify-self-end px-3 text-xs"

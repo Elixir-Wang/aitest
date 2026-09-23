@@ -35,6 +35,56 @@
 - **测试资产**：测试用例（AI 生成 + 手动、评审、覆盖矩阵）、UI 自动化（pytest + Playwright）、接口自动化（OpenAPI 导入、用例生成、场景编排、执行与 Oracle 校验）、性能测试（Locust 脚本生成 + 执行 + 报告分析）、报告中心
 - **系统管理**：模型配置与智能体模型分配、用户与权限（管理员 / 测试工程师 / 访客）、系统日志
 
+## 界面预览
+
+**项目**
+
+![项目](docs/images/project.png)
+
+**需求**
+
+![需求](docs/images/requirement.png)
+
+**测试点**
+
+![测试点](docs/images/test-point.png)
+
+**WEB UI 探索**
+
+![WEB UI 探索](docs/images/web-exploration.png)
+
+**知识库检索**
+
+![知识库检索](docs/images/knowledge-search.png)
+
+**测试用例**
+
+![测试用例](docs/images/test-case.png)
+
+**UI 自动化**
+
+![UI 自动化](docs/images/ui-automation.png)
+
+**接口自动化**
+
+![接口自动化](docs/images/api-automation.png)
+
+**接口编排**
+
+![接口编排](docs/images/api-orchestration.png)
+
+**性能自动化**
+
+![性能自动化](docs/images/performance-automation.png)
+
+**测试报告**
+
+![测试报告](docs/images/test-report.png)
+
+**模型分配**
+
+![模型分配](docs/images/model-assignment.png)
+
 ## AI 能力注册表
 
 `requirement_standardization`、`requirement_analysis`、`document_editor`、`knowledge_query`、`test_point_generation`、`test_case_generation`、`api_test_generation`、`api_scenario_orchestration`、`ui_test_generation`、`page_exploration`、`performance_script_generation`、`performance_report_analysis`。
@@ -84,9 +134,14 @@ npm run dev
 ./apps/start/macos/start-macos.sh   # 另有 restart-macos.sh / stop-macos.sh
 ```
 
-默认管理员账号：`admin / admin`（仅用于本地体验，部署前请修改）。
+一键启动（Windows，PowerShell）：
 
-后端测试：`cd apps/backend && uv run pytest`。
+```powershell
+Set-ExecutionPolicy -Scope Process Bypass
+.\apps\start\windows\start-windows.ps1   # 另有 restart-windows.ps1 / stop-windows.ps1
+```
+
+默认管理员账号：`admin / admin`（仅用于本地体验，部署前请修改）。
 
 ## 目录结构
 
@@ -95,7 +150,7 @@ apps/backend    FastAPI 后端：api / services / repositories / agents / runner
 apps/frontend   Next.js 前端：app 路由、组件、导航、api-client
 apps/start      macOS / Windows 启动与停止脚本
 docker          容器化相关配置
-docs            产品 PRD、前后端方案与架构文档（事实基线）
+docs            产品 PRD、前后端方案与架构文档（事实基线）、界面截图
 openspec        变更提案与规格
 ```
 

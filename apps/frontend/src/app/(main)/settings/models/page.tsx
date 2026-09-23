@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import { Eye, EyeOff, Pencil, TestTube, Trash2 } from "lucide-react";
 
+import { BuiltinModelsLoader } from "@/components/ai-testing/builtin-models-loader";
 import { ListToolbar, PageShell, RowActions, ShellSection } from "@/components/ai-testing/page-shell";
 import { ProcessingState, TableLoadingRow } from "@/components/ai-testing/table-loading-row";
 import { Button } from "@/components/ui/button";
@@ -207,6 +208,7 @@ export default function Page() {
           onCreate={canWrite ? openCreateDialog : undefined}
           onSearch={setSearchText}
           placeholder="搜索模型提供商、模型或 Base URL"
+          searchActions={<BuiltinModelsLoader onLoaded={loadProviders} />}
           selectedCount={canWrite ? selectedCount : 0}
           title="模型列表"
         />

@@ -196,6 +196,7 @@ export function ListToolbar({
   onCreate,
   onSearch,
   actions,
+  searchActions,
 }: {
   title: string;
   description?: string;
@@ -208,6 +209,7 @@ export function ListToolbar({
   onCreate?: () => void;
   onSearch?: (value: string) => void;
   actions?: ReactNode;
+  searchActions?: ReactNode;
 }) {
   const hasSelection = selectedCount > 0;
 
@@ -229,6 +231,7 @@ export function ListToolbar({
             />
           </div>
         </div>
+        {searchActions}
         {hasSelection && onBatchDelete ? (
           <Button
             className="border-red-200 bg-red-50 text-red-700 hover:border-red-300 hover:bg-red-100 hover:text-red-800 dark:border-red-900/40 dark:bg-red-950/20 dark:text-red-300 dark:hover:bg-red-950/30"
