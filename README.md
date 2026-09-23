@@ -143,15 +143,36 @@ Set-ExecutionPolicy -Scope Process Bypass
 
 默认管理员账号：`admin / admin`（仅用于本地体验，部署前请修改）。
 
+## Docker 部署
+
+```bash
+docker compose up --build   # 前端 http://localhost:3000
+```
+
+镜像里同时跑后端（`127.0.0.1:18000`，经 Next rewrite 转发）和 Next standalone，
+对外只暴露 3000。环境变量写在根目录 `.env`（可选，缺失时用默认值），真正必填的只有大模型 Key：
+
+| 变量 | 说明 |
+|---|---|
+| `DEEPSEEK_API_KEY` / `OPENAI_API_KEY` | 至少填一个，否则 AI 功能不可用 |
+| `MODEL_PROVIDER` | `deepseek`（默认）或 `openai` |
+| `MODEL_NAME` | 默认 `deepseek-chat` |
+| `CORS_ALLOW_ORIGINS` | 逗号分隔的额外前端 origin |
+| `FRONTEND_PORT` | 宿主机端口，默认 3000 |
+| `TZ` | 默认 `Asia/Shanghai` |
+
+其余变量（上传大小/并发限制、知识库 ID 等）保持代码内默认值即可。
+
 ## 目录结构
 
 ```text
 apps/backend    FastAPI 后端：api / services / repositories / agents / runners
 apps/frontend   Next.js 前端：app 路由、组件、导航、api-client
 apps/start      macOS / Windows 启动与停止脚本
-docker          容器化相关配置
 docs            产品 PRD、前后端方案与架构文档（事实基线）、界面截图
 openspec        变更提案与规格
+
+根目录其余文件为容器化配置：`Dockerfile`、`docker-compose.yml`、`.dockerignore`。
 ```
 
 ## 文档

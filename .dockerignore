@@ -27,7 +27,4 @@
 **/openspec
 **/terminals
 **/README.md
-**/docker
-**/Dockerfile
 **/docker-compose*.yml
-**/.dockerignore
