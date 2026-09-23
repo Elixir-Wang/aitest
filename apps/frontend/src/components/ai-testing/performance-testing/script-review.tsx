@@ -24,7 +24,7 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "
 import { Textarea } from "@/components/ui/textarea";
 import {
   ApiRequestError,
-  createPerformanceRun,
+  ensurePerformanceRun,
   getPerformanceScript,
   type PerformanceScenarioStep,
   type PerformanceScript,
@@ -127,9 +127,10 @@ export function ScriptReview({ projectId, testId, scriptId }: { projectId: strin
   }
 
   async function startRun() {
+    if (!script) return;
     setSaving(true);
     try {
-      const run = await createPerformanceRun(projectId, testId, scriptId);
+      const run = await ensurePerformanceRun(projectId, testId, scriptId);
       router.push(`/projects/${projectId}/performance-tests/${testId}/runs/${run.id}`);
     } catch (error) {
       toast.error(apiErrorMessage(error));

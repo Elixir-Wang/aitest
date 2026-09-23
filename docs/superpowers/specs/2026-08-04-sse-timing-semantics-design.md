@@ -9,6 +9,7 @@ Make SSE timing metrics match the confirmed business meaning without adding an i
 - `call_llm 开始时间`: request start to the first SSE event whose `$.data.event_type` equals `call_llm_start`.
 - `首次有效内容时间`: request start to the first SSE event whose `$.data.index` equals `0`, matching the confirmed reference client.
 - When both metrics are configured, first content is eligible only after the same request has observed `call_llm_start`.
+- An interval metric is calculated only when its configured timing uses `start: metric_matched` and references another configured metric; it is never emitted implicitly.
 - The HTTP SSE request duration is connection/response-header latency, not stream completion latency.
 
 ## Design
@@ -22,6 +23,7 @@ Make SSE timing metrics match the confirmed business meaning without adding an i
 - Mark streaming HTTP request rows with connection-latency semantics for the frontend.
 - Bound displayed SSE metric attempts to completed HTTP SSE requests so manual-stop report snapshots do not show an extra metric attempt.
 - Preserve configured metrics only; do not create or listen for `query_end`.
+- Allow an SSE request to run with no event metrics. AI discovery returns suggestions only; a suggestion becomes active only after a user saves it.
 
 ## Acceptance
 

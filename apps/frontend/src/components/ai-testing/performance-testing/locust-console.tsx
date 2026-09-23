@@ -87,7 +87,7 @@ export function LocustConsole({ projectId, testId, runId }: { projectId: string;
     setRun(nextRun);
     setSnapshot(nextSnapshot);
     setReports(nextReports);
-    setSamples(chartSamples(nextCharts.samples));
+    setSamples(decimateChartSamples(chartSamples(nextCharts.samples)));
   }, [projectId, runId]);
 
   useEffect(() => {
@@ -127,7 +127,7 @@ export function LocustConsole({ projectId, testId, runId }: { projectId: string;
             : current.exceptions,
         };
       });
-      setSamples((current) => [...current, ...chartSamples([latest])].slice(-180));
+      setSamples((current) => decimateChartSamples([...current, ...chartSamples([latest])]));
     };
     const startPollingFallback = () => {
       if (fallbackTimer !== undefined) return;
@@ -223,8 +223,7 @@ export function LocustConsole({ projectId, testId, runId }: { projectId: string;
     setWorking(true);
     try {
       const nextRun = await createPerformanceRun(projectId, testId, run.script_id);
-      await startPerformanceRun(projectId, testId, nextRun.id, startDefaults);
-      toast.success("已开始重新压测");
+      toast.success("已创建新一轮压测");
       router.push(`/projects/${projectId}/performance-tests/${testId}/runs/${nextRun.id}`);
     } catch (error) {
       toast.error(apiErrorMessage(error));
@@ -269,7 +268,7 @@ export function LocustConsole({ projectId, testId, runId }: { projectId: string;
   }
 
   const aggregate = snapshot?.stats.at(-1) ?? {};
-  const canStart = run?.status === "created";
+  const canStart = run?.status === "created" || run?.status === "ready";
   const canStop = run?.status === "starting" || run?.status === "running";
   const canReset = Boolean(run && !["created", "stopping"].includes(run.status));
   const canRerun = Boolean(run && TERMINAL_STATUSES.has(run.status));
@@ -330,7 +329,7 @@ export function LocustConsole({ projectId, testId, runId }: { projectId: string;
                 onClick={rerun}
                 size="sm"
               >
-                <Activity className="mr-2 size-3.5" /> 重新压测
+                <Activity className="mr-2 size-3.5" /> 重新开始
               </Button>
             ) : null}
             <Button
@@ -464,15 +463,6 @@ export function LocustConsole({ projectId, testId, runId }: { projectId: string;
             <FileText aria-hidden="true" />
             请求统计
           </TabsTrigger>
-          {snapshot?.sse_metrics.metrics.length ? (
-            <TabsTrigger
-              className="h-16 rounded-none px-1 text-slate-500 text-sm data-[state=active]:text-emerald-600 dark:text-slate-400 dark:data-[state=active]:text-emerald-400"
-              value="sse"
-            >
-              <Clock3 aria-hidden="true" />
-              流式指标
-            </TabsTrigger>
-          ) : null}
           <TabsTrigger
             className="h-16 rounded-none px-1 text-slate-500 text-sm data-[state=active]:text-emerald-600 dark:text-slate-400 dark:data-[state=active]:text-emerald-400"
             value="analysis"
@@ -494,38 +484,24 @@ export function LocustConsole({ projectId, testId, runId }: { projectId: string;
         <TabsContent value="charts">
           <LocustChartsPanel samples={samples} />
         </TabsContent>
-        <TabsContent value="sse">
-          {snapshot?.sse_metrics.truncated ||
-          snapshot?.sse_metrics.parse_error_count ||
-          snapshot?.sse_metrics.timeout_count ||
-          snapshot?.sse_metrics.end_rule_not_matched_count ? (
-            <div className="mb-4 flex flex-wrap gap-x-6 gap-y-2 border-amber-500 border-l-2 bg-amber-50 px-4 py-3 text-amber-900 text-sm dark:bg-amber-950/30 dark:text-amber-100">
-              {snapshot.sse_metrics.truncated ? <span>测量样本已达到存储上限</span> : null}
-              <span>JSON 解析错误 {snapshot.sse_metrics.parse_error_count}</span>
-              <span>流超时 {snapshot.sse_metrics.timeout_count}</span>
-              <span>结束规则未命中 {snapshot.sse_metrics.end_rule_not_matched_count}</span>
-            </div>
-          ) : null}
-          <LocustGenericTable
-            columns={[
-              ["metric_id", "指标"],
-              ["attempt_count", "请求数"],
-              ["matched_count", "命中数"],
-              ["missing_count", "缺失数"],
-              ["failure_count", "失败数"],
-              ["average_ms", "平均值"],
-              ["p50_ms", "P50"],
-              ["p95_ms", "P95"],
-              ["p99_ms", "P99"],
-            ]}
-            empty="暂无 SSE 流式指标"
-            rows={sseMetricRows(snapshot)}
-          />
-        </TabsContent>
         <TabsContent value="requests">
           <LocustStatisticsTable rows={statisticsRows(snapshot)} />
         </TabsContent>
         <TabsContent className="space-y-5" value="analysis">
+          {snapshot?.sse_metrics.truncated ||
+          snapshot?.sse_metrics.parse_error_count ||
+          snapshot?.sse_metrics.timeout_count ||
+          snapshot?.sse_metrics.end_rule_not_matched_count ? (
+            <section className="space-y-3">
+              <h3 className="font-semibold text-sm">SSE 数据质量</h3>
+              <div className="flex flex-wrap gap-x-6 gap-y-2 border-amber-500 border-l-2 bg-amber-50 px-4 py-3 text-amber-900 text-sm dark:bg-amber-950/30 dark:text-amber-100">
+                {snapshot.sse_metrics.truncated ? <span>测量样本已达到存储上限</span> : null}
+                <span>JSON 解析错误 {snapshot.sse_metrics.parse_error_count}</span>
+                <span>流超时 {snapshot.sse_metrics.timeout_count}</span>
+                <span>结束规则未命中 {snapshot.sse_metrics.end_rule_not_matched_count}</span>
+              </div>
+            </section>
+          ) : null}
           <section className="space-y-3">
             <h3 className="font-semibold text-sm">失败请求</h3>
             <LocustGenericTable
@@ -623,7 +599,7 @@ function metricToneClass(tone: "green" | "blue" | "red" | "purple" | "amber" | "
 }
 
 function chartSamples(rows: Array<Record<string, unknown>>): LocustChartSample[] {
-  return rows.slice(-180).map((row) => ({
+  return rows.map((row) => ({
     sampledAt: formatSampleTime(row.sampled_at),
     users: Number(row.user_count ?? 0),
     rps: Number(row.requests_per_second ?? 0),
@@ -631,6 +607,39 @@ function chartSamples(rows: Array<Record<string, unknown>>): LocustChartSample[]
     p50ResponseTime: Number(row.p50_response_time_ms ?? 0),
     p95ResponseTime: Number(row.p95_response_time_ms ?? 0),
   }));
+}
+
+// Keep the complete time range while bounding the number of SVG points for very long runs.
+const MAX_CHART_SAMPLES = 2_000;
+const CHART_METRIC_KEYS = ["users", "rps", "failuresPerSecond", "p50ResponseTime", "p95ResponseTime"] as const;
+
+function decimateChartSamples(samples: LocustChartSample[]): LocustChartSample[] {
+  if (samples.length <= MAX_CHART_SAMPLES) return samples;
+
+  const pointsPerBucket = CHART_METRIC_KEYS.length * 2 + 1;
+  const bucketCount = Math.floor((MAX_CHART_SAMPLES - 2) / pointsPerBucket);
+  const bucketSize = Math.ceil((samples.length - 2) / bucketCount);
+  const selectedIndexes = new Set([0, samples.length - 1]);
+
+  for (let bucketStart = 1; bucketStart < samples.length - 1; bucketStart += bucketSize) {
+    const bucketEnd = Math.min(samples.length - 1, bucketStart + bucketSize);
+    selectedIndexes.add(bucketStart + Math.floor((bucketEnd - bucketStart) / 2));
+    for (const key of CHART_METRIC_KEYS) {
+      let minIndex = bucketStart;
+      let maxIndex = bucketStart;
+      for (let index = bucketStart + 1; index < bucketEnd; index += 1) {
+        if (samples[index][key] < samples[minIndex][key]) minIndex = index;
+        if (samples[index][key] > samples[maxIndex][key]) maxIndex = index;
+      }
+      selectedIndexes.add(minIndex);
+      selectedIndexes.add(maxIndex);
+    }
+  }
+
+  return [...selectedIndexes]
+    .sort((left, right) => left - right)
+    .slice(0, MAX_CHART_SAMPLES)
+    .map((index) => samples[index]);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -660,10 +669,6 @@ function statisticsRows(snapshot: PerformanceRunStats | null) {
     }
     return row;
   });
-}
-
-function sseMetricRows(snapshot: PerformanceRunStats | null) {
-  return (snapshot?.sse_metrics.metrics ?? []).map((metric) => ({ ...metric }));
 }
 
 function percentage(value: unknown) {

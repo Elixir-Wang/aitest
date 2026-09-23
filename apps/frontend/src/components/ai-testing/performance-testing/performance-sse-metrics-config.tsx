@@ -67,7 +67,11 @@ function metricMatchSummary(metric: PerformanceSseMetric) {
   return `当 ${scope}${target} 等于 ${expected}`;
 }
 
-function metricTimingFormula(metric: PerformanceSseMetric) {
+function metricTimingFormula(metric: PerformanceSseMetric, metrics: PerformanceSseMetric[]) {
+  if (metric.timing.start === "metric_matched") {
+    const startMetric = metrics.find((item) => item.id === metric.timing.start_metric_id);
+    return `${metric.name}命中时间 - ${startMetric?.name ?? metric.timing.start_metric_id ?? "起点指标"}命中时间`;
+  }
   return `${metric.name}命中时间 - 所属接口请求发起时间`;
 }
 
@@ -202,11 +206,7 @@ export function PerformanceSseMetricsConfig({
         const currentConfig = value ?? draft;
         const currentMetricIds = new Set(currentConfig?.metrics.map((metric) => metric.id) ?? []);
         const selectedKeys = generated.candidates
-          .filter((candidate) =>
-            currentMetricIds.size > 0
-              ? currentMetricIds.has(candidate.metric_id)
-              : candidate.recommendation_level === "recommended",
-          )
+          .filter((candidate) => currentMetricIds.has(candidate.metric_id))
           .map((item) => item.suggestion_key);
         const nextDraft = buildDraft(generated, selectedKeys, currentConfig);
         const generatedMetricIds = new Set(generated.candidates.map((candidate) => candidate.metric_id));
@@ -292,6 +292,25 @@ export function PerformanceSseMetricsConfig({
     });
   }
 
+  function updateTimingStart(index: number, startMetricId: string) {
+    if (!draft) return;
+    setDraft({
+      ...draft,
+      metrics: draft.metrics.map((metric, metricIndex) =>
+        metricIndex === index
+          ? {
+              ...metric,
+              timing: startMetricId
+                ? { ...metric.timing, start: "metric_matched", start_metric_id: startMetricId }
+                : { ...metric.timing, start: "request_started", start_metric_id: null },
+            }
+          : metric,
+      ),
+    });
+    setVerified(false);
+    setValidation(undefined);
+  }
+
   function toggleRecommendedEndRule() {
     if (!draft || !result?.end_rule_candidate) return;
     const recommended = result.end_rule_candidate.match;
@@ -336,7 +355,9 @@ export function PerformanceSseMetricsConfig({
               <p className="text-muted-foreground text-xs">关闭弹窗不会丢失结果，可随时查看生成结果。</p>
             </div>
           ) : !value ? (
-            <p className="mt-1 text-muted-foreground text-sm">运行真实接口，分析 SSE 流中值得观测的业务事件。</p>
+            <p className="mt-1 text-muted-foreground text-sm">
+              默认不计算事件指标。可运行真实接口获取 AI 建议，再人工选择启用。
+            </p>
           ) : (
             <div className="mt-2 space-y-1 text-sm">
               {value.metrics.map((metric) => (
@@ -364,7 +385,7 @@ export function PerformanceSseMetricsConfig({
             variant={value || hasPendingDraft ? "outline" : "default"}
           >
             {loading ? <LoaderCircle className="animate-spin" /> : <Sparkles />}
-            {value || hasPendingDraft ? "重新生成" : "运行样本并发现指标"}
+            {value || hasPendingDraft ? "重新生成建议" : "运行样本并获取 AI 建议"}
           </Button>
           {value && !hasPendingDraft ? (
             <Button
@@ -400,7 +421,9 @@ export function PerformanceSseMetricsConfig({
               <div className="space-y-3">
                 <div>
                   <strong>候选指标</strong>
-                  <p className="text-muted-foreground text-xs">按真实样本证据推荐，不预设固定业务事件。</p>
+                  <p className="text-muted-foreground text-xs">
+                    AI 建议不会自动启用；只有人工勾选、验证并应用后，后续运行才计算。
+                  </p>
                 </div>
                 {result.candidates.length === 0 ? (
                   <p className="rounded-lg border border-dashed p-4 text-muted-foreground text-sm">
@@ -461,11 +484,15 @@ export function PerformanceSseMetricsConfig({
                           "当前 SSE 请求"}
                       </dd>
                       <dt className="text-muted-foreground text-xs">开始时间</dt>
-                      <dd>所属 SSE 接口请求发起</dd>
+                      <dd>
+                        {metric.timing.start === "metric_matched"
+                          ? (draft.metrics.find((item) => item.id === metric.timing.start_metric_id)?.name ?? "未配置")
+                          : "所属 SSE 接口请求发起"}
+                      </dd>
                       <dt className="text-muted-foreground text-xs">结束条件</dt>
                       <dd className="break-all">{metricMatchSummary(metric)}</dd>
                       <dt className="text-muted-foreground text-xs">计算方式</dt>
-                      <dd>{metricTimingFormula(metric)}</dd>
+                      <dd>{metricTimingFormula(metric, draft.metrics)}</dd>
                     </dl>
                   </div>
                   {item ? (
@@ -524,6 +551,29 @@ export function PerformanceSseMetricsConfig({
                           <option value="ignore">忽略本次指标</option>
                         </select>
                         <span className="block text-muted-foreground text-xs">仅在本次请求未找到匹配事件时生效。</span>
+                      </label>
+                      <label className="space-y-1 text-sm sm:col-span-2" htmlFor={`${fieldPrefix}-timing-start`}>
+                        <span className="text-muted-foreground text-xs">计时起点</span>
+                        <select
+                          className="block h-9 w-full rounded-md border bg-background px-3 text-sm"
+                          id={`${fieldPrefix}-timing-start`}
+                          onChange={(event) => updateTimingStart(index, event.target.value)}
+                          value={
+                            metric.timing.start === "metric_matched" ? (metric.timing.start_metric_id ?? "") : ""
+                          }
+                        >
+                          <option value="">所属 SSE 接口请求发起</option>
+                          {draft.metrics
+                            .filter((item) => item.id !== metric.id && item.timing.start === "request_started")
+                            .map((item) => (
+                              <option key={item.id} value={item.id}>
+                                {item.name}命中时间
+                              </option>
+                            ))}
+                        </select>
+                        <span className="block text-muted-foreground text-xs">
+                          选择另一个指标后，本指标只计算两个事件命中时间的差值。
+                        </span>
                       </label>
                     </div>
                   </details>

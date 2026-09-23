@@ -62,6 +62,8 @@ ALLOWED_TARGETS = {
 def is_supported_change(change: dict[str, Any]) -> bool:
     if change.get("target_type") == "platform_code":
         return False
+    if "before" not in change or "after" not in change or change.get("before") == change.get("after"):
+        return False
     return _normalize_target(str(change.get("target") or "")) in ALLOWED_TARGETS
 
 

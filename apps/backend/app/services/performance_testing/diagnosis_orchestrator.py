@@ -100,6 +100,7 @@ def _repair_references(
         "previous_diagnosis": diagnosis.model_dump(mode="json"),
         "unknown_evidence_refs": validation.unknown_evidence_refs,
         "unknown_finding_refs": validation.unknown_finding_refs,
+        "uncovered_signal_refs": validation.uncovered_signal_refs,
     }
     return _run_repair(
         analysis_input,

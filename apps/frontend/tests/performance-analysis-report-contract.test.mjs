@@ -124,7 +124,7 @@ test("performance report separates SSE event metrics from HTTP response metrics"
   assert.match(reportSource, /item\.missing_count/);
   assert.match(reportSource, /item\.p95_ms/);
   assert.match(reportSource, /测量文件达到大小上限/);
-  assert.match(reportSource, /JSON 解析错误/);
+  assert.match(reportSource, /JSON 格式错误/);
 });
 
 test("performance report hides empty analytical sections", () => {

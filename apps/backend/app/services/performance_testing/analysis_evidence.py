@@ -268,8 +268,7 @@ def _collect_artifacts(report_directory: Path | None) -> tuple[dict[str, Any], l
         "result_stats": "result_stats.csv",
         "result_failures": "result_failures.csv",
         "result_exceptions": "result_exceptions.csv",
-        "generated_locustfile": "generated_locustfile.py",
-        "effective_locustfile": "locustfile.py",
+        "locustfile": "locustfile.py",
         "sse_metrics": "sse-measurements.jsonl",
     }
     if report_directory is None or not report_directory.is_dir():

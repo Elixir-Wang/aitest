@@ -3,6 +3,7 @@ import ast
 import csv
 import json
 import shutil
+import threading
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -35,6 +36,7 @@ REPORT_FILES = {
 }
 TERMINAL_STATUSES = {"completed", "stopped", "failed", "cancelled"}
 ACTIVE_STATUSES = {"starting", "running", "stopping"}
+RUN_ENSURE_LOCK = threading.Lock()
 
 
 @test_router.post("/runs")
@@ -49,16 +51,49 @@ def create_performance_run(
         from app.core.exceptions import api_error
         raise api_error(400, "PERFORMANCE_RUN_INVALID", "必须提供 script_id。")
     with _script_lookup(project_id, test_id, script_id, actor) as context:
+        runtime_payload = {**context["runtime_environment"], "__entry_reason": "rerun"}
         run_id = headless_worker.create_run_session(
             project_id=project_id,
             test_id=test_id,
             script_id=script_id,
             script_code=context["script_code"],
-            runtime_payload=context["runtime_environment"],
+            runtime_payload=runtime_payload,
             load_config=context["load_config"],
             created_by=str(actor["id"]),
         )
     return {"id": run_id, "status": "created"}
+
+
+@test_router.post("/runs/ensure")
+def ensure_performance_run(
+    project_id: str,
+    test_id: str,
+    payload: dict,
+    actor=Depends(current_user),
+) -> dict[str, str | bool]:
+    script_id = str(payload.get("script_id") or "")
+    if not script_id:
+        from app.core.exceptions import api_error
+
+        raise api_error(400, "PERFORMANCE_RUN_INVALID", "必须提供 script_id。")
+
+    with RUN_ENSURE_LOCK:
+        current = _current_entry_run(project_id, test_id, actor)
+        if current is not None:
+            return {"id": str(current["id"]), "status": str(current["status"]), "created": False}
+
+        with _script_lookup(project_id, test_id, script_id, actor) as context:
+            runtime_payload = {**context["runtime_environment"], "__entry_reason": "initial"}
+            run_id = headless_worker.create_run_session(
+                project_id=project_id,
+                test_id=test_id,
+                script_id=script_id,
+                script_code=context["script_code"],
+                runtime_payload=runtime_payload,
+                load_config=context["load_config"],
+                created_by=str(actor["id"]),
+            )
+        return {"id": run_id, "status": "created", "created": True}
 
 
 @test_router.post("/runs/{run_id}/start")
@@ -325,7 +360,27 @@ def _require_run(project_id: str, run_id: str, actor):
         if not run or run["project_id"] != project_id:
             from app.core.exceptions import api_error
             raise api_error(404, "PERFORMANCE_RUN_NOT_FOUND", "性能测试运行不存在。")
-        return run
+    return run
+
+
+def _current_entry_run(project_id: str, test_id: str, actor):
+    _ensure_project_visible(project_id, actor)
+    with connect() as db:
+        return db.execute(
+            """
+            SELECT *
+            FROM performance_test_runs
+            WHERE project_id = ? AND performance_test_id = ?
+            ORDER BY CASE
+                       WHEN status = 'created'
+                        AND COALESCE(json_extract(runtime_config_json, '$.__entry_reason'), '') = '' THEN 1
+                       ELSE 0
+                     END,
+                     COALESCE(finished_at, created_at) DESC, created_at DESC, id DESC
+            LIMIT 1
+            """,
+            (project_id, test_id),
+        ).fetchone()
 
 
 def _run_report_directory(project_id: str, run_id: str) -> Path:
@@ -370,11 +425,6 @@ def _request_stats_payload(project_id: str, run_id: str) -> tuple[list[dict[str,
             run_dir / "sse-measurements.jsonl", max_attempts=0
         )
     actual_rows: dict[tuple[str, str], dict[str, object]] = {}
-    final_entries = {
-        (str(entry.get("request_type") or ""), str(entry.get("name") or "")): entry
-        for entry in headless_worker.read_locust_final_stats(run_dir).get("entries", [])
-        if isinstance(entry, dict)
-    }
     for row in rows:
         method = str(row.get("Type") or "")
         name = str(row.get("Name") or "")
@@ -382,10 +432,6 @@ def _request_stats_payload(project_id: str, run_id: str) -> tuple[list[dict[str,
             continue
         request_count = int(float(row.get("Request Count") or 0))
         failure_count = int(float(row.get("Failure Count") or 0))
-        final_entry = final_entries.get((method, name))
-        if final_entry:
-            request_count = int(final_entry.get("request_count") or 0)
-            failure_count = int(final_entry.get("failure_count") or 0)
         actual_rows[(method, name)] = {
             "name": name,
             "method": method,
@@ -436,6 +482,9 @@ def _request_stats_payload(project_id: str, run_id: str) -> tuple[list[dict[str,
                 "request_count": attempt_count,
                 "failure_count": missing_count,
                 "failure_rate": missing_count / attempt_count if attempt_count else 0,
+                "matched_count": int(summary.get("matched_count") or 0),
+                "missing_count": missing_count,
+                "result_semantics": "protocol_metric_match",
                 "average_response_time_ms": summary.get("average_ms") or 0,
                 "median_response_time_ms": summary.get("p50_ms") or 0,
                 "p50_response_time_ms": summary.get("p50_ms") or 0,
@@ -456,7 +505,7 @@ def _request_stats_payload(project_id: str, run_id: str) -> tuple[list[dict[str,
 
 
 def _generated_performance_plan(run_dir: Path) -> dict[str, object]:
-    path = run_dir / "generated_locustfile.py"
+    path = run_dir / "locustfile.py"
     if not path.is_file():
         return {}
     try:
@@ -466,11 +515,13 @@ def _generated_performance_plan(run_dir: Path) -> dict[str, object]:
     for node in tree.body:
         if not isinstance(node, ast.Assign) or not any(isinstance(target, ast.Name) and target.id == "PLAN" for target in node.targets):
             continue
-        if not isinstance(node.value, ast.Call) or not node.value.args:
-            return {}
         try:
-            payload = ast.literal_eval(node.value.args[0])
-            plan = json.loads(payload)
+            if isinstance(node.value, ast.Dict):
+                plan = ast.literal_eval(node.value)
+            elif isinstance(node.value, ast.Call) and node.value.args:
+                plan = json.loads(ast.literal_eval(node.value.args[0]))
+            else:
+                return {}
         except (ValueError, TypeError, json.JSONDecodeError):
             return {}
         return plan if isinstance(plan, dict) else {}

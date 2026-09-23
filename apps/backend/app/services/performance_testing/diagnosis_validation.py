@@ -3,15 +3,18 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from app.services.performance_testing.failure_signal_service import blocking_signal_ids
+
 
 @dataclass(frozen=True)
 class DiagnosisValidationResult:
     unknown_evidence_refs: list[str]
     unknown_finding_refs: list[str]
+    uncovered_signal_refs: list[str]
 
     @property
     def valid(self) -> bool:
-        return not self.unknown_evidence_refs and not self.unknown_finding_refs
+        return not self.unknown_evidence_refs and not self.unknown_finding_refs and not self.uncovered_signal_refs
 
 
 class DiagnosisReferenceError(ValueError):
@@ -22,6 +25,8 @@ class DiagnosisReferenceError(ValueError):
             messages.append(f"性能诊断引用了未知证据：{', '.join(validation.unknown_evidence_refs)}")
         if validation.unknown_finding_refs:
             messages.append(f"性能建议引用了未知 finding：{', '.join(validation.unknown_finding_refs)}")
+        if validation.uncovered_signal_refs:
+            messages.append(f"性能诊断遗漏严重失败信号：{', '.join(validation.uncovered_signal_refs)}")
         super().__init__("；".join(messages))
 
 
@@ -51,9 +56,16 @@ def validate_diagnosis_references(
             if str(reference) not in finding_ids
         }
     )
+    covered_refs = {
+        str(reference)
+        for finding in diagnosis.findings
+        for reference in finding.evidence_refs
+    }
+    uncovered_signal_refs = sorted(blocking_signal_ids(metric_snapshot) - covered_refs)
     return DiagnosisValidationResult(
         unknown_evidence_refs=unknown_evidence_refs,
         unknown_finding_refs=unknown_finding_refs,
+        uncovered_signal_refs=uncovered_signal_refs,
     )
 
 

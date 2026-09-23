@@ -338,9 +338,39 @@ def test_create_and_update_performance_test(monkeypatch: pytest.MonkeyPatch, tmp
     assert updated["performance_goal"] == {"max_p95_response_time_ms": 500.0}
     listed = service.list_performance_tests("project-1", ADMIN)[0]
     assert listed["id"] == created["id"]
+    assert listed["latest_run_id"] is None
     assert listed["latest_run_status"] == ""
     assert listed["latest_goal_status"] == ""
     assert listed["latest_run_at"] is None
+
+    with connect() as db:
+        db.execute(
+            """
+            INSERT INTO performance_test_scripts (
+              id, performance_test_id, project_id, generation_source, code, validation_status
+            ) VALUES (?, ?, 'project-1', 'default_plan', 'code', 'valid')
+            """,
+            ("perfscript-latest-run", created["id"]),
+        )
+        db.execute(
+            """
+            INSERT INTO performance_test_runs (
+              id, project_id, performance_test_id, script_id, status, created_by, created_at, finished_at
+            ) VALUES
+              ('perfrun-older', 'project-1', ?, 'perfscript-latest-run', 'completed', 'u-admin',
+               '2026-08-07 09:00:00', '2026-08-07 09:10:00'),
+              ('perfrun-latest', 'project-1', ?, 'perfscript-latest-run', 'stopped', 'u-admin',
+               '2026-08-07 10:00:00', '2026-08-07 10:15:00'),
+              ('perfrun-unstarted', 'project-1', ?, 'perfscript-latest-run', 'created', 'u-admin',
+               '2026-08-07 11:00:00', NULL)
+            """,
+            (created["id"], created["id"], created["id"]),
+        )
+
+    listed = service.list_performance_tests("project-1", ADMIN)[0]
+    assert listed["latest_run_id"] == "perfrun-latest"
+    assert listed["latest_run_status"] == "stopped"
+    assert listed["latest_run_at"] == "2026-08-07 10:15:00"
 
 
 def test_delete_performance_test_stops_active_run_and_removes_all_related_data(

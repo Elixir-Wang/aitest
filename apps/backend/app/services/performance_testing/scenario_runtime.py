@@ -1,8 +1,4 @@
-"""Shared runtime used by generated Locust scenario files.
-
-Generated files contain only a serialized plan and a small User subclass.  This
-module is copied next to each run so workers execute the same runtime version.
-"""
+"""Core runtime source inlined into generated standalone Locust files."""
 
 import json
 import math
@@ -12,7 +8,7 @@ import time
 import uuid
 from typing import Any
 
-from locust import HttpUser, LoadTestShape, events
+from locust import HttpUser, LoadTestShape, between, events, task
 
 
 SSE_MEASUREMENT_SINK = None
@@ -344,7 +340,9 @@ def _execute_sse(
             quality["json_frame_count"] += 1
         except (TypeError, ValueError):
             quality["non_json_frame_count"] += 1
-            if any(metric["match"].get("source") == "data_json" for metric in config["metrics"]):
+            stripped_data = data_text.strip()
+            looks_like_json = stripped_data.startswith(("{", "[")) and stripped_data not in {"[DONE]"}
+            if looks_like_json and any(metric["match"].get("source") == "data_json" for metric in config["metrics"]):
                 quality["parse_error_count"] += 1
         matched = [
             metric for metric in config["metrics"]
@@ -423,7 +421,20 @@ def _execute_sse(
                 failure_reason = "sse_no_data_frames"
             if not failure_reason and config.get("end_rule") and not ended:
                 failure_reason = "sse_end_rule_not_matched"
-        missing = [metric["id"] for metric in config["metrics"] if metric["id"] not in observed]
+        measured = {}
+        for metric in config["metrics"]:
+            metric_id = metric["id"]
+            if metric_id not in observed:
+                continue
+            timing = metric.get("timing") or {}
+            if timing.get("start") == "metric_matched":
+                start_metric_id = timing.get("start_metric_id")
+                if start_metric_id not in observed or observed[metric_id] < observed[start_metric_id]:
+                    continue
+                measured[metric_id] = observed[metric_id] - observed[start_metric_id]
+            else:
+                measured[metric_id] = observed[metric_id]
+        missing = [metric["id"] for metric in config["metrics"] if metric["id"] not in measured]
         reported_missing = [
             metric["id"] for metric in config["metrics"]
             if metric["id"] in missing and metric.get("missing_policy") != "ignore"
@@ -435,18 +446,12 @@ def _execute_sse(
             response.failure(failure_reason)
         else:
             response.success()
-    derived_metrics = {}
-    if llm_start_id in observed:
-        output_times = [observed[item] for item in first_output_ids if item in observed]
-        if output_times:
-            derived_metrics["llm_start_to_first_content_ms"] = min(output_times) - observed[llm_start_id]
     measurement = {
         "stream_completed_ms": round((time.perf_counter() - started_at) * 1000, 4),
         "connection_ms": round(connection_ms, 4),
         "source_request_id": (measurement_context or {}).get("scenario_step_id") or step.get("id") or "",
         "source_request_name": (measurement_context or {}).get("scenario_step_name") or step.get("name") or request.get("name") or "",
-        "metrics": observed,
-        "derived_metrics": derived_metrics,
+        "metrics": measured,
         "missing_metric_ids": reported_missing,
         "failure_reason": failure_reason,
         **quality,

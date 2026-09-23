@@ -1,39 +1,69 @@
-def runtime_locustfile_source() -> str:
-    return '''import json
-import time
+def standalone_runtime_support_source(*, enable_sse: bool = True) -> str:
+    """Return platform hooks appended to every self-contained locustfile."""
+    return '''
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 
 import gevent
-from locust import events
-from generated_locustfile import *
-import scenario_runtime
+from locust.exception import StopTest
 
 
-RUNTIME = json.loads(Path(__file__).with_name("runtime.json").read_text(encoding="utf-8"))
-if PLAN.get("target_type") == "scenario":
+RUNTIME_PATH = Path(os.environ.get("PERFORMANCE_RUNTIME_FILE", Path(__file__).with_name("runtime.json")))
+RUNTIME = json.loads(RUNTIME_PATH.read_text(encoding="utf-8")) if RUNTIME_PATH.is_file() else {"environment": {}}
+RUNTIME_ENVIRONMENT = dict(RUNTIME.get("environment") or {})
+
+
+def _resolve_environment_placeholders(value):
+    if isinstance(value, dict):
+        for key in list(value):
+            value[key] = _resolve_environment_placeholders(value[key])
+        return value
+    if isinstance(value, list):
+        for index, item in enumerate(value):
+            value[index] = _resolve_environment_placeholders(item)
+        return value
+    if isinstance(value, str) and value.startswith("${ENV:") and value.endswith("}"):
+        variable_name = value[6:-1]
+        REQUIRED_ENVIRONMENT_VARIABLES.add(variable_name)
+        return os.environ.get(variable_name, value)
+    return value
+
+
+REQUIRED_ENVIRONMENT_VARIABLES = set()
+PLAN = _resolve_environment_placeholders(PLAN)
+if PLAN.get("target_type") == "scenario" and RUNTIME_ENVIRONMENT:
     scenario_variables = PLAN.setdefault("scenario_variables", {})
-    scenario_variables.update(dict(RUNTIME["environment"].get("variables") or {}))
-    scenario_variables.update(dict(RUNTIME["environment"].get("headers") or {}))
+    scenario_variables.update(dict(RUNTIME_ENVIRONMENT.get("variables") or {}))
+    scenario_variables.update(dict(RUNTIME_ENVIRONMENT.get("headers") or {}))
     for step in PLAN.get("steps") or []:
         request = step.get("request")
         if request is not None:
             request["headers"] = {
                 **dict(request.get("headers") or {}),
-                **dict(RUNTIME["environment"].get("headers") or {}),
+                **dict(RUNTIME_ENVIRONMENT.get("headers") or {}),
             }
-else:
+elif PLAN.get("target_type") == "endpoint" and RUNTIME_ENVIRONMENT:
     PLAN["request"]["headers"] = {
         **dict(PLAN["request"].get("headers") or {}),
-        **dict(RUNTIME["environment"].get("headers") or {}),
+        **dict(RUNTIME_ENVIRONMENT.get("headers") or {}),
     }
-PerformanceUser.host = str(RUNTIME["environment"]["api_base_url"]).rstrip("/")
+if RUNTIME_ENVIRONMENT.get("api_base_url"):
+    PerformanceUser.host = str(RUNTIME_ENVIRONMENT["api_base_url"]).rstrip("/")
+
+
+@events.test_start.add_listener
+def _validate_standalone_environment(environment, **kwargs):
+    if RUNTIME_ENVIRONMENT:
+        return
+    missing = sorted(name for name in REQUIRED_ENVIRONMENT_VARIABLES if not os.environ.get(name))
+    if missing:
+        raise StopTest("Missing required environment variables: " + ", ".join(missing))
 
 EVENT_LOG = Path(__file__).with_name("locust-events.jsonl")
 SSE_MEASUREMENTS = Path(__file__).with_name("sse-measurements.jsonl")
 SSE_MEASUREMENT_META = Path(__file__).with_name("sse-measurements.meta.json")
 SSE_MEASUREMENT_MAX_BYTES = 64 * 1024 * 1024
-FINAL_STATS = Path(__file__).with_name("locust-final-stats.json")
 CONTROL_FILE = Path(__file__).with_name("locust-control.json")
 
 
@@ -61,25 +91,7 @@ def _append_sse_measurement(payload):
         }, ensure_ascii=False, separators=(",", ":")) + "\\n")
 
 
-scenario_runtime.set_sse_measurement_sink(_append_sse_measurement)
-
-
-@events.quitting.add_listener
-def _write_final_stats(environment, **kwargs):
-    if environment.runner is None:
-        return
-    entries = []
-    for (name, request_type), entry in environment.runner.stats.entries.items():
-        entries.append({
-            "request_type": request_type or "",
-            "name": name or "",
-            "request_count": entry.num_requests,
-            "failure_count": entry.num_failures,
-        })
-    FINAL_STATS.write_text(
-        json.dumps({"entries": entries}, ensure_ascii=False, separators=(",", ":")),
-        encoding="utf-8",
-    )
+__SSE_SINK_SETUP__
 
 
 def _redact_response_value(value, key=""):
@@ -166,4 +178,16 @@ def _on_user_error(user_instance, exception, tb, **kwargs):
         "exception_type": type(exception).__name__,
         "message": str(exception)[:2000],
     })
-'''
+
+
+# Fixed load example:
+# locust -f locustfile.py --headless -u 50 -r 5 -t 5m --host https://api.example.com --html report.html --csv results
+# Staged load example (the shape controls users and spawn rate):
+# locust -f locustfile.py --headless --host https://api.example.com --html report.html --csv results
+'''.replace(
+        "__SSE_SINK_SETUP__",
+        "set_sse_measurement_sink(_append_sse_measurement)" if enable_sse else "",
+    )
+
+
+__all__ = ["standalone_runtime_support_source"]

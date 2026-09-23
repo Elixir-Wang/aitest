@@ -44,10 +44,6 @@ const scriptReviewSource = readFileSync(
   new URL("../src/components/ai-testing/performance-testing/script-review.tsx", import.meta.url),
   "utf8",
 );
-const paramsDialogSource = readFileSync(
-  new URL("../src/components/ai-testing/performance-testing/performance-test-params-dialog.tsx", import.meta.url),
-  "utf8",
-);
 const sseMetricsConfigSource = readFileSync(
   new URL("../src/components/ai-testing/performance-testing/performance-sse-metrics-config.tsx", import.meta.url),
   "utf8",
@@ -106,7 +102,9 @@ test("performance SSE metrics discover generic candidates and preserve unapplied
   assert.match(sseMetricsConfigSource, /结束条件/);
   assert.match(sseMetricsConfigSource, /计算方式/);
   assert.match(sseMetricsConfigSource, /业务响应指标/);
-  assert.match(sseMetricsConfigSource, /运行样本并发现指标/);
+  assert.match(sseMetricsConfigSource, /运行样本并获取 AI 建议/);
+  assert.match(sseMetricsConfigSource, /AI 建议不会自动启用/);
+  assert.doesNotMatch(sseMetricsConfigSource, /\.filter\(\(candidate\) => candidate\.recommendation_level/);
   assert.match(sseMetricsConfigSource, /SSE 指标配置/);
   assert.match(sseMetricsConfigSource, /sm:max-w-3xl/);
   assert.match(sseMetricsConfigSource, /查看生成结果/);
@@ -291,16 +289,41 @@ test("performance lists expose edit actions and regenerate scripts after saving"
   assert.match(formSource, /generatePerformanceScript\(selectedProjectId, saved\.id\)/);
 });
 
-test("performance lists expose created parameters in a reusable read-only dialog", () => {
-  assert.match(projectListSource, /label: "查看参数"/);
-  assert.match(allListSource, /label: "查看参数"/);
-  assert.match(projectListSource, /<PerformanceTestParamsDialog/);
-  assert.match(allListSource, /<PerformanceTestParamsDialog/);
-  assert.match(paramsDialogSource, /创建参数/);
-  assert.match(paramsDialogSource, /request_config: item\.request_config/);
-  assert.match(paramsDialogSource, /load_config: item\.load_config/);
-  assert.match(paramsDialogSource, /performance_goal: item\.performance_goal/);
-  assert.match(paramsDialogSource, /<OneClipboard/);
+test("performance lists expose script and console actions", () => {
+  assert.match(projectListSource, /label: "查看脚本"/);
+  assert.match(allListSource, /label: "查看脚本"/);
+  assert.match(projectListSource, /label: "进入控制台"/);
+  assert.match(allListSource, /label: "进入控制台"/);
+  assert.match(projectListSource, /ensurePerformanceRun/);
+  assert.match(allListSource, /ensurePerformanceRun/);
+  assert.match(projectListSource, /if \(item\.latest_run_id\)/);
+  assert.match(allListSource, /if \(item\.latest_run_id\)/);
+  assert.doesNotMatch(projectListSource, /startPerformanceRun/);
+  assert.doesNotMatch(allListSource, /startPerformanceRun/);
+});
+
+test("performance lists display every run status in Chinese", () => {
+  for (const source of [projectListSource, allListSource]) {
+    assert.match(source, /created: "就绪"/);
+    assert.match(source, /starting: "启动中"/);
+    assert.match(source, /ready: "就绪"/);
+    assert.match(source, /running: "运行中"/);
+    assert.match(source, /stopping: "停止中"/);
+    assert.match(source, /completed: "已完成"/);
+    assert.match(source, /stopped: "已停止"/);
+    assert.match(source, /failed: "失败"/);
+    assert.match(source, /cancelled: "已取消"/);
+    assert.match(source, /labels\[status\] \?\? "未知状态"/);
+    assert.doesNotMatch(source, /labels\[status\] \?\? status/);
+  }
+});
+
+test("performance list status badges use one consistent visual style", () => {
+  for (const source of [projectListSource, allListSource]) {
+    assert.match(source, /return <Badge variant="outline">\{labels\[status\] \?\? "未知状态"\}<\/Badge>/);
+    assert.doesNotMatch(source, /status === "failed" \? "destructive"/);
+    assert.doesNotMatch(source, /status === "completed" \? "secondary"/);
+  }
 });
 
 test("stress mode configures automatic capacity discovery instead of manual stages", () => {
@@ -354,9 +377,11 @@ test("performance script review reuses the clipboard control and keeps JSON edit
 });
 
 test("validated performance script explicitly enters the Locust console", () => {
-  assert.match(apiClientSource, /export function createPerformanceRun/);
+  assert.match(apiClientSource, /export function ensurePerformanceRun/);
+  assert.match(apiClientSource, /performance-tests\/\$\{testId\}\/runs\/ensure/);
   assert.match(apiClientSource, /export function getPerformanceRun/);
   assert.match(scriptReviewSource, /进入 Locust 控制台/);
+  assert.match(scriptReviewSource, /ensurePerformanceRun/);
   assert.match(scriptReviewSource, /performance-tests\/\$\{testId\}\/runs\/\$\{run\.id\}/);
   assert.doesNotMatch(scriptReviewSource, /createLocustUiSession|window\.open/);
 });

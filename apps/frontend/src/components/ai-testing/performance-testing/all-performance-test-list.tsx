@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
-import { ArrowRight, Eye, Gauge, Loader2, Pencil, Plus, Trash2 } from "lucide-react";
+import { FileCode2, Gauge, Loader2, Pencil, Plus, SquareTerminal, Trash2 } from "lucide-react";
 
 import { ListToolbar, RowActions, ShellSection } from "@/components/ai-testing/page-shell";
 import {
@@ -27,13 +27,12 @@ import {
   ApiRequestError,
   apiRequest,
   deletePerformanceTest,
+  ensurePerformanceRun,
   formatDateTime,
   listPerformanceTests,
   type PerformanceTest,
 } from "@/lib/api-client";
 import { toast } from "@/lib/toast";
-
-import { PerformanceTestParamsDialog } from "./performance-test-params-dialog";
 
 type ProjectPerformanceTest = PerformanceTest & { projectId: string; projectName: string };
 
@@ -45,7 +44,7 @@ export function AllPerformanceTestList() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [search, setSearch] = useState("");
-  const [paramsItem, setParamsItem] = useState<PerformanceTest | null>(null);
+  const [consoleItemId, setConsoleItemId] = useState<string | null>(null);
   const [pendingDeleteIds, setPendingDeleteIds] = useState<string[]>([]);
 
   const itemProjectIdMap = useMemo(() => {
@@ -150,6 +149,23 @@ export function AllPerformanceTestList() {
     router.push("/performance-tests/new");
   }
 
+  async function enterConsole(item: ProjectPerformanceTest) {
+    if (!item.latest_script_id) return;
+    setConsoleItemId(item.id);
+    try {
+      if (item.latest_run_id) {
+        router.push(`/projects/${item.projectId}/performance-tests/${item.id}/runs/${item.latest_run_id}`);
+        return;
+      }
+      const run = await ensurePerformanceRun(item.projectId, item.id, item.latest_script_id);
+      router.push(`/projects/${item.projectId}/performance-tests/${item.id}/runs/${run.id}`);
+    } catch (error) {
+      toast.error(apiErrorMessage(error, "进入控制台失败"));
+    } finally {
+      setConsoleItemId(null);
+    }
+  }
+
   return (
     <ShellSection>
       <ListToolbar
@@ -247,9 +263,15 @@ export function AllPerformanceTestList() {
                     <RowActions
                       actions={[
                         {
-                          label: "查看参数",
-                          icon: Eye,
-                          onSelect: () => setParamsItem(item),
+                          label: "查看脚本",
+                          icon: FileCode2,
+                          disabled: !item.latest_script_id,
+                          onSelect: item.latest_script_id
+                            ? () =>
+                                router.push(
+                                  `/projects/${item.projectId}/performance-tests/${item.id}/scripts/${item.latest_script_id}`,
+                                )
+                            : undefined,
                         },
                         {
                           label: "编辑",
@@ -260,11 +282,10 @@ export function AllPerformanceTestList() {
                         },
 
                         {
-                          label: "脚本审核",
-                          icon: ArrowRight,
-                          href: item.latest_script_id
-                            ? `/projects/${item.projectId}/performance-tests/${item.id}/scripts/${item.latest_script_id}`
-                            : `/projects/${item.projectId}/performance-tests`,
+                          label: "进入控制台",
+                          icon: SquareTerminal,
+                          disabled: busy || consoleItemId === item.id || !item.latest_script_id,
+                          onSelect: () => void enterConsole(item),
                         },
                         {
                           label: "删除",
@@ -283,7 +304,6 @@ export function AllPerformanceTestList() {
           </TableBody>
         </Table>
       </div>
-      <PerformanceTestParamsDialog item={paramsItem} onOpenChange={(open) => !open && setParamsItem(null)} />
       <AlertDialog
         onOpenChange={(open) => !busy && !open && setPendingDeleteIds([])}
         open={pendingDeleteIds.length > 0}
@@ -325,21 +345,21 @@ function apiErrorMessage(error: unknown, fallback?: string) {
 
 function RunBadge({ status }: { status: string }) {
   const labels: Record<string, string> = {
+    created: "就绪",
+    starting: "启动中",
+    ready: "就绪",
     queued: "排队中",
     preparing: "准备中",
     running: "运行中",
     stopping: "停止中",
     completed: "已完成",
+    stopped: "已停止",
     failed: "失败",
     cancelled: "已取消",
     interrupted: "已中断",
   };
   if (!status) return <Badge variant="outline">未运行</Badge>;
-  return (
-    <Badge variant={status === "failed" ? "destructive" : status === "completed" ? "secondary" : "outline"}>
-      {labels[status] ?? status}
-    </Badge>
-  );
+  return <Badge variant="outline">{labels[status] ?? "未知状态"}</Badge>;
 }
 
 function getModeLabel(mode: string) {

@@ -46,6 +46,7 @@ class PerformanceFinding(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     id: str = Field(min_length=1, max_length=120)
+    category: PerformanceAnalysisCategory = "insufficient_evidence"
     severity: Literal["critical", "high", "medium", "low"]
     level: EvidenceLevel
     title: str = Field(min_length=1, max_length=200)
@@ -93,6 +94,9 @@ class PerformanceDiagnosis(BaseModel):
             raise ValueError("只有性能配置或 Locust 脚本问题可以自动重新压测")
         if self.category == "insufficient_evidence" and not self.missing_evidence:
             raise ValueError("证据不足时必须说明缺失证据")
+        for finding in self.findings:
+            if finding.category == "platform_code" and not self.requires_second_approval:
+                raise ValueError("包含平台源码问题时必须二次审批")
         return self
 
 

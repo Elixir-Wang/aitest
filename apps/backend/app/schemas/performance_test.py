@@ -52,9 +52,18 @@ class PerformanceSseMetricTiming(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     scope: Literal["request"] = "request"
-    start: Literal["request_started"] = "request_started"
+    start: Literal["request_started", "metric_matched"] = "request_started"
+    start_metric_id: str | None = Field(default=None, min_length=1, max_length=64)
     source_request_id: str | None = Field(default=None, min_length=1, max_length=120)
     source_request_name: str | None = Field(default=None, min_length=1, max_length=240)
+
+    @model_validator(mode="after")
+    def validate_start(self) -> "PerformanceSseMetricTiming":
+        if self.start == "metric_matched" and not self.start_metric_id:
+            raise ValueError("区间指标必须配置起点指标")
+        if self.start == "request_started" and self.start_metric_id is not None:
+            raise ValueError("请求起点指标不能配置起点指标 ID")
+        return self
 
 
 class PerformanceSseMetric(BaseModel):
@@ -89,12 +98,31 @@ class PerformanceSseConfig(BaseModel):
 
     max_stream_seconds: float = Field(default=60, gt=0, le=600)
     end_rule: PerformanceSseMatch | None = None
-    metrics: list[PerformanceSseMetric] = Field(min_length=1, max_length=20)
+    metrics: list[PerformanceSseMetric] = Field(default_factory=list, max_length=20)
 
     @model_validator(mode="after")
     def validate_metric_ids(self) -> "PerformanceSseConfig":
-        if len({metric.id for metric in self.metrics}) != len(self.metrics):
+        metric_ids = {metric.id for metric in self.metrics}
+        if len(metric_ids) != len(self.metrics):
             raise ValueError("SSE 指标 ID 不能重复")
+        dependencies: dict[str, str] = {}
+        for metric in self.metrics:
+            start_metric_id = metric.timing.start_metric_id
+            if metric.timing.start != "metric_matched":
+                continue
+            if start_metric_id == metric.id:
+                raise ValueError("SSE 区间指标不能引用自身作为起点")
+            if start_metric_id not in metric_ids:
+                raise ValueError(f"SSE 区间指标引用了不存在的起点指标: {start_metric_id}")
+            dependencies[metric.id] = str(start_metric_id)
+        for metric_id in dependencies:
+            visited = {metric_id}
+            current = metric_id
+            while current in dependencies:
+                current = dependencies[current]
+                if current in visited:
+                    raise ValueError("SSE 区间指标不能循环引用")
+                visited.add(current)
         return self
 
 
@@ -385,6 +413,7 @@ class PerformanceTestOut(BaseModel):
     api_environment_id: str | None
     environment_name: str
     latest_script_id: str | None = None
+    latest_run_id: str | None = None
     request_config: PerformanceRequestConfig
     load_config: PerformanceLoadConfig
     data_config: PerformanceDataConfig

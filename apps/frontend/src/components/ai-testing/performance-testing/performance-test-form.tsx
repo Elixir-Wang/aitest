@@ -392,16 +392,14 @@ export function PerformanceTestForm({ editTestId, projectIdForEdit }: Performanc
       toast.error("请选择场景中的 SSE 接口步骤");
       return;
     }
-    if (transport === "sse" && !sseConfig) {
-      toast.error("请先运行接口编排并生成 SSE 指标");
-      return;
-    }
     setSaving(true);
     try {
       let sse: PerformanceSseConfig | null = null;
       if (transport === "sse") {
-        if (!sseConfig) throw new Error("请先运行接口编排并生成 SSE 指标");
-        sse = { ...sseConfig, max_stream_seconds: positiveNumber(sseMaxStreamSeconds, "SSE 流超时") };
+        sse = {
+          ...(sseConfig ?? { end_rule: null, metrics: [] }),
+          max_stream_seconds: positiveNumber(sseMaxStreamSeconds, "SSE 流超时"),
+        };
       }
       const savedPayload = {
         name: name.trim(),

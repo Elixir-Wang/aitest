@@ -80,7 +80,7 @@ class _FakeSseUser:
 def _rendered_sse_runtime(measurements: list[dict]) -> dict[str, object]:
     source = runtime_module_source()
     source = source[:source.index("def execute_plan")]
-    source = source.replace("from locust import HttpUser, LoadTestShape, events\n", "")
+    source = source.replace("from locust import HttpUser, LoadTestShape, between, events, task\n", "")
     namespace: dict[str, object] = {}
     exec(source, namespace)
     namespace["SSE_MEASUREMENT_SINK"] = measurements.append
@@ -180,6 +180,70 @@ def test_sse_config_rejects_invalid_path_and_duplicate_metric_id() -> None:
         PerformanceRequestConfig(transport="sse", sse=invalid)
 
 
+def test_sse_config_allows_no_event_metrics() -> None:
+    request = PerformanceRequestConfig(
+        transport="sse",
+        sse={"max_stream_seconds": 10, "end_rule": None, "metrics": []},
+    )
+
+    assert request.sse is not None
+    assert request.sse.metrics == []
+
+
+def test_sse_config_validates_explicit_metric_timing_dependency() -> None:
+    request = PerformanceRequestConfig(
+        transport="sse",
+        sse={
+            "metrics": [
+                {
+                    "id": "llm_start",
+                    "name": "LLM 开始",
+                    "match": {
+                        "source": "data_json",
+                        "path": "$.data.event_type",
+                        "operator": "equals",
+                        "expected": "call_llm_start",
+                    },
+                },
+                {
+                    "id": "first_content_after_llm",
+                    "name": "LLM 后首内容",
+                    "timing": {"start": "metric_matched", "start_metric_id": "llm_start"},
+                    "match": {
+                        "source": "data_json",
+                        "path": "$.data.index",
+                        "operator": "equals",
+                        "expected": 0,
+                    },
+                },
+            ]
+        },
+    )
+
+    assert request.sse is not None
+    assert request.sse.metrics[1].timing.start == "metric_matched"
+
+    with pytest.raises(ValidationError, match="不存在的起点指标"):
+        PerformanceRequestConfig(
+            transport="sse",
+            sse={
+                "metrics": [
+                    {
+                        "id": "first_content_after_llm",
+                        "name": "LLM 后首内容",
+                        "timing": {"start": "metric_matched", "start_metric_id": "missing"},
+                        "match": {
+                            "source": "data_json",
+                            "path": "$.data.index",
+                            "operator": "equals",
+                            "expected": 0,
+                        },
+                    }
+                ]
+            },
+        )
+
+
 def test_sse_metric_timing_defaults_to_current_request_and_rejects_other_scenario_step() -> None:
     request = PerformanceRequestConfig(
         transport="sse",
@@ -245,8 +309,8 @@ def test_sse_renderer_streams_and_keeps_measurements_separate() -> None:
 
     source = render_locust_script(plan)
 
-    assert "from scenario_runtime import EndpointUser" in source
-    assert '"transport": "sse"' in source
+    assert "class EndpointUser(HttpUser):" in source
+    assert "'transport': 'sse'" in source
     assert '"metrics"' in source
 
 
@@ -311,9 +375,7 @@ def test_rendered_sse_runtime_parses_raw_frames_and_flushes_final_frame() -> Non
     assert measurements[0]["connection_ms"] <= measurements[0]["metrics"]["llm_start"]
     assert measurements[0]["source_request_id"] == "step_sse_chat"
     assert measurements[0]["source_request_name"] == "02 POST /openapi/v1/gw/multi-agent/sse"
-    assert measurements[0]["derived_metrics"]["llm_start_to_first_content_ms"] == pytest.approx(
-        measurements[0]["metrics"]["first_output"] - measurements[0]["metrics"]["llm_start"]
-    )
+    assert "derived_metrics" not in measurements[0]
     assert measurements[0]["missing_metric_ids"] == []
     assert measurements[0]["frame_count"] == 4
     assert measurements[0]["data_frame_count"] == 4
@@ -338,7 +400,46 @@ def test_rendered_sse_runtime_matches_llm_start_before_first_output_in_same_fram
     assert failure_reason == ""
     assert set(measurements[0]["metrics"]) == {"llm_start", "first_output"}
     assert measurements[0]["metrics"]["first_output"] == measurements[0]["metrics"]["llm_start"]
-    assert measurements[0]["derived_metrics"]["llm_start_to_first_content_ms"] == 0
+    assert "derived_metrics" not in measurements[0]
+
+
+def test_rendered_sse_runtime_does_not_measure_unconfigured_metrics() -> None:
+    measurements: list[dict] = []
+    runtime = _rendered_sse_runtime(measurements)
+    response = _FakeSseResponse(['data: [DONE]', ""])
+    request = _runtime_sse_request()
+    request["sse"]["metrics"] = []
+
+    failure_reason = runtime["_execute_sse_request"](_FakeSseUser(response), request, "/chat")
+
+    assert failure_reason == ""
+    assert measurements[0]["metrics"] == {}
+    assert measurements[0]["missing_metric_ids"] == []
+    assert measurements[0]["non_json_frame_count"] == 1
+    assert measurements[0]["parse_error_count"] == 0
+    assert "derived_metrics" not in measurements[0]
+
+
+def test_rendered_sse_runtime_calculates_explicit_metric_interval_only_when_configured() -> None:
+    measurements: list[dict] = []
+    runtime = _rendered_sse_runtime(measurements)
+    response = _FakeSseResponse(
+        [
+            'data: {"data":{"event_type":"call_llm_start"}}',
+            "",
+            'data: {"data":{"event_type":"answer","index":0,"answer":"首内容"}}',
+            "",
+        ]
+    )
+    request = _runtime_sse_request()
+    request["sse"]["metrics"][1]["timing"] = {"start": "metric_matched", "start_metric_id": "llm_start"}
+
+    failure_reason = runtime["_execute_sse_request"](_FakeSseUser(response), request, "/chat")
+
+    assert failure_reason == ""
+    assert measurements[0]["metrics"]["first_output"] >= 0
+    assert measurements[0]["metrics"]["first_output"] < 1
+    assert "derived_metrics" not in measurements[0]
 
 
 def test_sse_measurement_summary_keeps_missing_and_percentiles(tmp_path: Path) -> None:
@@ -357,17 +458,13 @@ def test_sse_measurement_summary_keeps_missing_and_percentiles(tmp_path: Path) -
     summary = summarize_sse_measurements(path)
     content = next(metric for metric in summary["metrics"] if metric["metric_id"] == "first_content")
     tool = next(metric for metric in summary["metrics"] if metric["metric_id"] == "first_tool_call")
-    derived = next(
-        metric for metric in summary["metrics"] if metric["metric_id"] == "derived:llm_start_to_first_content"
-    )
     assert summary["attempt_count"] == 3
     assert content["matched_count"] == 3
     assert content["p95_ms"] == 300
     assert tool["matched_count"] == 1
     assert tool["missing_count"] == 2
     assert tool["failure_count"] == 1
-    assert derived["matched_count"] == 1
-    assert derived["p50_ms"] == 80
+    assert all(not metric["metric_id"].startswith("derived:") for metric in summary["metrics"])
     assert summary["schema_version"] == "v1"
     assert summary["checksum"].startswith("sha256:")
     assert summary["failure_reasons"] == {"sse_stream_timeout": 1}

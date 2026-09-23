@@ -1432,7 +1432,8 @@ export type PerformanceSseMetricCategory =
 
 export type PerformanceSseMetricTiming = {
   scope: "request";
-  start: "request_started";
+  start: "request_started" | "metric_matched";
+  start_metric_id?: string | null;
   source_request_id: string | null;
   source_request_name: string | null;
 };
@@ -1594,6 +1595,7 @@ export type PerformanceTest = {
   api_environment_id: string | null;
   environment_name: string;
   latest_script_id: string | null;
+  latest_run_id: string | null;
   request_config: PerformanceRequestConfig;
   load_config: PerformanceLoadConfig;
   data_config: PerformanceDataConfig;
@@ -1998,6 +2000,18 @@ export type PerformanceMetricSnapshot = {
     sample_count?: number;
   };
   failure_analysis?: Array<{ kind: string; count: number; ratio: number; example?: string }>;
+  failure_signals?: Array<{
+    evidence_id: string;
+    scope: string;
+    kind: string;
+    severity: "critical" | "high" | "medium" | "low";
+    title: string;
+    attempt_count: number;
+    failure_count: number;
+    failure_rate: number | null;
+    expected?: unknown;
+    actual?: unknown;
+  }>;
   objectives?: PerformanceMetricObjective[];
   series?: Array<Record<string, unknown>>;
   evidence_index?: Array<Record<string, unknown>>;
@@ -2198,6 +2212,13 @@ export function createPerformanceRun(projectId: string, testId: string, scriptId
     method: "POST",
     body: JSON.stringify({ script_id: scriptId }),
   });
+}
+
+export function ensurePerformanceRun(projectId: string, testId: string, scriptId: string) {
+  return apiRequest<{ id: string; status: string; created: boolean }>(
+    `/projects/${projectId}/performance-tests/${testId}/runs/ensure`,
+    { method: "POST", body: JSON.stringify({ script_id: scriptId }) },
+  );
 }
 
 export function getPerformanceRun(projectId: string, runId: string) {

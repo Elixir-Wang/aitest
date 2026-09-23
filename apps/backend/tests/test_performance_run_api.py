@@ -10,6 +10,53 @@ from app.api.v1 import performance_runs
 from app.api.v1.performance_runs import format_run_sse_event
 
 
+def test_ensure_performance_run_is_idempotent_and_rerun_is_explicit(monkeypatch) -> None:
+    actor = {"id": "u-admin", "role": "admin", "project_scope": "全部项目"}
+    current = [None]
+    created_ids = []
+
+    monkeypatch.setattr(performance_runs, "_ensure_project_visible", lambda project_id, actor: None)
+    monkeypatch.setattr(
+        performance_runs,
+        "_current_entry_run",
+        lambda project_id, test_id, actor: current[0],
+    )
+    monkeypatch.setattr(
+        performance_runs,
+        "_script_lookup",
+        lambda project_id, test_id, script_id, actor: _fake_script_context(),
+    )
+
+    def fake_create_run_session(**kwargs):
+        run_id = f"perfrun-{len(created_ids) + 1}"
+        created_ids.append((run_id, kwargs["runtime_payload"]))
+        current[0] = {"id": run_id, "status": "created"}
+        return run_id
+
+    monkeypatch.setattr(performance_runs.headless_worker, "create_run_session", fake_create_run_session)
+
+    first = performance_runs.ensure_performance_run("project-1", "test-1", {"script_id": "script-1"}, actor)
+    second = performance_runs.ensure_performance_run("project-1", "test-1", {"script_id": "script-1"}, actor)
+
+    assert first == {"id": "perfrun-1", "status": "created", "created": True}
+    assert second == {"id": "perfrun-1", "status": "created", "created": False}
+    assert len(created_ids) == 1
+    assert created_ids[0][1]["__entry_reason"] == "initial"
+
+    rerun = performance_runs.create_performance_run(
+        "project-1", "test-1", {"script_id": "script-1"}, actor
+    )
+
+    assert rerun == {"id": "perfrun-2", "status": "created"}
+    assert len(created_ids) == 2
+    assert created_ids[1][1]["__entry_reason"] == "rerun"
+
+
+@contextmanager
+def _fake_script_context():
+    yield {"script_code": "class User: pass", "runtime_environment": {}, "load_config": {}}
+
+
 def test_format_run_sse_event_emits_json_payload() -> None:
     assert format_run_sse_event("stats", {"request_count": 10}) == (
         "event: stats\n"
@@ -209,7 +256,7 @@ def test_request_stats_returns_only_configured_sse_metrics(
             },
         ],
     }
-    (run_dir / "generated_locustfile.py").write_text(
+    (run_dir / "locustfile.py").write_text(
         f"import json\nPLAN = json.loads({json.dumps(json.dumps(plan, ensure_ascii=False))})\n",
         encoding="utf-8",
     )

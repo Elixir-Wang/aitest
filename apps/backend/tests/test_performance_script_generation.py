@@ -1,4 +1,8 @@
+import json
+import os
 from pathlib import Path
+import subprocess
+import sys
 
 import pytest
 from pydantic import ValidationError
@@ -7,6 +11,7 @@ from app.agents.performance_testing.script_generation.planner import build_defau
 from app.agents.performance_testing.script_generation.schemas import LocustLoadPlan, LocustScriptPlan
 from app.agents.performance_testing.script_generation.service import script_plan_input
 from app.services.performance_testing.scenario_compiler import build_scenario_plan
+from app.services.performance_testing.compiler import analyze_capabilities
 from app.services.performance_testing.script_renderer import render_locust_script, runtime_module_source
 from app.services.performance_testing.validator import validate_locust_script
 
@@ -26,7 +31,7 @@ SKILL_PATH = (
 def _runtime_helpers() -> dict[str, object]:
     source = runtime_module_source()
     source = source[:source.index("def execute_plan")]
-    source = source.replace("from locust import HttpUser, LoadTestShape, events\n", "")
+    source = source.replace("from locust import HttpUser, LoadTestShape, between, events, task\n", "")
     namespace: dict[str, object] = {}
     exec(source, namespace)
     return namespace
@@ -295,24 +300,168 @@ def test_renderer_uses_locust_http_user_and_controlled_request() -> None:
     source = render_locust_script(plan)
 
     assert "class PerformanceUser(EndpointUser):" in source
-    assert "from scenario_runtime import EndpointUser" in source
+    assert "from scenario_runtime import EndpointUser" not in source
+    assert "class EndpointUser(HttpUser):" in source
     assert "between(0.5, 1.5)" in source
     assert "Authorization" in source
     assert "cybertron-robot-key" in source
     assert "cybertron-robot-token" in source
-    assert "PLAN = {\n" in source
+    assert "Bearer must-not-leak" not in source
+    assert "'cybertron-robot-key': 'robot-key'" not in source
+    assert "'cybertron-robot-token': 'robot-token'" not in source
+    assert "${ENV:AUTHORIZATION}" in source
+    assert "${ENV:CYBERTRON_ROBOT_KEY}" in source
+    assert "${ENV:CYBERTRON_ROBOT_TOKEN}" in source
+    assert "PLAN = {'" in source
     assert "PLAN = json.loads(" not in source
-    assert "LoadTestShape" not in source
+    assert "class PerformanceLoadShape(LoadTestShape):" not in source
 
 
-def test_renderer_keeps_execution_logic_in_shared_runtime() -> None:
+def test_renderer_inlines_execution_logic_into_standalone_file() -> None:
     source = render_locust_script(build_default_plan(_performance_test()))
     runtime = runtime_module_source()
 
     assert "import math" not in source
-    assert "self.client.request(" not in source
+    assert "user.client.request(" in source
     assert "def execute_endpoint" in runtime
     assert "catch_response=True" in runtime
+    assert source.count("\n") > 300
+
+
+def test_scenario_renderer_omits_endpoint_only_runtime() -> None:
+    plan = _scenario_plan_with_binding(
+        {"type": "secret", "key": "cybertron_robot_key"},
+        data_rows=[{"cybertron_robot_key": "runtime-value"}],
+    )
+
+    source = render_locust_script(plan)
+
+    assert "def execute_endpoint(" not in source
+    assert "class EndpointUser(" not in source
+    assert "def _assert_endpoint_success(" not in source
+    assert 'step_type == "wait"' not in source
+    assert 'step_type == "assign"' not in source
+    assert 'step_type == "condition"' not in source
+    assert 'rows = plan.get("data"' in source
+
+
+def test_capability_analyzer_describes_selected_runtime_features() -> None:
+    plan = _scenario_plan_with_binding(
+        {"type": "secret", "key": "cybertron_robot_key"},
+        data_rows=[{"cybertron_robot_key": "runtime-value"}],
+    )
+
+    capabilities = analyze_capabilities(plan)
+
+    assert capabilities.target_type == "scenario"
+    assert capabilities.uses_bindings is True
+    assert capabilities.uses_data_rows is True
+    assert capabilities.uses_sse is False
+    assert capabilities.uses_conditions is False
+    assert capabilities.uses_load_shape is False
+
+
+def test_endpoint_renderer_omits_scenario_only_runtime() -> None:
+    source = render_locust_script(build_default_plan(_performance_test()))
+
+    assert "def execute_plan(" not in source
+    assert "class ScenarioUser(" not in source
+    assert "def _apply_bindings(" not in source
+    assert 'rows = plan.get("data"' not in source
+
+
+def test_runtime_resolution_preserves_plan_identity(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    plan = build_default_plan(_performance_test())
+    source = render_locust_script(plan)
+    path = tmp_path / "locustfile.py"
+    path.write_text(source, encoding="utf-8")
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            (
+                "import json,runpy,sys; m=runpy.run_path(sys.argv[1]); "
+                "print(json.dumps({'same':m['PLAN'] is m['PerformanceUser'].plan,"
+                "'authorization':m['PerformanceUser'].plan['request']['headers']['Authorization']}))"
+            ),
+            str(path),
+        ],
+        text=True,
+        capture_output=True,
+        env={**os.environ, "AUTHORIZATION": "Bearer runtime-token"},
+        timeout=15,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    assert json.loads(completed.stdout) == {"same": True, "authorization": "Bearer runtime-token"}
+
+
+def test_scenario_runtime_and_load_shape_share_resolved_plan(tmp_path: Path) -> None:
+    plan = _scenario_plan_with_binding(
+        {"type": "secret", "key": "cybertron_robot_key"},
+        data_rows=[{"cybertron_robot_key": "runtime-value"}],
+    )
+    plan.load = LocustLoadPlan.model_validate(
+        {
+            "mode": "gradient",
+            "wait_time_min_seconds": 0.1,
+            "wait_time_max_seconds": 0.3,
+            "stages": [
+                {"name": "stage", "target_users": 1, "spawn_rate": 1, "hold_seconds": 1, "order": 0}
+            ],
+        }
+    )
+    source = render_locust_script(plan)
+    path = tmp_path / "locustfile.py"
+    path.write_text(source, encoding="utf-8")
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            (
+                "import json,runpy,sys; m=runpy.run_path(sys.argv[1]); "
+                "print(json.dumps({'user':m['PLAN'] is m['PerformanceUser'].plan,"
+                "'shape':m['PLAN'] is m['PerformanceLoadShape'].plan}))"
+            ),
+            str(path),
+        ],
+        text=True,
+        capture_output=True,
+        env={**os.environ, "CYBERTRON_ROBOT_KEY": "runtime-key"},
+        timeout=15,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    assert json.loads(completed.stdout) == {"user": True, "shape": True}
+
+
+def test_missing_standalone_environment_stops_test(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    plan = build_default_plan(_performance_test())
+    source = render_locust_script(plan)
+    path = tmp_path / "locustfile.py"
+    path.write_text(source, encoding="utf-8")
+    environment = dict(os.environ)
+    environment.pop("AUTHORIZATION", None)
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            (
+                "import runpy,sys; m=runpy.run_path(sys.argv[1]); "
+                "\ntry: m['_validate_standalone_environment'](object())"
+                "\nexcept BaseException as exc: print(type(exc).__name__ + ':' + str(exc))"
+            ),
+            str(path),
+        ],
+        text=True,
+        capture_output=True,
+        env=environment,
+        timeout=15,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    assert completed.stdout.startswith("StopTest:")
+    assert "AUTHORIZATION" in completed.stdout
 
 
 def test_renderer_reads_sse_lines_without_requests_default_buffering() -> None:
@@ -325,8 +474,8 @@ def test_renderer_reads_sse_lines_without_requests_default_buffering() -> None:
 
     source = render_locust_script(build_default_plan(performance_test))
 
-    assert "from scenario_runtime import EndpointUser" in source
-    assert '"transport": "sse"' in source
+    assert "class EndpointUser(HttpUser):" in source
+    assert "'transport': 'sse'" in source
 
 
 def test_renderer_keeps_http_and_business_success_rules() -> None:
@@ -431,9 +580,10 @@ def test_renderer_emits_controlled_load_shape_for_gradient_mode() -> None:
 
     source = render_locust_script(build_default_plan(performance_test))
 
-    assert "class PerformanceLoadShape(RuntimeLoadShape):" in source
-    assert '"target_users": 50' in source
-    assert "from scenario_runtime import PerformanceLoadShape as RuntimeLoadShape" in source
+    assert "class PerformanceLoadShape(LoadTestShape):" in source
+    assert "'target_users': 50" in source
+    assert "PerformanceLoadShape.plan = PLAN" in source
+    assert "failed_windows" not in source
 
 
 def test_load_plan_rejects_wait_time_range_in_reverse() -> None:
@@ -472,10 +622,10 @@ def test_renderer_supports_json_parameter_rows() -> None:
     source = render_locust_script(plan)
 
     assert plan.data.source == "json"
-    assert '"json_rows"' in source
-    assert '"selection_strategy": "random"' in source
-    assert "PLAN = {\n" in source
-    assert "    'data': {\n" in source
+    assert "'json_rows'" in source
+    assert "'selection_strategy': 'random'" in source
+    assert "PLAN = {'" in source
+    assert "'data': {'json_rows':" in source
 
 
 def test_validator_accepts_rendered_script() -> None:
@@ -508,8 +658,9 @@ def test_stress_script_stops_after_consecutive_failure_windows() -> None:
 
     source = render_locust_script(build_default_plan(performance_test))
 
-    assert '"circuit_breaker"' in source
-    assert "from scenario_runtime import PerformanceLoadShape as RuntimeLoadShape" in source
+    assert "'circuit_breaker'" in source
+    assert "PerformanceLoadShape.plan = PLAN" in source
+    assert "failed_windows" in source
 
 
 def test_validator_rejects_unresolved_required_static_scenario_binding() -> None:
@@ -539,12 +690,12 @@ def test_validator_allows_required_user_input_from_runtime_data() -> None:
 
 def test_validator_rejects_forbidden_import() -> None:
     plan = LocustScriptPlan.model_validate(build_default_plan(_performance_test()).model_dump())
-    source = "import os\n" + render_locust_script(plan)
+    source = "import subprocess\n" + render_locust_script(plan)
 
     result = validate_locust_script(plan, source)
 
     assert result.valid is False
-    assert any("os" in error for error in result.errors)
+    assert any("subprocess" in error for error in result.errors)
 
 
 def test_ai_plan_input_keeps_all_request_headers() -> None:

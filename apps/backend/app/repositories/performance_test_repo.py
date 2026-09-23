@@ -81,9 +81,43 @@ def list_performance_tests(db: Connection, project_id: str) -> list[Row]:
             WHERE performance_test_id = performance_tests.id
             LIMIT 1
           ) AS latest_script_id,
-          '' AS latest_run_status,
+          (
+            SELECT id
+            FROM performance_test_runs
+            WHERE performance_test_id = performance_tests.id
+            ORDER BY CASE
+                       WHEN status = 'created'
+                        AND COALESCE(json_extract(runtime_config_json, '$.__entry_reason'), '') = '' THEN 1
+                       ELSE 0
+                     END,
+                     COALESCE(finished_at, created_at) DESC, created_at DESC, id DESC
+            LIMIT 1
+          ) AS latest_run_id,
+          COALESCE((
+            SELECT status
+            FROM performance_test_runs
+            WHERE performance_test_id = performance_tests.id
+            ORDER BY CASE
+                       WHEN status = 'created'
+                        AND COALESCE(json_extract(runtime_config_json, '$.__entry_reason'), '') = '' THEN 1
+                       ELSE 0
+                     END,
+                     COALESCE(finished_at, created_at) DESC, created_at DESC, id DESC
+            LIMIT 1
+          ), '') AS latest_run_status,
           '{}' AS latest_goal_result_json,
-          NULL AS latest_run_at
+          (
+            SELECT COALESCE(finished_at, created_at)
+            FROM performance_test_runs
+            WHERE performance_test_id = performance_tests.id
+            ORDER BY CASE
+                       WHEN status = 'created'
+                        AND COALESCE(json_extract(runtime_config_json, '$.__entry_reason'), '') = '' THEN 1
+                       ELSE 0
+                     END,
+                     COALESCE(finished_at, created_at) DESC, created_at DESC, id DESC
+            LIMIT 1
+          ) AS latest_run_at
         FROM performance_tests
         LEFT JOIN api_endpoints ON api_endpoints.id = performance_tests.endpoint_id
         LEFT JOIN api_scenarios ON api_scenarios.id = performance_tests.scenario_id
@@ -111,9 +145,43 @@ def find_performance_test(db: Connection, test_id: str) -> Row | None:
             WHERE performance_test_id = performance_tests.id
             LIMIT 1
           ) AS latest_script_id,
-          '' AS latest_run_status,
+          (
+            SELECT id
+            FROM performance_test_runs
+            WHERE performance_test_id = performance_tests.id
+            ORDER BY CASE
+                       WHEN status = 'created'
+                        AND COALESCE(json_extract(runtime_config_json, '$.__entry_reason'), '') = '' THEN 1
+                       ELSE 0
+                     END,
+                     COALESCE(finished_at, created_at) DESC, created_at DESC, id DESC
+            LIMIT 1
+          ) AS latest_run_id,
+          COALESCE((
+            SELECT status
+            FROM performance_test_runs
+            WHERE performance_test_id = performance_tests.id
+            ORDER BY CASE
+                       WHEN status = 'created'
+                        AND COALESCE(json_extract(runtime_config_json, '$.__entry_reason'), '') = '' THEN 1
+                       ELSE 0
+                     END,
+                     COALESCE(finished_at, created_at) DESC, created_at DESC, id DESC
+            LIMIT 1
+          ), '') AS latest_run_status,
           '{}' AS latest_goal_result_json,
-          NULL AS latest_run_at
+          (
+            SELECT COALESCE(finished_at, created_at)
+            FROM performance_test_runs
+            WHERE performance_test_id = performance_tests.id
+            ORDER BY CASE
+                       WHEN status = 'created'
+                        AND COALESCE(json_extract(runtime_config_json, '$.__entry_reason'), '') = '' THEN 1
+                       ELSE 0
+                     END,
+                     COALESCE(finished_at, created_at) DESC, created_at DESC, id DESC
+            LIMIT 1
+          ) AS latest_run_at
         FROM performance_tests
         LEFT JOIN api_endpoints ON api_endpoints.id = performance_tests.endpoint_id
         LEFT JOIN api_scenarios ON api_scenarios.id = performance_tests.scenario_id
@@ -166,6 +234,7 @@ def serialize_performance_test(row: Row) -> dict[str, Any]:
         "api_environment_id": row["api_environment_id"],
         "environment_name": row["environment_name"],
         "latest_script_id": row["latest_script_id"],
+        "latest_run_id": row["latest_run_id"],
         "request_config": _loads(row["request_config_json"], {}),
         "load_config": _loads(row["load_config_json"], {}),
         "data_config": _loads(row["data_config_json"], {}),

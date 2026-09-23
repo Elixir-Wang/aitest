@@ -203,7 +203,7 @@ def test_validation_reports_first_match_and_total_match_count() -> None:
     assert result["end_rule"] == {"matched_count": 0, "first_event_sequence": None}
 
 
-def test_generation_uses_structural_candidates_when_ai_suggestion_is_invalid() -> None:
+def test_generation_does_not_activate_structural_candidates_when_ai_suggestion_is_invalid() -> None:
     result = generate_sse_metric_candidate(
         _sample_events(),
         max_stream_seconds=60,
@@ -211,10 +211,11 @@ def test_generation_uses_structural_candidates_when_ai_suggestion_is_invalid() -
     )
 
     assert result["analysis"]["ai_status"] == "not_used"
-    assert result["analysis"]["generation_mode"] == "structural_only"
-    assert result["result_status"] == "ready"
-    assert result["candidates"]
-    assert result["messages"] == []
+    assert result["analysis"]["generation_mode"] == "event_catalog_only"
+    assert result["result_status"] == "empty"
+    assert result["candidates"] == []
+    assert result["event_facts"]
+    assert result["messages"] == ["本次样本未发现高可信度性能指标，可从事件目录中手动选择。"]
     assert "candidate_sse" not in result
 
 
@@ -240,9 +241,23 @@ def test_ai_candidates_are_returned_in_sse_event_order() -> None:
 
 
 def test_generated_candidates_bind_timing_to_the_confirmed_sse_request() -> None:
+    def suggester(payload):
+        fact = next(item for item in payload["facts"] if item["normalized_value"] == "call_llm_start")
+        return {
+            "candidates": [
+                {
+                    "fact_id": fact["fact_id"],
+                    "name": "LLM 开始",
+                    "category": "milestone_start",
+                    "confidence": 0.99,
+                }
+            ]
+        }
+
     result = generate_sse_metric_candidate(
         _sample_events(),
         max_stream_seconds=60,
+        ai_suggester=suggester,
         source_request_id="step_sse_chat",
         source_request_name="02 POST /openapi/v1/gw/multi-agent/sse",
     )
@@ -296,7 +311,7 @@ def test_ai_cannot_promote_role_fact_to_end_rule() -> None:
 
     result = generate_sse_metric_candidate(_sample_events(), max_stream_seconds=60, ai_suggester=suggester)
 
-    assert result["end_rule_candidate"]["match"]["path"] == "$.data.event_type"
+    assert result["end_rule_candidate"] is None
 
 
 def test_ai_input_preserves_match_shape_but_redacts_unrelated_business_data() -> None:

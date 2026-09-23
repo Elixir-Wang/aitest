@@ -9,9 +9,10 @@ from typing import Any
 
 from app.services.performance_testing.analysis_metrics import build_analysis_metrics
 from app.services.performance_testing.diagnosis_validation import require_valid_diagnosis_references
+from app.services.performance_testing.failure_signal_service import build_failure_signals
 
 
-CALCULATOR_VERSION = "performance-metrics-v5"
+CALCULATOR_VERSION = "performance-metrics-v7"
 
 
 def build_metric_snapshot(evidence: dict[str, Any]) -> dict[str, Any]:
@@ -22,14 +23,21 @@ def build_metric_snapshot(evidence: dict[str, Any]) -> dict[str, Any]:
     artifacts = dict(evidence.get("artifacts") or {})
     stats = [dict(item) for item in evidence.get("stats") or [] if isinstance(item, dict)]
     summary = _summary(evidence.get("summary"), stats)
-    quality = _quality(run, summary, stats, evidence.get("missing_evidence") or [])
-    test_scope = _test_scope(run, performance_test, endpoint, script, quality)
     endpoint_metrics = _endpoint_metrics(artifacts.get("result_stats"))
+    quality = _quality(run, summary, stats, endpoint_metrics, evidence.get("missing_evidence") or [])
+    test_scope = _test_scope(run, performance_test, endpoint, script, quality)
     sse_metrics = _sse_metrics(artifacts.get("sse_metrics"), performance_test.get("request_config"))
     objectives = _objectives(
         performance_test.get("performance_goal") or {}, summary, quality["status"], sse_metrics
     )
     verdict = _verdict(objectives, quality["status"])
+    failure_signals = build_failure_signals(
+        evidence,
+        objectives=objectives,
+        endpoint_metrics=endpoint_metrics,
+        protocol_metrics=sse_metrics,
+        quality=quality,
+    )
     series = [_series_sample(item) for item in stats]
     peak_rps = max((float(item.get("requests_per_second") or 0) for item in stats), default=0.0)
     stable_rps = _stable_throughput(stats, run.get("status"))
@@ -41,13 +49,21 @@ def build_metric_snapshot(evidence: dict[str, Any]) -> dict[str, Any]:
         "test_scope": test_scope,
         "endpoint_metrics": endpoint_metrics,
         "sse_metrics": sse_metrics,
+        "failure_signals": failure_signals,
         "sse_config": (performance_test.get("request_config") or {}).get("sse"),
     }
     source_fingerprint = "sha256:" + hashlib.sha256(
         json.dumps(snapshot_source, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
     ).hexdigest()
     analysis_metrics = build_analysis_metrics(evidence)
-    evidence_index = _evidence_index(summary, objectives, quality) + _analysis_evidence_index(analysis_metrics)
+    evidence_index = (
+        _evidence_index(summary, objectives, quality)
+        + [
+            {**signal, "kind": "failure_signal"}
+            for signal in failure_signals
+        ]
+        + _analysis_evidence_index(analysis_metrics)
+    )
     return {
         "schema_version": 5,
         "calculator_version": CALCULATOR_VERSION,
@@ -58,6 +74,7 @@ def build_metric_snapshot(evidence: dict[str, Any]) -> dict[str, Any]:
         "aggregate": summary,
         "endpoint_metrics": endpoint_metrics,
         "sse_metrics": sse_metrics,
+        "failure_signals": failure_signals,
         "capacity": {
             "observed_peak_throughput": round(peak_rps, 4),
             "stable_throughput": stable_rps,
@@ -165,7 +182,13 @@ def _optional_percentile(payload: dict[str, Any], key: str) -> float | None:
     return float(value)
 
 
-def _quality(run: dict[str, Any], summary: dict[str, Any], stats: list[dict[str, Any]], missing: list[Any]) -> dict[str, Any]:
+def _quality(
+    run: dict[str, Any],
+    summary: dict[str, Any],
+    stats: list[dict[str, Any]],
+    endpoint_metrics: list[dict[str, Any]],
+    missing: list[Any],
+) -> dict[str, Any]:
     issues: list[str] = []
     warnings: list[str] = []
     if summary["request_count"] <= 0:
@@ -176,11 +199,12 @@ def _quality(run: dict[str, Any], summary: dict[str, Any], stats: list[dict[str,
         issues.append("p95_response_time_missing")
     if summary["p99_response_time_ms"] is not None and summary["request_count"] < 1000:
         warnings.append("p99_sample_size_limited")
+    issues.extend(_metric_consistency_issues(summary, stats, endpoint_metrics))
     if run.get("status") == "stopped":
         issues.append("run_manually_stopped")
     elif run.get("status") not in {"completed", ""}:
         issues.append(f"run_terminal_status:{run.get('status') or 'unknown'}")
-    if summary["request_count"] <= 0:
+    if summary["request_count"] <= 0 or any(issue.startswith("metric_source_conflict:") for issue in issues):
         status = "invalid"
     elif issues:
         status = "partial"
@@ -211,6 +235,27 @@ def _quality(run: dict[str, Any], summary: dict[str, Any], stats: list[dict[str,
             and actual_duration >= configured_duration
         ) if actual_duration is not None and configured_duration is not None else None,
     }
+
+
+def _metric_consistency_issues(
+    summary: dict[str, Any],
+    stats: list[dict[str, Any]],
+    endpoint_metrics: list[dict[str, Any]],
+) -> list[str]:
+    issues: list[str] = []
+    history_counts = [
+        int(item.get("request_count") or 0)
+        for item in stats
+        if str(item.get("source") or "") == "locust_csv_history"
+    ]
+    if any(current < previous for previous, current in zip(history_counts, history_counts[1:])):
+        issues.append("metric_source_conflict:cumulative_request_count_regressed")
+    if history_counts and int(summary.get("request_count") or 0) < max(history_counts):
+        issues.append("metric_source_conflict:summary_below_history_max")
+    endpoint_counts = [int(item.get("request_count") or 0) for item in endpoint_metrics]
+    if endpoint_counts and int(summary.get("request_count") or 0) < max(endpoint_counts):
+        issues.append("metric_source_conflict:summary_below_endpoint_count")
+    return issues
 
 
 def _duration_seconds(started_at: Any, finished_at: Any) -> int | None:
@@ -289,6 +334,7 @@ def _endpoint_metrics(raw_rows: Any) -> list[dict[str, Any]]:
         for row in rows
         if str(row.get("Name") or "").strip()
         and str(row.get("Name") or "").strip().lower() != "aggregated"
+        and str(row.get("Type") or "").strip().upper() != "SCENARIO"
     ]
     total_requests = sum(_csv_int(row, "Request Count") for row in endpoint_rows)
     if not endpoint_rows or total_requests <= 0:

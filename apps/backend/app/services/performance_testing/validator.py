@@ -9,7 +9,7 @@ from pathlib import Path
 from app.agents.performance_testing.script_generation.schemas import LocustScriptPlan, ScriptValidationResult
 
 
-ALLOWED_IMPORTS = {"__future__", "json", "locust", "scenario_runtime"}
+ALLOWED_IMPORTS = {"__future__", "datetime", "gevent", "json", "locust", "math", "os", "pathlib", "random", "re", "time", "typing", "uuid"}
 FORBIDDEN_CALLS = {"eval", "exec", "compile", "open", "__import__", "input"}
 
 
@@ -50,7 +50,7 @@ def validate_locust_script(plan: LocustScriptPlan, source: str) -> ScriptValidat
         errors.append("脚本必须定义 HttpUser 子类")
     if not has_task:
         errors.append("脚本必须定义受 @task 管理的 execute_target")
-    if not has_controlled_request and "scenario_runtime" not in imported_modules:
+    if not has_controlled_request:
         errors.append("请求必须使用 catch_response=True")
     if plan.target_type == "endpoint":
         if not plan.request or plan.request.method not in source or plan.request.name not in source:
@@ -124,12 +124,9 @@ def _scenario_variable_status(variables: dict[str, object], key: str) -> tuple[b
 
 
 def _isolated_import_error(source: str) -> str:
-    from app.services.performance_testing.script_renderer import runtime_module_source
-
     with tempfile.TemporaryDirectory(prefix="performance-script-") as directory:
         path = Path(directory) / "locustfile.py"
         path.write_text(source, encoding="utf-8")
-        (Path(directory) / "scenario_runtime.py").write_text(runtime_module_source(), encoding="utf-8")
         completed = subprocess.run(
             [
                 sys.executable,

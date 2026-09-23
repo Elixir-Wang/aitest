@@ -7,7 +7,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 const STATISTICS_COLUMNS = [
   ["request", "名称"],
   ["request_count", "请求数"],
-  ["failure_count", "失败数"],
+  ["failure_count", "未成功数"],
   ["success_rate", "成功率"],
   ["requests_per_second", "RPS"],
   ["p50_response_time_ms", "P50"],

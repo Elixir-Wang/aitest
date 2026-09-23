@@ -510,27 +510,23 @@ def generate_sse_metric_candidate(
     source_request_name: str | None = None,
 ) -> dict[str, Any]:
     facts = extract_sse_event_facts(events)
-    structural = build_structural_sse_candidates(events, facts)
-    candidates = structural
+    candidates: list[dict[str, Any]] = []
     ai_status = "disabled" if ai_suggester is None else "not_used"
-    generation_mode = "structural_only" if structural else "event_catalog_only"
-    end_rule_candidate = _structural_end_rule_candidate(events, facts)
+    generation_mode = "event_catalog_only"
+    end_rule_candidate = None
     if ai_suggester is not None:
         try:
             suggested = dict(ai_suggester(_ai_input(events, facts)) or {})
-            ai_candidates = _ai_candidates(events, facts, suggested.get("candidates") or [])
-            candidates = _merge_candidates(structural, ai_candidates)
+            candidates = _ai_candidates(events, facts, suggested.get("candidates") or [])
             if suggested.get("end_rule_candidate_fact_id"):
-                suggested_end_rule = _end_rule_from_fact(
+                end_rule_candidate = _end_rule_from_fact(
                     events,
                     facts,
                     str(suggested["end_rule_candidate_fact_id"]),
                 )
-                if suggested_end_rule is not None:
-                    end_rule_candidate = suggested_end_rule
-            ai_status = "used" if not (suggested.get("candidates") or []) or ai_candidates else "not_used"
-            if ai_candidates:
-                generation_mode = "ai_and_structural" if structural else "ai_only"
+            ai_status = "used" if candidates or not suggested.get("candidates") else "not_used"
+            if candidates:
+                generation_mode = "ai_only"
         except Exception:
             ai_status = "unavailable"
     result_status = "ready" if candidates else "empty"
@@ -541,6 +537,7 @@ def generate_sse_metric_candidate(
         "source_request_id": source_request_id,
         "source_request_name": source_request_name,
     }
+    candidates = sorted(candidates, key=_candidate_order_key)
     candidates = [{**candidate, "timing": timing} for candidate in candidates]
     return {
         "sample_summary": {

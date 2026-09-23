@@ -18,8 +18,6 @@ from typing import Any
 from app.core import settings
 from app.core.db import connect
 from app.services.performance_testing import run_repo
-from app.services.performance_testing.locust_runtime import runtime_locustfile_source
-from app.services.performance_testing.script_renderer import runtime_module_source
 
 
 _PROCESSES: dict[str, subprocess.Popen] = {}
@@ -132,9 +130,7 @@ def _write_run_files(run_dir: Path, run_id: str, script_code: str, runtime_paylo
         json.dumps({"run_id": run_id, "environment": runtime_payload}, ensure_ascii=False),
         encoding="utf-8",
     )
-    (run_dir / "generated_locustfile.py").write_text(script_code, encoding="utf-8")
-    (run_dir / "scenario_runtime.py").write_text(runtime_module_source(), encoding="utf-8")
-    (run_dir / "locustfile.py").write_text(runtime_locustfile_source(), encoding="utf-8")
+    (run_dir / "locustfile.py").write_text(script_code, encoding="utf-8")
 
 
 def create_run_session(
@@ -178,7 +174,7 @@ def start_headless_run(run_id: str, options: dict[str, Any] | None = None) -> bo
         raise ValueError(f"只有 created 状态的运行可以启动: {run['status']}")
     run_dir = _run_dir(run["project_id"], run_id)
     runtime_path = run_dir / "runtime.json"
-    if not (run_dir / "generated_locustfile.py").is_file() or not runtime_path.is_file():
+    if not (run_dir / "locustfile.py").is_file() or not runtime_path.is_file():
         raise FileNotFoundError(f"性能测试运行产物不存在: {run_id}")
     environment = dict(os.environ)
     environment["AI_TESTING_DB_PATH"] = str(settings.DB_PATH)
@@ -194,7 +190,7 @@ def start_headless_run(run_id: str, options: dict[str, Any] | None = None) -> bo
         runtime = json.loads(runtime_path.read_text(encoding="utf-8"))
         runtime["environment"]["api_base_url"] = host
         runtime_path.write_text(json.dumps(runtime, ensure_ascii=False), encoding="utf-8")
-    script_code = (run_dir / "generated_locustfile.py").read_text(encoding="utf-8")
+    script_code = (run_dir / "locustfile.py").read_text(encoding="utf-8")
     stop_timeout_seconds = graceful_stop_timeout_seconds(script_code)
     command = build_headless_command(
         run_dir=run_dir,
@@ -260,7 +256,6 @@ def parse_locust_stats_csv(
     *,
     user_count: int = 0,
     request_type: str | None = None,
-    final_stats: dict[str, Any] | None = None,
 ) -> dict[str, Any] | None:
     """Parse the current aggregate row from Locust's non-history CSV output."""
     rows = list(csv.DictReader(content.splitlines()))
@@ -272,18 +267,6 @@ def parse_locust_stats_csv(
         return None
     request_count = int(float(aggregate.get("Total Request Count") or aggregate.get("Request Count") or 0))
     failure_count = int(float(aggregate.get("Total Failure Count") or aggregate.get("Failure Count") or 0))
-    if request_type is not None:
-        final_entry = next(
-            (
-                entry
-                for entry in (final_stats or {}).get("entries", [])
-                if entry.get("request_type") == request_type
-            ),
-            None,
-        )
-        if final_entry:
-            request_count = int(final_entry.get("request_count") or 0)
-            failure_count = int(final_entry.get("failure_count") or 0)
     return {
         "sampled_at": "",
         "user_count": user_count,
@@ -316,7 +299,6 @@ def read_realtime_sample(
             stats_path.read_text(encoding="utf-8-sig"),
             user_count=configured_users,
             request_type=request_type,
-            final_stats=read_locust_final_stats(run_dir),
         )
         history_sample = _read_history_sample(run_dir, request_type=request_type)
     except (OSError, UnicodeDecodeError, ValueError):
@@ -358,17 +340,6 @@ def _locust_float(value: object) -> float:
     if value in (None, "", "N/A"):
         return 0.0
     return float(value)
-
-
-def read_locust_final_stats(run_dir: Path) -> dict[str, Any]:
-    path = run_dir / "locust-final-stats.json"
-    if not path.is_file():
-        return {}
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
-        return {}
-    return payload if isinstance(payload, dict) else {}
 
 
 def _read_history_sample(run_dir: Path, *, request_type: str | None = None) -> dict[str, Any] | None:
@@ -435,17 +406,6 @@ def _collect_locust_results(db, run_id: str, run_dir: Path) -> None:
         if aggregate:
             request_count = int(float(aggregate.get("Request Count") or 0))
             failure_count = int(float(aggregate.get("Failure Count") or 0))
-            final_entry = next(
-                (
-                    entry
-                    for entry in read_locust_final_stats(run_dir).get("entries", [])
-                    if entry.get("request_type") == request_type
-                ),
-                None,
-            )
-            if final_entry:
-                request_count = int(final_entry.get("request_count") or 0)
-                failure_count = int(final_entry.get("failure_count") or 0)
             run_repo.append_stats(db, run_id=run_id, sample={
                 "user_count": configured_users,
                 "request_count": request_count,
@@ -572,10 +532,6 @@ def summarize_sse_measurements(path: Path, *, max_attempts: int | None = None) -
         attempts += 1
         parse_error_count += int(measurement.get("parse_error_count") or 0)
         values = dict(measurement.get("metrics")) if isinstance(measurement.get("metrics"), dict) else {}
-        derived_values = measurement.get("derived_metrics") if isinstance(measurement.get("derived_metrics"), dict) else {}
-        for metric_id, value in derived_values.items():
-            normalized_id = str(metric_id).removesuffix("_ms")
-            values[f"derived:{normalized_id}"] = value
         missing = {str(item) for item in measurement.get("missing_metric_ids", []) if isinstance(item, str)}
         failed = bool(measurement.get("failure_reason"))
         if failed:

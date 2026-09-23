@@ -210,6 +210,10 @@ def test_create_run_session_prunes_history_after_creating_ready_run(
 
     assert run_id == "perfrun-new"
     assert calls == [("create", "perfrun-new"), ("prune", "project-1", "perftest-1")]
+    run_dir = tmp_path / "project-1" / "performance_testing" / "runs" / run_id
+    assert (run_dir / "locustfile.py").read_text(encoding="utf-8") == "from locust import HttpUser"
+    assert not (run_dir / "generated_locustfile.py").exists()
+    assert not (run_dir / "scenario_runtime.py").exists()
 
 
 def test_parse_locust_stats_history_returns_latest_aggregate_sample() -> None:
@@ -331,7 +335,7 @@ def test_parse_locust_stats_csv_can_select_scenario_transaction_row() -> None:
     assert sample["average_response_time_ms"] == 150.0
 
 
-def test_parse_locust_stats_csv_prefers_final_snapshot_counts() -> None:
+def test_parse_locust_stats_csv_keeps_counts_and_latency_from_same_csv_row() -> None:
     sample = headless_worker.parse_locust_stats_csv(
         "Type,Name,Request Count,Failure Count,Median Response Time,Average Response Time,Requests/s,Failures/s,50%,95%,99%\n"
         "POST,01 POST /segment,84,0,80,90,1.29,0,80,110,230\n"
@@ -340,17 +344,10 @@ def test_parse_locust_stats_csv_prefers_final_snapshot_counts() -> None:
         ",Aggregated,250,0,81,1682,3.88,0,82,6400,7600\n",
         user_count=10,
         request_type="SCENARIO",
-        final_stats={
-            "entries": [
-                {"request_type": "POST", "name": "01 POST /segment", "request_count": 84, "failure_count": 0},
-                {"request_type": "POST", "name": "02 POST /sse", "request_count": 84, "failure_count": 0},
-                {"request_type": "SCENARIO", "name": "SCENARIO 测试", "request_count": 84, "failure_count": 0},
-            ]
-        },
     )
 
     assert sample is not None
-    assert sample["request_count"] == 84
+    assert sample["request_count"] == 83
 
 
 def test_read_realtime_sample_uses_current_stats_and_history_user_count(tmp_path: Path) -> None:

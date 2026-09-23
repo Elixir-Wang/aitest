@@ -780,6 +780,22 @@ def test_analysis_service_creates_executes_and_lists_structured_analysis(
             "missing_evidence": ["目标服务日志"],
             "requires_second_approval": False,
             "can_auto_rerun": True,
+            "findings": [
+                {
+                    "id": "finding-request-failure",
+                    "category": "performance_config",
+                    "severity": "critical",
+                    "level": "observed",
+                    "title": "请求全部失败",
+                    "statement": "19 个请求全部失败。",
+                    "confidence": 0.96,
+                    "evidence_refs": [
+                        "signal:failure_detail:1",
+                    ],
+                    "missing_evidence": ["目标服务日志"],
+                }
+            ],
+            "recommendations": [],
         }
     )
     monkeypatch.setattr(analysis_service, "diagnose_performance", lambda evidence: (diagnosis, "test-model"))

@@ -1,10 +1,7 @@
-from pathlib import Path
-
 from langchain.agents import create_agent
 from langchain.agents.structured_output import ToolStrategy
 
 from app.agents.shared.invalid_tool_call_recovery import InvalidToolCallRecoveryMiddleware
-from app.agents.shared.skill_middleware import SkillMiddleware
 from app.schemas.performance_analysis import PerformanceDiagnosis
 
 
@@ -23,8 +20,10 @@ def performance_diagnosis_agent(model):
             "证据不足时使用 insufficient_evidence 并列出 missing_evidence。"
             "分析结论必须包含输入中已有的关键数量、比例、时间范围，不得编造日志、调用链、配置或代码行为。"
             "INPUT.metric_snapshot 如果存在，是确定性计算结果；不得修改其中的 verdict、指标值或图表序列。"
-            "必须优先分析 INPUT.metric_snapshot.test_validity、stage_analysis、capacity_analysis、"
-            "latency_analysis 和 failure_analysis；不得绕过这些结果重新发明容量、拐点或失败分类。"
+            "必须逐条分析 INPUT.metric_snapshot.failure_signals。critical/high 信号必须各自由至少一个 finding 引用；"
+            "不能判断根因时仍需输出 finding，并将 category 设为 insufficient_evidence、列出缺失证据和验证动作。"
+            "同时结合 test_validity、stage_analysis、capacity_analysis、latency_analysis 和 failure_analysis，"
+            "不得绕过确定性结果重新发明容量、拐点或失败分类。"
             "Locust 时序分位数是累计快照；当 latency_analysis.can_claim_direction=false 时，不得根据首末采样值"
             "声称延迟改善、恶化、下降、上升或已经收敛。quality.request_sample_count 是请求样本数，"
             "quality.timeseries_sample_count 是时序采样点数，二者不得混用。"
@@ -62,17 +61,12 @@ def performance_diagnosis_agent(model):
             "绝不表示实际请求发送了脱敏标记。必须使用 request_execution_facts 判断 Header 覆盖与模板解析结果。"
             "如果请求体为空、必填字段缺失、请求方法或路径不匹配，优先判断为性能配置或 Locust 脚本问题，"
             "不得直接归因于被测接口业务代码。"
-            "external_service 与 insufficient_evidence 不得提供可应用修改；"
-            "platform_code 必须 requires_second_approval=true。"
+            "每个 finding 必须独立判断 category；一轮运行允许同时存在配置、脚本、平台代码、外部服务和证据不足问题。"
+            "proposed_changes 只能针对证据充分且能给出准确 before/after 的配置、脚本或平台代码问题；"
+            "external_service 与 insufficient_evidence 不得提供可应用修改；包含 platform_code finding 或修改时必须二次审批。"
             "只输出符合 PerformanceDiagnosis 结构的结构化结果，不输出分析过程。"
         ),
-        middleware=[
-            InvalidToolCallRecoveryMiddleware(),
-            SkillMiddleware(
-                skill_path=Path(__file__).parent.parent / "report_analysis" / "skills" / "performance-report-analysis",
-                load_references=True,
-            ),
-        ],
+        middleware=[InvalidToolCallRecoveryMiddleware()],
         response_format=ToolStrategy(PerformanceDiagnosis),
     )
 

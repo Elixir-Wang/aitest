@@ -9,7 +9,7 @@ from app.core.db import connect
 from app.seed.init_db import init_db
 from app.services.performance_testing import headless_worker
 from app.services.performance_testing import run_repo
-from app.services.performance_testing.locust_runtime import runtime_locustfile_source
+from app.services.performance_testing.locust_runtime import standalone_runtime_support_source
 
 
 def _use_temp_db(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -48,7 +48,7 @@ def _seed_run_dependencies() -> None:
 
 
 def test_runtime_locustfile_captures_redacted_response_evidence() -> None:
-    source = runtime_locustfile_source()
+    source = standalone_runtime_support_source()
 
     compile(source, "locustfile.py", "exec")
     assert '"response_excerpt": _response_excerpt(response)' in source
@@ -59,36 +59,28 @@ def test_runtime_locustfile_captures_redacted_response_evidence() -> None:
 
 
 def test_runtime_locustfile_uses_current_environment_headers() -> None:
-    source = runtime_locustfile_source()
+    source = standalone_runtime_support_source()
 
-    assert "import scenario_runtime" in source
-    assert "scenario_runtime.set_sse_measurement_sink(_append_sse_measurement)" in source
+    assert "import scenario_runtime" not in source
+    assert "set_sse_measurement_sink(_append_sse_measurement)" in source
     assert "generated.SSE_MEASUREMENT_SINK" not in source
     assert 'scenario_variables[str(key).lower().replace("-", "_")] = value' not in source
-    assert 'scenario_variables.update(dict(RUNTIME["environment"].get("variables") or {}))' in source
-    assert 'scenario_variables.update(dict(RUNTIME["environment"].get("headers") or {}))' in source
+    assert 'scenario_variables.update(dict(RUNTIME_ENVIRONMENT.get("variables") or {}))' in source
+    assert 'scenario_variables.update(dict(RUNTIME_ENVIRONMENT.get("headers") or {}))' in source
     assert '''request["headers"] = {
                 **dict(request.get("headers") or {}),
-                **dict(RUNTIME["environment"].get("headers") or {}),
+                **dict(RUNTIME_ENVIRONMENT.get("headers") or {}),
             }''' in source
     assert '''PLAN["request"]["headers"] = {
         **dict(PLAN["request"].get("headers") or {}),
-        **dict(RUNTIME["environment"].get("headers") or {}),
+        **dict(RUNTIME_ENVIRONMENT.get("headers") or {}),
     }''' in source
 
 
-def test_runtime_locustfile_writes_final_stats_snapshot_on_quit() -> None:
-    source = runtime_locustfile_source()
-
-    assert 'FINAL_STATS = Path(__file__).with_name("locust-final-stats.json")' in source
-    assert "@events.quitting.add_listener" in source
-    assert "FINAL_STATS.write_text(" in source
-
-
 def test_runtime_locustfile_removes_trailing_slash_from_base_url() -> None:
-    source = runtime_locustfile_source()
+    source = standalone_runtime_support_source()
 
-    assert 'PerformanceUser.host = str(RUNTIME["environment"]["api_base_url"]).rstrip("/")' in source
+    assert 'PerformanceUser.host = str(RUNTIME_ENVIRONMENT["api_base_url"]).rstrip("/")' in source
 
 
 def test_run_repository_persists_status_stats_failures_and_events(

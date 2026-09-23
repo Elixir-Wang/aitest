@@ -146,6 +146,95 @@ def test_metric_snapshot_marks_sse_goal_not_evaluated_without_matches() -> None:
     assert snapshot["verdict"] == "indeterminate"
 
 
+def test_metric_snapshot_promotes_unmatched_protocol_metric_to_critical_failure_signal() -> None:
+    snapshot = build_metric_snapshot(
+        {
+            "run": {"id": "perfrun-protocol", "status": "completed"},
+            "summary": {
+                "request_count": 10,
+                "failure_count": 0,
+                "failure_rate": 0,
+                "average_response_time_ms": 100,
+            },
+            "stats": [{"sampled_at": "1", "request_count": 10, "source": "locust_csv_history"}],
+            "performance_test": {
+                "request_config": {
+                    "sse": {"metrics": [{"id": "answer", "name": "首次业务数据到达"}]}
+                }
+            },
+            "artifacts": {
+                "sse_metrics": {
+                    "attempt_count": 10,
+                    "metrics": [
+                        {
+                            "metric_id": "answer",
+                            "attempt_count": 10,
+                            "matched_count": 0,
+                            "missing_count": 10,
+                            "failure_count": 0,
+                        }
+                    ],
+                }
+            },
+            "missing_evidence": [],
+        }
+    )
+
+    signal = snapshot["failure_signals"][0]
+    assert signal["scope"] == "protocol_metric"
+    assert signal["severity"] == "critical"
+    assert signal["failure_count"] == 10
+    assert signal["failure_rate"] == 1
+    assert signal["evidence_id"] in {item["evidence_id"] for item in snapshot["evidence_index"]}
+
+
+def test_metric_snapshot_marks_conflicting_metric_sources_invalid() -> None:
+    snapshot = build_metric_snapshot(
+        {
+            "run": {"id": "perfrun-conflict", "status": "completed"},
+            "summary": {"request_count": 10, "failure_count": 0, "failure_rate": 0},
+            "stats": [
+                {"sampled_at": "1", "request_count": 43, "source": "locust_csv_history"},
+                {"sampled_at": "2", "request_count": 10, "source": "locust_csv"},
+            ],
+            "artifacts": {
+                "result_stats": [
+                    {"Type": "POST", "Name": "/items", "Request Count": "17", "Failure Count": "0"}
+                ]
+            },
+            "missing_evidence": [],
+        }
+    )
+
+    assert snapshot["quality"]["status"] == "invalid"
+    assert "metric_source_conflict:summary_below_history_max" in snapshot["quality"]["issues"]
+    assert snapshot["verdict"] == "indeterminate"
+
+
+def test_diagnosis_validation_requires_coverage_for_every_blocking_signal() -> None:
+    snapshot = {
+        "evidence_index": [{"evidence_id": "signal:request:1"}],
+        "failure_signals": [
+            {"evidence_id": "signal:request:1", "severity": "critical"}
+        ],
+    }
+    diagnosis = PerformanceDiagnosis.model_validate(
+        {
+            "category": "insufficient_evidence",
+            "confidence": 0.2,
+            "direct_cause": "存在未覆盖失败",
+            "root_cause": "证据不足",
+            "missing_evidence": ["raw_response"],
+            "findings": [],
+            "recommendations": [],
+        }
+    )
+
+    validation = validate_diagnosis_references(snapshot, diagnosis)
+    assert validation.valid is False
+    assert validation.uncovered_signal_refs == ["signal:request:1"]
+
+
 def test_metric_snapshot_exposes_test_scope_and_single_endpoint_metrics() -> None:
     snapshot = build_metric_snapshot(
         {
@@ -210,7 +299,7 @@ def test_metric_snapshot_exposes_test_scope_and_single_endpoint_metrics() -> Non
         }
     )
 
-    assert snapshot["calculator_version"] == "performance-metrics-v5"
+    assert snapshot["calculator_version"] == "performance-metrics-v7"
     assert snapshot["test_scope"] == {
         "test_name": "订单查询性能测试",
         "environment_name": "staging",
@@ -253,6 +342,46 @@ def test_metric_snapshot_exposes_test_scope_and_single_endpoint_metrics() -> Non
         "can_claim_direction": False,
         "tail_amplification": 5.75,
     }
+
+
+def test_metric_snapshot_excludes_scenario_aggregate_from_endpoint_request_share() -> None:
+    snapshot = build_metric_snapshot(
+        {
+            "run": {"id": "perfrun-1", "status": "completed"},
+            "summary": {"request_count": 5563},
+            "performance_test": {"target_type": "scenario"},
+            "artifacts": {
+                "result_stats": [
+                    {
+                        "Type": "SCENARIO",
+                        "Name": "SCENARIO multi-agent测试",
+                        "Request Count": "5563",
+                    },
+                    {
+                        "Type": "POST",
+                        "Name": "01 POST /openapi/v1/gw/multi-agent/segment-code/gen",
+                        "Request Count": "5564",
+                    },
+                    {
+                        "Type": "POST",
+                        "Name": "02 POST /openapi/v1/gw/multi-agent/sse",
+                        "Request Count": "5563",
+                    },
+                    {"Type": "", "Name": "Aggregated", "Request Count": "16690"},
+                ]
+            },
+            "missing_evidence": [],
+        }
+    )
+
+    assert [(item["method"], item["request_count"]) for item in snapshot["endpoint_metrics"]] == [
+        ("POST", 5564),
+        ("POST", 5563),
+    ]
+    assert [item["request_share"] for item in snapshot["endpoint_metrics"]] == [
+        0.500045,
+        0.499955,
+    ]
 
 
 def test_metric_snapshot_uses_script_plan_for_scope_but_not_endpoint_metrics() -> None:

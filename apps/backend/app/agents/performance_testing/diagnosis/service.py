@@ -102,12 +102,14 @@ def _prompt_content(input_payload: dict[str, Any], repair_context: dict[str, Any
         "previous_diagnosis": repair_context.get("previous_diagnosis") or {},
         "unknown_evidence_refs": repair_context.get("unknown_evidence_refs") or [],
         "unknown_finding_refs": repair_context.get("unknown_finding_refs") or [],
+        "uncovered_signal_refs": repair_context.get("uncovered_signal_refs") or [],
         "instructions": [
             "返回完整 PerformanceDiagnosis",
             "只修正非法引用及受其影响的结论",
             "不得修改确定性指标和 verdict",
             "不得增加输入中不存在的证据",
             "没有合法证据时删除对应 finding 或补充 missing_evidence",
+            "为每个 uncovered_signal_refs 补充独立 finding，并逐字引用该 signal evidence_id",
         ],
     }
     return (

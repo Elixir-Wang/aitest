@@ -60,9 +60,11 @@ test("performance run page hosts the Locust-native console", () => {
   assert.match(consoleSource, /开始压测/);
   assert.match(consoleSource, /停止/);
   assert.match(consoleSource, /重置统计/);
-  assert.match(consoleSource, /重新压测/);
+  assert.match(consoleSource, /重新开始/);
+  assert.match(consoleSource, /const canStart = run\?\.status === "created" \|\| run\?\.status === "ready"/);
+  assert.match(consoleSource, /startPerformanceRun\(projectId, testId, runId, startDefaults\)/);
   assert.match(consoleSource, /createPerformanceRun\(projectId, testId, run\.script_id\)/);
-  assert.match(consoleSource, /startPerformanceRun\(projectId, testId, nextRun\.id, startDefaults\)/);
+  assert.doesNotMatch(consoleSource, /startPerformanceRun\(projectId, testId, nextRun\.id/);
   assert.match(
     consoleSource,
     /router\.push\(`\/projects\/\$\{projectId\}\/performance-tests\/\$\{testId\}\/runs\/\$\{nextRun\.id\}`\)/,
@@ -110,7 +112,11 @@ test("performance run restores Locust-native chart history", () => {
   const chartsSource = readFileSync(locustChartsUrl, "utf8");
   assert.match(apiClientSource, /export function getPerformanceRunCharts/);
   assert.match(consoleSource, /getPerformanceRunCharts\(projectId, runId\)/);
-  assert.match(consoleSource, /setSamples\(chartSamples\(nextCharts\.samples\)\)/);
+  assert.match(consoleSource, /setSamples\(decimateChartSamples\(chartSamples\(nextCharts\.samples\)\)\)/);
+  assert.doesNotMatch(consoleSource, /rows\.slice\(-180\)\.map/);
+  assert.match(consoleSource, /const MAX_CHART_SAMPLES = 2_000/);
+  assert.match(consoleSource, /selectedIndexes\.add\(minIndex\)/);
+  assert.match(consoleSource, /selectedIndexes\.add\(maxIndex\)/);
   assert.match(chartsSource, /每秒请求数/);
   assert.match(chartsSource, /响应时间/);
   assert.match(chartsSource, /用户数/);
@@ -124,6 +130,9 @@ test("performance run exposes SSE data quality counters separately", () => {
   assert.match(locustConsoleSource, /流超时/);
   assert.match(locustConsoleSource, /结束规则未命中/);
   assert.match(locustConsoleSource, /sse_metrics\.truncated/);
+  assert.match(locustConsoleSource, /SSE 数据质量/);
+  assert.doesNotMatch(locustConsoleSource, /value="sse"/);
+  assert.doesNotMatch(locustConsoleSource, />\s*流式指标\s*</);
 });
 
 test("performance run labels streaming HTTP duration as connection latency", () => {

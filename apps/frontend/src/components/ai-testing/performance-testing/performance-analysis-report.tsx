@@ -100,6 +100,7 @@ export function PerformanceAnalysisReport({
   const stageAnalysis = metric.stage_analysis ?? [];
   const capacityAnalysis = metric.capacity_analysis ?? {};
   const failureAnalysis = metric.failure_analysis ?? [];
+  const failureSignals = metric.failure_signals ?? [];
   const verdict = report.verdict ?? metric.verdict ?? "indeterminate";
   const findings = (report.findings ?? [])
     .filter(
@@ -183,7 +184,7 @@ export function PerformanceAnalysisReport({
               >
                 <ReportMetric label="请求总数" value={numberValue(aggregate.request_count)} />
                 <ReportMetric label="观测吞吐" suffix=" RPS" value={decimalValue(aggregate.requests_per_second)} />
-                <ReportMetric label="失败率" suffix="%" value={percentageValue(aggregate.failure_rate)} />
+                <ReportMetric label="HTTP 失败率" suffix="%" value={percentageValue(aggregate.failure_rate)} />
                 <ReportMetric label="P95 响应时间" suffix=" ms" value={nullableValue(aggregate.p95_response_time_ms)} />
                 <ReportMetric label="P99 响应时间" suffix=" ms" value={nullableValue(aggregate.p99_response_time_ms)} />
               </section>
@@ -227,7 +228,8 @@ export function PerformanceAnalysisReport({
           metric.sse_metrics?.timeout_count ||
           metric.sse_metrics?.end_rule_not_matched_count ? (
             <p className="text-muted-foreground text-sm">
-              数据质量：JSON 解析错误 {metric.sse_metrics.parse_error_count ?? 0}，流超时 {metric.sse_metrics.timeout_count ?? 0}
+              数据质量：JSON 格式错误 {metric.sse_metrics.parse_error_count ?? 0}，流超时{" "}
+              {metric.sse_metrics.timeout_count ?? 0}
               ，结束规则未命中 {metric.sse_metrics.end_rule_not_matched_count ?? 0}。
             </p>
           ) : null}
@@ -263,6 +265,33 @@ export function PerformanceAnalysisReport({
           </div>
         </section>
       ) : null}
+
+      <section className="space-y-4">
+        <SectionHeading icon={ShieldCheck} title="失败与异常信号" />
+        {failureSignals.length ? (
+          <div className="divide-y rounded-lg border">
+            {failureSignals.map((signal) => (
+              <div
+                className="grid gap-2 p-4 sm:grid-cols-[minmax(12rem,0.8fr)_minmax(0,1.2fr)]"
+                key={signal.evidence_id}
+              >
+                <div>
+                  <p className="font-medium text-sm">{signal.title}</p>
+                  <p className="mt-1 text-muted-foreground text-xs">{failureScopeLabel(signal.scope)}</p>
+                </div>
+                <p className="text-sm tabular-nums">
+                  未成功 {numberValue(signal.failure_count)} / {numberValue(signal.attempt_count)}
+                  {signal.failure_rate === null || signal.failure_rate === undefined
+                    ? null
+                    : ` · ${percentageValue(signal.failure_rate)}%`}
+                </p>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="rounded-lg border bg-card p-4 text-muted-foreground text-sm">未观测到失败或异常信号。</p>
+        )}
+      </section>
 
       <section className="space-y-4">
         <SectionHeading icon={ShieldCheck} title="性能目标" />
@@ -941,6 +970,23 @@ function failureKindLabel(value: string) {
         http_4xx: "HTTP 4xx",
         http_5xx: "HTTP 5xx",
         unknown: "未知错误",
+      } as Record<string, string>
+    )[value] ?? value
+  );
+}
+
+function failureScopeLabel(value: string) {
+  return (
+    (
+      {
+        request: "请求或接口",
+        step: "场景步骤",
+        scenario: "场景",
+        protocol_metric: "协议业务指标",
+        objective: "性能目标",
+        runtime: "运行异常",
+        data_quality: "数据质量",
+        platform: "平台采集",
       } as Record<string, string>
     )[value] ?? value
   );
