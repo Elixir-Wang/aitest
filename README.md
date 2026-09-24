@@ -41,6 +41,10 @@
 
 ![项目](docs/images/project.png)
 
+**硅基员工**
+
+![硅基员工](docs/images/silicon-office.png)
+
 **需求**
 
 ![需求](docs/images/requirement.png)
