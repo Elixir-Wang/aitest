@@ -3,13 +3,14 @@ FROM node:22-bookworm-slim AS frontend-builder
 WORKDIR /app/frontend
 
 COPY apps/frontend/package.json apps/frontend/package-lock.json ./
-RUN npm ci
+RUN npm ci --no-audit --no-fund
 
 COPY apps/frontend/ ./
 ARG NEXT_PUBLIC_API_BASE_URL=/api/v1
 ENV NEXT_PUBLIC_API_BASE_URL=${NEXT_PUBLIC_API_BASE_URL} \
     NEXT_TELEMETRY_DISABLED=1
-RUN npm run build
+# Cap the V8 heap so the build stays inside the budget on low-memory hosts
+RUN NODE_OPTIONS="--max-old-space-size=1024" npm run build
 
 # Stage 2: python venv (build-essential only helps source-only wheels, not copied to runtime)
 FROM python:3.12-slim AS python-deps
